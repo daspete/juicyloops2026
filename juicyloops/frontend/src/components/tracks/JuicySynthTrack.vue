@@ -6,7 +6,7 @@ import { Icon } from '@iconify/vue';
 import { Button, Slider, VirtualScroller } from 'primevue';
 import { nextTick, onMounted, ref } from 'vue';
 
-const { tracks, selectedTrack } = useJuicyLoops();
+const { tracks, selectedTrack, currentTick } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
@@ -57,15 +57,15 @@ const selectCurrentTrack = () => {
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 mb-0.5 flex flex-col gap-4" :class="selectedTrack?.id === track.id ? 'bg-surface-800 rounded-l-md' : 'rounded'">
+    <div class="pl-2 py-1 pr-6 flex flex-col gap-4" :class="selectedTrack?.id === track.id ? 'bg-surface-800 rounded-l-md' : 'rounded'">
         <div class="flex gap-4 items-start">
             <div class="w-16 font-semibold mt-1.5" @click="selectCurrentTrack">Synth</div>
             <div class="flex items-center gap-1 rounded bg-surface-700 w-24">
                 <Button size="small" :text="!isPianoRollExpanded" @click="togglePianoRoll">
-                    <Icon icon="material-symbols:piano" class="w-6 h-6" />
+                    <Icon icon="material-symbols:piano" class="w-5 h-5" />
                 </Button>
                 <Button size="small" :text="!isTrackSettingsExpanded" @click="toggleTrackSettings">
-                    <Icon icon="akar-icons:settings-vertical" class="w-6 h-6" />
+                    <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
                 </Button>
             </div>
 
@@ -73,8 +73,13 @@ const selectCurrentTrack = () => {
                 <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="!isPianoRollExpanded">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
-                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow"
-                            :class="tick.isActive ? 'bg-orange-500  shadow-orange-700' : 'bg-surface-600'"
+                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent"
+                            :class="{
+                                'bg-orange-500': tick.isActive,
+                                'bg-surface-800': !tick.isActive && selectedTrack?.id !== track.id,
+                                'bg-surface-900': !tick.isActive && selectedTrack?.id === track.id,
+                                'border-orange-400/70!': currentTick === tickIndex
+                            }"
                             @click="updateTick(tick, tick.note)"
                         >
                             {{ tick.note }}

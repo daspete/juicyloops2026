@@ -5,6 +5,7 @@ import { ref, watch } from 'vue';
 const bpm = ref(136);
 const tracks = ref<BaseTrack[]>([]);
 const selectedTrack = ref<BaseTrack>();
+const currentTick = ref(0);
 
 export const useJuicyLoops = () => {
     watch(bpm, (newBPM) => {
@@ -41,6 +42,7 @@ export const useJuicyLoops = () => {
         engine,
         tracks,
         selectedTrack,
+        currentTick,
         addSynth,
         addSampler,
         removeTrack,

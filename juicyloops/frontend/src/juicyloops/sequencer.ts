@@ -3,6 +3,7 @@ import type { Engine } from './engine';
 import type { BaseTrack } from './tracks/BaseTrack';
 import { SynthTrack } from './tracks/SynthTrack';
 import { SamplerTrack } from './tracks/SamplerTrack';
+import { useJuicyLoops } from '@/composables/useJuicyLoops';
 
 export class Sequencer {
     engine: Engine;
@@ -20,9 +21,12 @@ export class Sequencer {
 
     async initialize() {
         const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
+        const { currentTick } = useJuicyLoops();
 
         this.sequence = new Sequence(
             (time, step) => {
+                currentTick.value = step;
+
                 this.tracks.forEach((track) => {
                     track.play(step, time);
                 });

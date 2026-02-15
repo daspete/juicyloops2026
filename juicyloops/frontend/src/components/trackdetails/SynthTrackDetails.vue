@@ -56,7 +56,7 @@ const deleteTrack = () => {
 
 <template>
     <div v-if="track">
-        <div class="flex items-center gap-4 flex-wrap">
+        <div class="flex flex-col items-center gap-2 flex-wrap">
             <div class="flex items-center gap-1 rounded bg-surface-700">
                 <Button size="small" :text="track.synth.oscillator.type !== 'sine'" @click="track.setSynthType('sine')">
                     <Icon icon="mdi:sine-wave" class="w-6 h-6" />
@@ -87,26 +87,28 @@ const deleteTrack = () => {
                 </Button>
             </div>
 
-            <div class="flex items-center gap-1 rounded bg-surface-700">
-                <Button size="small" text @click="shiftNotes(-1)">
-                    <Icon icon="material-symbols-light:move-selection-left" class="w-6 h-6" />
-                </Button>
-                <Button size="small" text @click="shiftNotes(1)">
-                    <Icon icon="material-symbols-light:move-selection-right" class="w-6 h-6" />
-                </Button>
+            <div class="flex gap-2">
+                <div class="flex items-center gap-1 rounded bg-surface-700">
+                    <Button size="small" text @click="shiftNotes(-1)">
+                        <Icon icon="material-symbols-light:move-selection-left" class="w-6 h-6" />
+                    </Button>
+                    <Button size="small" text @click="shiftNotes(1)">
+                        <Icon icon="material-symbols-light:move-selection-right" class="w-6 h-6" />
+                    </Button>
+                </div>
+
+                <div class="flex items-center gap-1 rounded bg-surface-700">
+                    <Button size="small" text @click="changeOctave(1)">
+                        <Icon icon="ic:baseline-keyboard-arrow-up" class="w-6 h-6" />
+                    </Button>
+
+                    <Button size="small" text @click="changeOctave(-1)">
+                        <Icon icon="ic:baseline-keyboard-arrow-down" class="w-6 h-6" />
+                    </Button>
+                </div>
             </div>
 
-            <div class="flex items-center gap-1 rounded bg-surface-700">
-                <Button size="small" text @click="changeOctave(1)">
-                    <Icon icon="ic:baseline-keyboard-arrow-up" class="w-6 h-6" />
-                </Button>
-
-                <Button size="small" text @click="changeOctave(-1)">
-                    <Icon icon="ic:baseline-keyboard-arrow-down" class="w-6 h-6" />
-                </Button>
-            </div>
-
-            <Button size="small" text @click="deleteTrack">
+            <Button size="small" text @click="deleteTrack" class="self-end">
                 <Icon icon="mdi:trash" class="w-6 h-6" />
             </Button>
         </div>
