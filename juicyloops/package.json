@@ -1,0 +1,16 @@
+{
+  "name": "juicyloops",
+  "version": "1.0.0",
+  "description": "a basic web daw",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "yarn workspace @juicyloops/frontend dev"
+  },
+  "workspaces": [
+    "frontend"
+  ],
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "packageManager": "yarn@4.12.0"
+}
