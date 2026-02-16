@@ -5,7 +5,7 @@ import { Icon } from '@iconify/vue';
 import { Button } from 'primevue';
 import { computed } from 'vue';
 
-const { selectedTrack, removeTrack } = useJuicyLoops();
+const { selectedTrack } = useJuicyLoops();
 
 const track = computed(() => {
     return selectedTrack.value as unknown as SynthTrack;
@@ -47,11 +47,6 @@ const changeOctave = (direction: number) => {
         }
     });
 };
-
-const deleteTrack = () => {
-    removeTrack(track.value.id);
-};
-
 </script>
 
 <template>
@@ -107,10 +102,6 @@ const deleteTrack = () => {
                     </Button>
                 </div>
             </div>
-
-            <Button size="small" text @click="deleteTrack" class="self-end">
-                <Icon icon="mdi:trash" class="w-6 h-6" />
-            </Button>
         </div>
     </div>
 </template>
