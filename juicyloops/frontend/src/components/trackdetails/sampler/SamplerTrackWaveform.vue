@@ -9,15 +9,14 @@ const props = defineProps<{
 }>();
 
 const waveSurfer = ref<WaveSurfer | null>(null);
-const regionsPlugin = ref<RegionsPlugin | null>(null);
 
 onMounted(() => {
-    regionsPlugin.value = RegionsPlugin.create();
+    const regionsPlugin = RegionsPlugin.create();
 
     waveSurfer.value = WaveSurfer.create({
         container: `#waveform-${props.track.id}`,
         plugins: [
-            regionsPlugin.value,
+            regionsPlugin,
         ],
         waveColor: '#555',
         progressColor: '#999',
@@ -31,7 +30,7 @@ onMounted(() => {
         const duration = waveSurfer.value.getDuration();
         props.track.setSampleTimes(0, duration);
 
-        regionsPlugin.value?.addRegion({
+        regionsPlugin.addRegion({
             start: props.track.sampleStartTime,
             end: props.track.sampleEndTime,
             color: 'rgba(255, 255, 255, 0.3)',
@@ -39,7 +38,7 @@ onMounted(() => {
             resize: true,
         });
 
-        regionsPlugin.value?.on('region-updated', (region) => {
+        regionsPlugin.on('region-updated', (region) => {
             props.track.setSampleTimes(region.start, region.end - region.start);
         });
     });

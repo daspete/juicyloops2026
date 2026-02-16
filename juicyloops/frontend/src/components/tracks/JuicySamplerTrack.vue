@@ -4,7 +4,7 @@ import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { type SamplerTickSettings, SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
 import { Button, FileUpload, Slider, type FileUploadSelectEvent } from 'primevue';
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import SamplerTrackWaveform from '../trackdetails/sampler/SamplerTrackWaveform.vue';
 
 const { tracks, removeTrack, selectedTrack, currentTick } = useJuicyLoops();
@@ -15,7 +15,7 @@ const props = defineProps<{
 
 const isTrackSettingsExpanded = ref(false);
 
-const track = ref<SamplerTrack>(tracks.value.find((t) => t.id === props.trackId) as SamplerTrack);
+const track = computed<SamplerTrack>(() => tracks.value.find((t) => t.id === props.trackId) as SamplerTrack);
 
 onMounted(async () => {});
 
