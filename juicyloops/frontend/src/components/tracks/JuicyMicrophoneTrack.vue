@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { Icon } from '@iconify/vue';
-import { Button, Slider } from 'primevue';
+import { Button, Popover } from 'primevue';
 import { computed, onMounted, ref } from 'vue';
-import TrackWaveform from '../trackdetails/waveform/TrackWaveform.vue';
+import TrackWaveform from './settings/TrackWaveform.vue';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
+import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
+import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 
 const { tracks, removeTrack, currentTick } = useJuicyLoops();
 
@@ -14,7 +16,9 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const isTrackSettingsExpanded = ref(false);
+const isVolumeSettingsExpanded = ref(false);
+const isWaveformExpanded = ref(false);
+const settingsPopover = ref();
 
 const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === props.trackId) as MicrophoneTrack);
 
@@ -24,8 +28,8 @@ const updateTick = (tick: MicrophoneTick) => {
     tick.isActive = !tick.isActive;
 };
 
-const toggleTrackSettings = () => {
-    isTrackSettingsExpanded.value = !isTrackSettingsExpanded.value;
+const showSettings = (event: any) => {
+    settingsPopover.value.toggle(event);
 };
 
 const toggleRecording = () => {
@@ -45,13 +49,13 @@ const toggleRecording = () => {
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
             <div class="flex items-center gap-1 rounded bg-surface-700 w-40 h-9">
-                <Button size="small" text @click="toggleRecording">
+                <Button size="small" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="guidance:recording-studio" class="w-5 h-5" />
                 </Button>
-                <Button size="small" :text="!isTrackSettingsExpanded" @click="toggleTrackSettings">
+                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded">
                     <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
                 </Button>
-                <Button size="small" text>
+                <Button size="small" text @click="showSettings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
@@ -60,7 +64,7 @@ const toggleRecording = () => {
             </div>
 
             <div class="flex-1 flex flex-col gap-2">
-                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9">
+                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.hasRecordedAudio">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
                             class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
@@ -74,21 +78,35 @@ const toggleRecording = () => {
                     </div>
                 </div>
 
-                <div class="w-full grid grid-cols-32 gap-1" v-if="isTrackSettingsExpanded">
-                    <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
-                        <div class="w-full rounded shadow p-2 bg-surface-600 flex flex-col gap-4">
-                            <div class="flex flex-col items-center justify-center w-full gap-4">
-                                <div>{{ Math.round(tick.volume * 100) }}%</div>
-                                <Slider v-model="tick.volume" :min="0" :max="1" :step="0.01" orientation="vertical" class="w-2" />
-                            </div>
+                <div v-if="!track.hasRecordedAudio">
+                    <Button size="small" @click="toggleRecording">
+                        <Icon icon="mdi:waveform" class="w-5 h-5" />
+                        <div class="font-semibold">
+                            {{ track.isRecording ? 'Is recording... press to stop' : 'Record new audio' }}
                         </div>
+                    </Button>
+                </div>
+
+                <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />
+
+                <div v-if="isWaveformExpanded" class="flex flex-col gap-1">
+                    <div>
+                        <Button size="small" @click="toggleRecording">
+                            <Icon icon="mdi:waveform" class="w-5 h-5" />
+                            <div class="font-semibold">
+                                {{ track.isRecording ? 'Is recording... press to stop' : track.hasRecordedAudio ? 'Record new audio' : 'Record audio' }}
+                            </div>
+                        </Button>
                     </div>
+                    <TrackWaveform v-if="track.hasRecordedAudio && !track.isRecording" :track="track" />
                 </div>
             </div>
         </div>
 
-        <div v-if="track.hasRecordedAudio && !track.isRecording">
-            <TrackWaveform :track="track" />
-        </div>
+        <Popover ref="settingsPopover">
+            <div class="flex items-center gap-1">
+                <TrackPatternSettings :track="track" />
+            </div>
+        </Popover>
     </div>
 </template>

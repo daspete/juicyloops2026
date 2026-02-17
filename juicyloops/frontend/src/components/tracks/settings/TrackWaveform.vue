@@ -31,9 +31,6 @@ onMounted(() => {
     waveSurfer.value.on('ready', () => {
         if (!waveSurfer.value) return;
 
-        const duration = waveSurfer.value.getDuration();
-        props.track.setSampleTimes(0, duration);
-
         regionsPlugin.addRegion({
             start: props.track.sampleStartTime,
             end: props.track.sampleStartTime + props.track.sampleDuration,

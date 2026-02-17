@@ -8,8 +8,8 @@ export class MicrophoneTrack extends BaseTrack {
 
     audioController: PanVol;
     player: Player;
-    recorder: Recorder;
-    microphone: UserMedia;
+    recorder!: Recorder;
+    microphone!: UserMedia;
 
     hasRecordedAudio: boolean = false;
     isRecording: boolean = false;
@@ -48,14 +48,14 @@ export class MicrophoneTrack extends BaseTrack {
             return;
         }
         this.isRecording = true;
-        this.recorder.start();
+
+        await this.recorder.start();
     }
 
     async stopRecording() {
         if (!this.isRecording) {
             return;
         }
-        this.isRecording = false;
 
         this.recordedAudio = await this.recorder.stop();
         this.recordedAudioObject = URL.createObjectURL(this.recordedAudio);
@@ -66,7 +66,10 @@ export class MicrophoneTrack extends BaseTrack {
 
         this.player.buffer.set(source.buffer);
 
+        this.setSampleTimes(0, source.buffer.duration);
+
         this.hasRecordedAudio = true;
+        this.isRecording = false;
     }
 
     setSampleName(name: string) {
@@ -74,6 +77,7 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     setSampleTimes(start: number, duration: number) {
+        console.log('Setting sample times:', { start, duration });
         this.sampleStartTime = start;
         this.sampleDuration = duration;
     }
@@ -89,5 +93,15 @@ export class MicrophoneTrack extends BaseTrack {
     async dispose() {
         this.player.dispose();
         this.audioController.dispose();
+    }
+
+    async serialize() {
+        return {
+            ...(await super.serialize()),
+            ticks: this.ticks.map((tick) => tick.serialize()),
+            sampleStartTime: this.sampleStartTime,
+            sampleDuration: this.sampleDuration,
+            buffer: await this.recordedAudio?.arrayBuffer(),
+        };
     }
 }

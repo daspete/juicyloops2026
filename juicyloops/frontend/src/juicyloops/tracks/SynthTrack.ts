@@ -40,4 +40,12 @@ export class SynthTrack extends BaseTrack {
         this.synth.dispose();
         this.audioController.dispose();
     }
+
+    async serialize() {
+        return {
+            ...await super.serialize(),
+            ticks: this.ticks.map(tick => tick.serialize()),
+            synthType: this.synth.oscillator.type,
+        };
+    }
 }

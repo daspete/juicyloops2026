@@ -2,9 +2,9 @@
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { Button, FileUpload, Popover, type FileUploadSelectEvent } from 'primevue';
+import { Button, Popover } from 'primevue';
 import { computed, ref } from 'vue';
-import TrackWaveform from '../trackdetails/waveform/TrackWaveform.vue';
+import TrackWaveform from './settings/TrackWaveform.vue';
 import type { SamplerTick } from '@/juicyloops/ticks/SamplerTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';

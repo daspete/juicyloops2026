@@ -26,7 +26,6 @@ export class Sequencer {
 
         this.sequence = new Sequence(
             (time, step) => {
-                console.log('Playing step', step, 'at time', time);
                 currentTick.value = step;
 
                 this.tracks.forEach((track) => {

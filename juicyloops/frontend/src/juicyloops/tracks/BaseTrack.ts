@@ -21,4 +21,12 @@ export class BaseTrack {
     async dispose() {
         console.log('Disposing track - nothing implemented yet');
     }
+
+    async serialize() {
+        return {
+            id: this.id,
+            type: this.type,
+            ticks: this.ticks.map((tick) => tick.serialize()),
+        };
+    }
 }

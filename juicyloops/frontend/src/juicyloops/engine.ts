@@ -52,7 +52,6 @@ export class Engine {
 
     async setBPM(bpm: number) {
         this.transport.bpm.value = bpm;
-        console.log('BPM set to', bpm);
     }
 }
 

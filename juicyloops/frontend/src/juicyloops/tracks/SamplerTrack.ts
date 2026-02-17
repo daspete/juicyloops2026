@@ -16,7 +16,7 @@ export class SamplerTrack extends BaseTrack {
     isUpdatingSample: boolean = false;
 
     sampleStartTime: number = 0;
-    sampleDuration: number = 0;
+    sampleDuration: number = 10;
 
     arrayBuffer: ArrayBuffer | null = null;
     file: File | null = null;
@@ -42,6 +42,8 @@ export class SamplerTrack extends BaseTrack {
         source.buffer = await audioContext.decodeAudioData(arrayBuffer);
 
         this.player.buffer.set(source.buffer);
+
+        this.setSampleTimes(0, source.buffer.duration);
     }
 
     setSampleName(name: string) {
@@ -103,5 +105,16 @@ export class SamplerTrack extends BaseTrack {
     async dispose() {
         this.player.dispose();
         this.audioController.dispose();
+    }
+
+    async serialize() {
+        return {
+            ...(await super.serialize()),
+            ticks: this.ticks.map((tick) => tick.serialize()),
+            sampleName: this.sampleName,
+            sampleStartTime: this.sampleStartTime,
+            sampleDuration: this.sampleDuration,
+            buffer: this.arrayBuffer,
+        };
     }
 }

@@ -10,7 +10,7 @@ import SynthPatternSettings from './settings/SynthPatternSettings.vue';
 import SynthSettings from './settings/SynthSettings.vue';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 
-const { tracks, currentTick, removeTrack } = useJuicyLoops();
+const { tracks, currentTick, removeTrack, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
@@ -70,7 +70,7 @@ const showSettings = (event: any) => {
                 <Icon icon="qlementine-icons:synthesizer-16" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-40 h-9">
+            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
                 <Button size="small" :text="!isPianoRollExpanded" @click="togglePianoRoll">
                     <Icon icon="material-symbols:piano" class="w-5 h-5" />
                 </Button>
@@ -79,6 +79,9 @@ const showSettings = (event: any) => {
                 </Button>
                 <Button size="small" text @click="showSettings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
+                </Button>
+                <Button size="small" text @click="duplicateTrack(track.id)">
+                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
                     <Icon icon="mdi:trash" class="w-5 h-5" />
