@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import { type SamplerTickSettings, SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { Button, FileUpload, Slider, type FileUploadSelectEvent } from 'primevue';
+import { Button, Slider } from 'primevue';
 import { computed, onMounted, ref } from 'vue';
 import TrackWaveform from '../trackdetails/waveform/TrackWaveform.vue';
+import type { MicrophoneTickSettings, MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 
 const { tracks, removeTrack, selectedTrack, currentTick } = useJuicyLoops();
 
@@ -14,16 +14,12 @@ const props = defineProps<{
 
 const isTrackSettingsExpanded = ref(false);
 
-const track = computed<SamplerTrack>(() => tracks.value.find((t) => t.id === props.trackId) as SamplerTrack);
+const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === props.trackId) as MicrophoneTrack);
 
 onMounted(async () => {});
 
-const updateTick = (tick: SamplerTickSettings) => {
+const updateTick = (tick: MicrophoneTickSettings) => {
     tick.isActive = !tick.isActive;
-};
-
-const onFileSelect = async (event: FileUploadSelectEvent) => {
-    track.value.setFile(Array.isArray(event.files) ? event.files[0] : event.files);
 };
 
 const selectCurrentTrack = () => {
@@ -47,11 +43,7 @@ const toggleTrackSettings = () => {
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
             </div>
             <div class="flex items-center gap-1 rounded bg-surface-700 w-40 h-9">
-                <FileUpload mode="basic" @select="onFileSelect" customUpload auto :choose-button-props="{ label: '', text: true }">
-                    <template #chooseicon>
-                        <Icon icon="mdi:upload" class="w-5 h-5" />
-                    </template>
-                </FileUpload>
+                R
 
                 <Button size="small" :text="!isTrackSettingsExpanded" @click="toggleTrackSettings">
                     <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
@@ -93,8 +85,7 @@ const toggleTrackSettings = () => {
             </div>
         </div>
 
-        <div v-if="track.sampleName">
-
+        <div v-if="track.hasRecordedAudio && !track.isRecording">
             <TrackWaveform :track="track" />
         </div>
     </div>

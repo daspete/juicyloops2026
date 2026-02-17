@@ -16,7 +16,7 @@ export class SamplerTrack extends BaseTrack {
     sampleName: string | null = null;
 
     sampleStartTime: number = 0;
-    sampleEndTime: number = 0;
+    sampleDuration: number = 0;
 
     ticks: SamplerTickSettings[] = [];
     arrayBuffer: ArrayBuffer | null = null;
@@ -52,24 +52,51 @@ export class SamplerTrack extends BaseTrack {
         this.sampleName = name;
     }
 
-    setFile(file: File) {
+    async setFile(file: File) {
+        if(!file) {
+            return;
+        }
+
         this.file = file;
+
+        return new Promise<void>((resolve) => {
+            if(!this.file) {
+                resolve();
+                return;
+            }
+
+            this.setSampleName(file.name);
+
+            const fileReader = new FileReader();
+            fileReader.onload = async (e) => {
+                const result = e.target?.result;
+                if (!result) {
+                    resolve();
+                    return;
+                }
+                this.setSampleFromArrayBuffer(result as ArrayBuffer);
+
+                resolve();
+            };
+
+            fileReader.readAsArrayBuffer(this.file);
+        });
     }
 
-    async setSample(url: string) {
+    async setSampleFromUrl(url: string) {
         await this.player.load(url);
     }
 
     setSampleTimes(start: number, duration: number) {
         this.sampleStartTime = start;
-        this.sampleEndTime = start + duration;
+        this.sampleDuration = duration;
     }
 
     play(step: number, time: number) {
         const tick = this.ticks[step];
 
         if (tick?.isActive && this.player.loaded) {
-            this.player.start(time, this.sampleStartTime, this.sampleEndTime - this.sampleStartTime);
+            this.player.start(time, this.sampleStartTime, this.sampleDuration);
         }
     }
 

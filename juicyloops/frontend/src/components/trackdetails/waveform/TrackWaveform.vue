@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { onMounted, ref } from 'vue';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 
 const props = defineProps<{
-    track: SamplerTrack;
+    track: SamplerTrack | MicrophoneTrack;
 }>();
 
 const waveSurfer = ref<WaveSurfer | null>(null);
@@ -18,12 +19,13 @@ onMounted(() => {
         plugins: [
             regionsPlugin,
         ],
-        waveColor: '#555',
-        progressColor: '#999',
-        height: 80,
+        height: 100,
     });
 
-    waveSurfer.value.loadBlob(props.track.file!);
+    if (props.track instanceof SamplerTrack) {
+        waveSurfer.value.loadBlob(props.track.file!);
+    }
+
     waveSurfer.value.on('ready', () => {
         if (!waveSurfer.value) return;
 
@@ -32,8 +34,8 @@ onMounted(() => {
 
         regionsPlugin.addRegion({
             start: props.track.sampleStartTime,
-            end: props.track.sampleEndTime,
-            color: 'rgba(255, 255, 255, 0.3)',
+            end: props.track.sampleStartTime + props.track.sampleDuration,
+            color: 'rgba(255, 127, 0, 0.3)',
             drag: true,
             resize: true,
         });
