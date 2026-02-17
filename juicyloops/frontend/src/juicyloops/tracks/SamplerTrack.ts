@@ -1,11 +1,7 @@
 import { PanVol, Player } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
-
-export type SamplerTickSettings = {
-    isActive: boolean;
-    volume: number;
-};
+import { SamplerTick } from '../ticks/SamplerTick';
 
 export class SamplerTrack extends BaseTrack {
     type = 'sampler';
@@ -13,12 +9,15 @@ export class SamplerTrack extends BaseTrack {
     audioController: PanVol;
     player: Player;
 
+    ticks: SamplerTick[] = [];
+
     sampleName: string | null = null;
+
+    isUpdatingSample: boolean = false;
 
     sampleStartTime: number = 0;
     sampleDuration: number = 0;
 
-    ticks: SamplerTickSettings[] = [];
     arrayBuffer: ArrayBuffer | null = null;
     file: File | null = null;
 
@@ -26,10 +25,7 @@ export class SamplerTrack extends BaseTrack {
         super(engine);
 
         for (let i = 0; i < 32; i++) {
-            this.ticks.push({
-                isActive: false,
-                volume: 1,
-            });
+            this.ticks.push(new SamplerTick());
         }
 
         this.audioController = new PanVol(0, 0).toDestination();
@@ -53,14 +49,16 @@ export class SamplerTrack extends BaseTrack {
     }
 
     async setFile(file: File) {
-        if(!file) {
+        if (!file) {
             return;
         }
 
         this.file = file;
+        this.isUpdatingSample = true;
 
         return new Promise<void>((resolve) => {
-            if(!this.file) {
+            if (!this.file) {
+                this.isUpdatingSample = false;
                 resolve();
                 return;
             }
@@ -71,10 +69,12 @@ export class SamplerTrack extends BaseTrack {
             fileReader.onload = async (e) => {
                 const result = e.target?.result;
                 if (!result) {
+                    this.isUpdatingSample = false;
                     resolve();
                     return;
                 }
                 this.setSampleFromArrayBuffer(result as ArrayBuffer);
+                this.isUpdatingSample = false;
 
                 resolve();
             };

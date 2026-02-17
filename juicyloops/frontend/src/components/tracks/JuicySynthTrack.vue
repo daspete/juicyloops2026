@@ -1,23 +1,30 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
-import type { SynthTrack, SynthTickSettings } from '@/juicyloops/tracks/SynthTrack';
+import type { SynthTick } from '@/juicyloops/ticks/SynthTick';
+import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
-import { Button, Slider, VirtualScroller } from 'primevue';
-import { nextTick, onMounted, ref } from 'vue';
+import { Button, Popover, VirtualScroller } from 'primevue';
+import { computed, nextTick, ref } from 'vue';
+import TrackPatternSettings from './settings/TrackPatternSettings.vue';
+import SynthPatternSettings from './settings/SynthPatternSettings.vue';
+import SynthSettings from './settings/SynthSettings.vue';
+import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 
-const { tracks, selectedTrack, currentTick, removeTrack } = useJuicyLoops();
+const { tracks, currentTick, removeTrack } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
+    trackIndex: number;
 }>();
 
-const isPianoRollExpanded = ref(false);
-const isTrackSettingsExpanded = ref(false);
+const track = computed(() => tracks.value.find((t) => t.id === props.trackId) as SynthTrack);
 
-const track = ref<SynthTrack>(tracks.value.find((t) => t.id === props.trackId) as SynthTrack);
+const isPianoRollExpanded = ref(false);
+const isVolumeSettingsExpanded = ref(false);
+
 
 const scroller = ref();
+const settingsPopover = ref();
 
 const availableNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const availableOctaves = Array.from({ length: 11 }, (_, i) => i);
@@ -25,7 +32,7 @@ const availableOctaves = Array.from({ length: 11 }, (_, i) => i);
 const allNotes = availableOctaves.flatMap((octave) => availableNotes.map((note) => `${note}${octave}`));
 allNotes.reverse();
 
-const updateTick = (tick: SynthTickSettings, note: string) => {
+const updateTick = (tick: SynthTick, note: string) => {
     if (tick.note === note) {
         tick.isActive = !tick.isActive;
         return;
@@ -35,41 +42,42 @@ const updateTick = (tick: SynthTickSettings, note: string) => {
     tick.note = note;
 };
 
-onMounted(async () => {});
-
-const togglePianoRoll = () => {
+const togglePianoRoll = async () => {
     isPianoRollExpanded.value = !isPianoRollExpanded.value;
 
     if (isPianoRollExpanded.value) {
-        nextTick(() => {
-            scroller.value.scrollToIndex(Math.floor(allNotes.length * 0.5));
-        });
+        await nextTick();
+
+        const activeTick = track.value.ticks.find((tick) => tick.isActive);
+        const activeNoteIndex = activeTick ? allNotes.findIndex((note) => note === activeTick.note) : -1;
+        if (activeNoteIndex !== -1) {
+            scroller.value.scrollToIndex(activeNoteIndex - 4);
+            return;
+        }
+        scroller.value.scrollToIndex(Math.floor(allNotes.length * 0.5));
     }
 };
 
-const toggleTrackSettings = () => {
-    isTrackSettingsExpanded.value = !isTrackSettingsExpanded.value;
-};
-
-const selectCurrentTrack = () => {
-    selectedTrack.value = track.value as unknown as BaseTrack;
+const showSettings = (event: any) => {
+    settingsPopover.value.toggle(event);
 };
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4" :class="selectedTrack?.id === track.id ? 'bg-surface-800 rounded-l-md' : 'rounded'">
+    <div class="pl-2 py-1 pr-6 flex flex-col gap-2 track">
         <div class="flex gap-2 items-start">
-            <div class="font-semibold bg-surface-700 flex h-9 rounded px-2 items-center">
+            <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="qlementine-icons:synthesizer-16" class="w-5 h-5" />
+                <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
-            <div class="flex items-center gap-1 rounded bg-surface-700 w-40 h-9">
+            <div class="flex items-center gap-1 rounded bg-surface-800 w-40 h-9">
                 <Button size="small" :text="!isPianoRollExpanded" @click="togglePianoRoll">
                     <Icon icon="material-symbols:piano" class="w-5 h-5" />
                 </Button>
-                <Button size="small" :text="!isTrackSettingsExpanded" @click="toggleTrackSettings">
+                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded">
                     <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
                 </Button>
-                <Button size="small" :text="selectedTrack?.id !== track.id" @click="selectCurrentTrack">
+                <Button size="small" text @click="showSettings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
@@ -78,15 +86,14 @@ const selectCurrentTrack = () => {
             </div>
 
             <div class="flex-1 flex flex-col gap-2">
-                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="!isPianoRollExpanded">
+                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
-                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
+                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick text-sm"
                             :class="{
                                 'tick--active': tick.isActive,
                                 'tick--inactive': !tick.isActive,
-                                'tick--selected': selectedTrack?.id === track.id,
-                                'tick--current': currentTick === tickIndex
+                                'tick--current': currentTick === tickIndex,
                             }"
                             @click="updateTick(tick, tick.note)"
                         >
@@ -99,7 +106,6 @@ const selectCurrentTrack = () => {
                     <VirtualScroller :items="allNotes" :item-size="20" class="h-64" ref="scroller">
                         <template v-slot:item="{ item: note }">
                             <div :class="`grid grid-cols-32 gap-1 mb-1 pr-1 group`">
-                                <!-- <div class="text-xs text-right">{{ note }}</div> -->
                                 <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex" class="flex flex-col items-center relative">
                                     <div v-if="tickIndex === 0" class="absolute left-0.5 text-xs mt-0.5 pointer-events-none z-20 text-white">{{ note }}</div>
                                     <div
@@ -107,7 +113,6 @@ const selectCurrentTrack = () => {
                                         :class="{
                                             'pianotick--active': tick.note === note && tick.isActive,
                                             'pianotick--inactive': tick.note !== note || !tick.isActive,
-                                            'pianotick--selected': selectedTrack?.id === track.id,
                                             'pianotick--current': currentTick === tickIndex,
                                         }"
                                         @click="updateTick(tick, note)"
@@ -118,17 +123,16 @@ const selectCurrentTrack = () => {
                     </VirtualScroller>
                 </div>
 
-                <div class="w-full grid grid-cols-32 gap-1" v-if="isTrackSettingsExpanded">
-                    <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
-                        <div class="w-full rounded shadow p-2 bg-surface-600 flex flex-col gap-4">
-                            <div class="flex flex-col items-center justify-center w-full gap-4">
-                                <div>{{ Math.round(tick.volume * 100) }}%</div>
-                                <Slider v-model="tick.volume" :min="0" :max="1" :step="0.01" orientation="vertical" class="w-2" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />
             </div>
         </div>
     </div>
+
+    <Popover ref="settingsPopover">
+        <div class="flex items-center gap-1">
+            <SynthSettings :track="track" />
+            <TrackPatternSettings :track="track" />
+            <SynthPatternSettings :track="track" />
+        </div>
+    </Popover>
 </template>

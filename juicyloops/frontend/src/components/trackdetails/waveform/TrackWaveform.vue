@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
+import { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { onMounted, ref } from 'vue';
 import WaveSurfer from 'wavesurfer.js';
@@ -16,14 +16,16 @@ onMounted(() => {
 
     waveSurfer.value = WaveSurfer.create({
         container: `#waveform-${props.track.id}`,
-        plugins: [
-            regionsPlugin,
-        ],
+        plugins: [regionsPlugin],
         height: 100,
     });
 
     if (props.track instanceof SamplerTrack) {
         waveSurfer.value.loadBlob(props.track.file!);
+    }
+
+    if (props.track instanceof MicrophoneTrack && props.track.hasRecordedAudio) {
+        waveSurfer.value.loadBlob(props.track.recordedAudio!);
     }
 
     waveSurfer.value.on('ready', () => {
@@ -44,8 +46,7 @@ onMounted(() => {
             props.track.setSampleTimes(region.start, region.end - region.start);
         });
     });
-})
-
+});
 </script>
 
 <template>

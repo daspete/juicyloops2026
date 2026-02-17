@@ -4,7 +4,6 @@ import { ref, watch } from 'vue';
 
 const bpm = ref(136);
 const tracks = ref<BaseTrack[]>([]);
-const selectedTrack = ref<BaseTrack>();
 const currentTick = ref(0);
 
 export const useJuicyLoops = () => {
@@ -32,6 +31,16 @@ export const useJuicyLoops = () => {
         tracks.value.push(sampler);
     };
 
+    const addMicrophone = async () => {
+        const microphone = await engine.addTrack('microphone');
+
+        if (!microphone) {
+            return;
+        }
+
+        tracks.value.push(microphone);
+    };
+
     const removeTrack = async (id: string) => {
         await engine.removeTrack(id);
         tracks.value = tracks.value.filter((track) => track.id !== id);
@@ -41,10 +50,10 @@ export const useJuicyLoops = () => {
         bpm,
         engine,
         tracks,
-        selectedTrack,
         currentTick,
         addSynth,
         addSampler,
+        addMicrophone,
         removeTrack,
     };
 };

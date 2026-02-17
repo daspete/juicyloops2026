@@ -4,12 +4,14 @@ import { Icon } from '@iconify/vue';
 import { Button, Slider } from 'primevue';
 import { computed, onMounted, ref } from 'vue';
 import TrackWaveform from '../trackdetails/waveform/TrackWaveform.vue';
-import type { MicrophoneTickSettings, MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
+import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
+import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
 
-const { tracks, removeTrack, selectedTrack, currentTick } = useJuicyLoops();
+const { tracks, removeTrack, currentTick } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
+    trackIndex: number;
 }>();
 
 const isTrackSettingsExpanded = ref(false);
@@ -18,37 +20,38 @@ const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === 
 
 onMounted(async () => {});
 
-const updateTick = (tick: MicrophoneTickSettings) => {
+const updateTick = (tick: MicrophoneTick) => {
     tick.isActive = !tick.isActive;
-};
-
-const selectCurrentTrack = () => {
-    selectedTrack.value = track.value;
 };
 
 const toggleTrackSettings = () => {
     isTrackSettingsExpanded.value = !isTrackSettingsExpanded.value;
 };
+
+const toggleRecording = () => {
+    if (track.value.isRecording) {
+        track.value.stopRecording();
+    } else {
+        track.value.startRecording();
+    }
+};
 </script>
 
 <template>
-    <div
-        class="pl-2 py-1 pr-6 flex flex-col gap-4 track"
-        :class="{
-            'track--selected': selectedTrack?.id === track.id,
-        }"
-    >
+    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
         <div class="flex gap-2 items-start">
-            <div class="font-semibold bg-surface-700 flex h-9 rounded px-2 items-center">
+            <div class="font-semibold bg-surface-700 flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
+                <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
             <div class="flex items-center gap-1 rounded bg-surface-700 w-40 h-9">
-                R
-
+                <Button size="small" text @click="toggleRecording">
+                    <Icon icon="guidance:recording-studio" class="w-5 h-5" />
+                </Button>
                 <Button size="small" :text="!isTrackSettingsExpanded" @click="toggleTrackSettings">
                     <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
                 </Button>
-                <Button size="small" :text="selectedTrack?.id !== track.id" @click="selectCurrentTrack">
+                <Button size="small" text>
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
@@ -64,7 +67,6 @@ const toggleTrackSettings = () => {
                             :class="{
                                 'tick--active': tick.isActive,
                                 'tick--inactive': !tick.isActive,
-                                'tick--selected': selectedTrack?.id === track.id,
                                 'tick--current': currentTick === tickIndex,
                             }"
                             @click="updateTick(tick)"

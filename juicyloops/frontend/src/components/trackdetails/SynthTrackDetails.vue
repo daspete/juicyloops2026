@@ -1,24 +1,20 @@
 <script setup lang="ts">
-import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
 import { Button } from 'primevue';
-import { computed } from 'vue';
 
-const { selectedTrack } = useJuicyLoops();
-
-const track = computed(() => {
-    return selectedTrack.value as unknown as SynthTrack;
-});
+const props = defineProps<{
+    track: SynthTrack;
+}>();
 
 const setEveryNote = (interval: number) => {
-    track.value.ticks.forEach((tick, index) => {
+    props.track.ticks.forEach((tick, index) => {
         tick.isActive = index % interval === 0;
     });
 };
 
 const shiftNotes = (direction: number) => {
-    const ticks = track.value.ticks;
+    const ticks = props.track.ticks;
     if (direction === 1) {
         // Shift right
         const lastTick = ticks.pop();
@@ -35,7 +31,7 @@ const shiftNotes = (direction: number) => {
 };
 
 const changeOctave = (direction: number) => {
-    track.value.ticks.forEach((tick) => {
+    props.track.ticks.forEach((tick) => {
         const match = tick.note.match(/([A-G]#?)(\d)/);
         if (match) {
             const note = match[1];

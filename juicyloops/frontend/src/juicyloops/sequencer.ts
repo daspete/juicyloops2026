@@ -4,6 +4,7 @@ import type { BaseTrack } from './tracks/BaseTrack';
 import { SynthTrack } from './tracks/SynthTrack';
 import { SamplerTrack } from './tracks/SamplerTrack';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { MicrophoneTrack } from './tracks/MicrophoneTrack';
 
 export class Sequencer {
     engine: Engine;
@@ -25,6 +26,7 @@ export class Sequencer {
 
         this.sequence = new Sequence(
             (time, step) => {
+                console.log('Playing step', step, 'at time', time);
                 currentTick.value = step;
 
                 this.tracks.forEach((track) => {
@@ -44,6 +46,12 @@ export class Sequencer {
 
     async addSamplerTrack() {
         const track = new SamplerTrack(this.engine);
+        this.tracks.push(track);
+        return track;
+    }
+
+    async addMicrophoneTrack() {
+        const track = new MicrophoneTrack(this.engine);
         this.tracks.push(track);
         return track;
     }

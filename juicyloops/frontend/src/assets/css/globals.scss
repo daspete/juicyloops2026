@@ -8,7 +8,7 @@ body {
 
 .dark {
     body {
-        @apply bg-surface-900;
+        @apply bg-surface-950;
     }
 }
 
@@ -43,51 +43,22 @@ body {
 
 .track {
     @apply rounded;
-    transition: all 0.1s;
-}
-
-.track--selected {
-    @apply bg-surface-800 rounded-l-md rounded-r-none;
-}
-
-.tick {
-    transition: all 0.1s;
-
-    @apply relative;
-
-    @apply bg-surface-800;
-}
-.tick--selected {
-    @apply border border-orange-900;
     @apply bg-surface-900;
 }
 
-.tick--active {
-    @apply bg-orange-500 group-hover:bg-orange-600;
-}
-
-.tick--current {
-    &::after {
-        content: '';
-        @apply absolute top-0 left-0 w-full h-full bg-orange-500/20 rounded z-20 shadow-orange-500 shadow;
-    }
-}
-
-.pianotick {
+.tick, .pianotick {
     @apply relative;
     @apply bg-surface-800;
 }
-.pianotick--selected {
-    @apply bg-surface-900;
+
+.tick--active, .pianotick--active {
+    @apply bg-orange-500;
 }
 
-.pianotick--active {
-    @apply bg-orange-500 group-hover:bg-orange-600;
-}
-
-.pianotick--current {
+.tick--current, .pianotick--current {
     &::after {
         content: '';
-        @apply absolute top-0 left-0 w-full h-full bg-orange-500/20 rounded z-20 shadow-orange-500 shadow;
+        @apply absolute top-0 left-0 w-full h-full rounded z-20;
+        @apply bg-linear-to-t from-orange-500/50 to-transparent;
     }
 }

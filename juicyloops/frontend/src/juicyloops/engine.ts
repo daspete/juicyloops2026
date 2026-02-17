@@ -1,5 +1,5 @@
-import { getContext, getTransport, start, type BaseContext, type TransportInstance } from "tone";
-import { Sequencer } from "./sequencer";
+import { getContext, getTransport, start, type BaseContext, type TransportInstance } from 'tone';
+import { Sequencer } from './sequencer';
 
 export class Engine {
     transport: TransportInstance;
@@ -19,9 +19,15 @@ export class Engine {
 
     async initialize() {
         await start();
-        this.transport.start();
-
         await this.sequencer.initialize();
+    }
+
+    async play() {
+        this.transport.start();
+    }
+
+    async stop() {
+        this.transport.stop();
     }
 
     async addTrack(type: string) {
@@ -29,9 +35,15 @@ export class Engine {
             return await this.sequencer.addSynthTrack();
         }
 
-        if(type === 'sampler') {
+        if (type === 'sampler') {
             return await this.sequencer.addSamplerTrack();
         }
+
+        if (type === 'microphone') {
+            return await this.sequencer.addMicrophoneTrack();
+        }
+
+        return null;
     }
 
     async removeTrack(id: string) {
@@ -42,8 +54,6 @@ export class Engine {
         this.transport.bpm.value = bpm;
         console.log('BPM set to', bpm);
     }
-
-
 }
 
 export const engine = new Engine();

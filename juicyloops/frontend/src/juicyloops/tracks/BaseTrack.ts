@@ -1,4 +1,5 @@
 import type { Engine } from '../engine';
+import type { BaseTick } from '../ticks/BaseTick';
 
 export class BaseTrack {
     id: string = Math.random().toString(36).substring(2, 11);
@@ -6,6 +7,8 @@ export class BaseTrack {
     type: string = 'base';
 
     engine: Engine;
+
+    ticks: BaseTick[] = [];
 
     constructor(engine: Engine) {
         this.engine = engine;

@@ -1,13 +1,7 @@
 import { PanVol, Synth } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
-
-export type SynthTickSettings = {
-    isActive: boolean;
-    note: string;
-    duration: string;
-    volume: number;
-};
+import { SynthTick } from '../ticks/SynthTick';
 
 export class SynthTrack extends BaseTrack {
     type = 'synth';
@@ -16,18 +10,13 @@ export class SynthTrack extends BaseTrack {
 
     synth: Synth;
 
-    ticks: SynthTickSettings[] = [];
+    ticks: SynthTick[] = [];
 
     constructor(engine: Engine) {
         super(engine);
 
         for (let i = 0; i < 32; i++) {
-            this.ticks.push({
-                isActive: false,
-                note: `C5`,
-                duration: '12n',
-                volume: 1,
-            });
+            this.ticks.push(new SynthTick());
         }
 
         this.audioController = new PanVol(0, 0).toDestination();
