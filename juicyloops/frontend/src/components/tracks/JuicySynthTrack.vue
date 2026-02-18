@@ -3,7 +3,7 @@ import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import type { SynthTick } from '@/juicyloops/ticks/SynthTick';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
-import { Button, Popover, VirtualScroller } from 'primevue';
+import { Button, Popover, Slider, VirtualScroller } from 'primevue';
 import { computed, nextTick, ref } from 'vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import SynthPatternSettings from './settings/SynthPatternSettings.vue';
@@ -22,9 +22,9 @@ const track = computed(() => tracks.value.find((t) => t.id === props.trackId) as
 const isPianoRollExpanded = ref(false);
 const isVolumeSettingsExpanded = ref(false);
 
-
 const scroller = ref();
 const settingsPopover = ref();
+const volumePopover = ref();
 
 const availableNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const availableOctaves = Array.from({ length: 11 }, (_, i) => i);
@@ -61,6 +61,10 @@ const togglePianoRoll = async () => {
 const showSettings = (event: any) => {
     settingsPopover.value.toggle(event);
 };
+
+const showVolumeSettings = (event: any) => {
+    volumePopover.value.toggle(event);
+};
 </script>
 
 <template>
@@ -70,6 +74,16 @@ const showSettings = (event: any) => {
                 <Icon icon="qlementine-icons:synthesizer-16" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
+
+            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
+                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()">
+                    <Icon icon="fad:mute" class="w-5 h-5" />
+                </Button>
+                <Button text size="small" @click="showVolumeSettings">
+                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
+                </Button>
+            </div>
+
             <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
                 <Button size="small" :text="!isPianoRollExpanded" @click="togglePianoRoll">
                     <Icon icon="material-symbols:piano" class="w-5 h-5" />
@@ -136,6 +150,12 @@ const showSettings = (event: any) => {
             <SynthSettings :track="track" />
             <TrackPatternSettings :track="track" />
             <SynthPatternSettings :track="track" />
+        </div>
+    </Popover>
+
+    <Popover ref="volumePopover">
+        <div>
+            <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
         </div>
     </Popover>
 </template>

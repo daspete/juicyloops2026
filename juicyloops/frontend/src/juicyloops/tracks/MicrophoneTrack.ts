@@ -22,6 +22,8 @@ export class MicrophoneTrack extends BaseTrack {
     sampleStartTime: number = 0;
     sampleDuration: number = 0;
 
+    isReversed: boolean = false;
+
     ticks: MicrophoneTick[] = [];
 
     constructor(engine: Engine) {
@@ -81,12 +83,30 @@ export class MicrophoneTrack extends BaseTrack {
         this.sampleDuration = duration;
     }
 
+    async setVolume(volume: number) {
+        await this.audioController.volume.rampTo(volume, 0.01);
+        this.volume = volume;
+    }
+    async setPan(pan: number) {
+        await this.audioController.pan.rampTo(pan, 0.01);
+        this.pan = pan;
+    }
+
     play(step: number, time: number) {
+        if (this.isMuted) {
+            return;
+        }
+
         const tick = this.ticks[step];
 
         if (tick?.isActive && this.player.loaded) {
             this.player.start(time, this.sampleStartTime, this.sampleDuration);
         }
+    }
+
+    toggleReverse() {
+        this.isReversed = !this.isReversed;
+        this.player.reverse = this.isReversed;
     }
 
     async dispose() {

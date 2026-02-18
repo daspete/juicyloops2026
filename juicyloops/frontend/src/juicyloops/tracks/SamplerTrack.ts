@@ -16,6 +16,8 @@ export class SamplerTrack extends BaseTrack {
 
     isUpdatingSample: boolean = false;
 
+    isReversed: boolean = false;
+
     sampleStartTime: number = 0;
     sampleDuration: number = 10;
 
@@ -66,8 +68,6 @@ export class SamplerTrack extends BaseTrack {
                 return;
             }
 
-
-
             const fileReader = new FileReader();
             fileReader.onload = async (e) => {
                 const result = e.target?.result;
@@ -98,7 +98,25 @@ export class SamplerTrack extends BaseTrack {
         this.sampleDuration = duration;
     }
 
+    async setVolume(volume: number) {
+        await this.audioController.volume.rampTo(volume, 0.01);
+        this.volume = volume;
+    }
+    async setPan(pan: number) {
+        await this.audioController.pan.rampTo(pan, 0.01);
+        this.pan = pan;
+    }
+
+    toggleReverse() {
+        this.isReversed = !this.isReversed;
+        this.player.reverse = this.isReversed;
+    }
+
     play(step: number, time: number) {
+        if (this.isMuted) {
+            return;
+        }
+
         const tick = this.ticks[step];
 
         if (tick?.isActive && this.player.loaded) {

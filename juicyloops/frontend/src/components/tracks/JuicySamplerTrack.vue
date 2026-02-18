@@ -2,13 +2,14 @@
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { Button, Popover } from 'primevue';
+import { Button, Popover, Slider } from 'primevue';
 import { computed, ref } from 'vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
 import type { SamplerTick } from '@/juicyloops/ticks/SamplerTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
+import TrackSampleSettings from './settings/TrackSampleSettings.vue';
 
 const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
 
@@ -22,6 +23,7 @@ const track = computed<SamplerTrack>(() => tracks.value.find((t) => t.id === pro
 const isVolumeSettingsExpanded = ref(false);
 const isWaveformExpanded = ref(false);
 const settingsPopover = ref();
+const volumePopover = ref();
 
 const updateTick = (tick: SamplerTick) => {
     tick.isActive = !tick.isActive;
@@ -33,7 +35,11 @@ const showSettings = (event: any) => {
 
 const onSampleUploaded = () => {
     isWaveformExpanded.value = true;
-}
+};
+
+const showVolumeSettings = (event: any) => {
+    volumePopover.value.toggle(event);
+};
 </script>
 
 <template>
@@ -43,6 +49,16 @@ const onSampleUploaded = () => {
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
+
+            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
+                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()">
+                    <Icon icon="fad:mute" class="w-5 h-5" />
+                </Button>
+                <Button text size="small" @click="showVolumeSettings">
+                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
+                </Button>
+            </div>
+
             <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
                 <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="mdi:waveform" class="w-5 h-5" />
@@ -92,6 +108,13 @@ const onSampleUploaded = () => {
         <Popover ref="settingsPopover">
             <div class="flex items-center gap-1">
                 <TrackPatternSettings :track="track" />
+                <TrackSampleSettings :track="track" />
+            </div>
+        </Popover>
+
+        <Popover ref="volumePopover">
+            <div>
+                <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
             </div>
         </Popover>
     </div>

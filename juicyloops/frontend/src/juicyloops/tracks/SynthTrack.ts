@@ -26,6 +26,10 @@ export class SynthTrack extends BaseTrack {
     }
 
     play(step: number, time: number) {
+        if (this.isMuted) {
+            return;
+        }
+
         const tick = this.ticks[step];
         if (tick?.isActive) {
             this.synth.triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
@@ -36,6 +40,15 @@ export class SynthTrack extends BaseTrack {
         this.synth.oscillator.type = type;
     }
 
+    async setVolume(volume: number) {
+        await this.audioController.volume.rampTo(volume, 0.01);
+        this.volume = volume;
+    }
+    async setPan(pan: number) {
+        await this.audioController.pan.rampTo(pan, 0.01);
+        this.pan = pan;
+    }
+
     async dispose() {
         this.synth.dispose();
         this.audioController.dispose();
@@ -43,8 +56,8 @@ export class SynthTrack extends BaseTrack {
 
     async serialize() {
         return {
-            ...await super.serialize(),
-            ticks: this.ticks.map(tick => tick.serialize()),
+            ...(await super.serialize()),
+            ticks: this.ticks.map((tick) => tick.serialize()),
             synthType: this.synth.oscillator.type,
         };
     }

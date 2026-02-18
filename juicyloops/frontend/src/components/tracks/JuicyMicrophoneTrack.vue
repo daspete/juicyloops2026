@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { Icon } from '@iconify/vue';
-import { Button, Popover } from 'primevue';
+import { Button, Popover, Slider } from 'primevue';
 import { computed, onMounted, ref } from 'vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
+import TrackSampleSettings from './settings/TrackSampleSettings.vue';
 
 const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
 
@@ -19,6 +20,7 @@ const props = defineProps<{
 const isVolumeSettingsExpanded = ref(false);
 const isWaveformExpanded = ref(false);
 const settingsPopover = ref();
+const volumePopover = ref();
 
 const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === props.trackId) as MicrophoneTrack);
 
@@ -39,6 +41,10 @@ const toggleRecording = () => {
         track.value.startRecording();
     }
 };
+
+const showVolumeSettings = (event: any) => {
+    volumePopover.value.toggle(event);
+};
 </script>
 
 <template>
@@ -48,6 +54,16 @@ const toggleRecording = () => {
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
+
+            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
+                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()">
+                    <Icon icon="fad:mute" class="w-5 h-5" />
+                </Button>
+                <Button text size="small" @click="showVolumeSettings">
+                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
+                </Button>
+            </div>
+
             <div class="flex items-center gap-1 rounded bg-surface-700 w-49 h-9">
                 <Button size="small" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="guidance:recording-studio" class="w-5 h-5" />
@@ -109,6 +125,13 @@ const toggleRecording = () => {
         <Popover ref="settingsPopover">
             <div class="flex items-center gap-1">
                 <TrackPatternSettings :track="track" />
+                <TrackSampleSettings :track="track" />
+            </div>
+        </Popover>
+
+        <Popover ref="volumePopover">
+            <div>
+                <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
             </div>
         </Popover>
     </div>

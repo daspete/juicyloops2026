@@ -11,7 +11,7 @@ const props = defineProps<{
 
 const waveSurfer = ref<WaveSurfer | null>(null);
 
-onMounted(() => {
+onMounted(async () => {
     const regionsPlugin = RegionsPlugin.create();
 
     waveSurfer.value = WaveSurfer.create({
@@ -48,6 +48,6 @@ onMounted(() => {
 
 <template>
     <div v-if="props.track.id">
-        <div :id="`waveform-${props.track.id}`"></div>
+        <div :id="`waveform-${props.track.id}`" :class="{'waveform--reversed': props.track.isReversed}"></div>
     </div>
 </template>
