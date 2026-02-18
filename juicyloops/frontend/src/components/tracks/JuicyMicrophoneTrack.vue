@@ -9,7 +9,7 @@ import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 
-const { tracks, removeTrack, currentTick } = useJuicyLoops();
+const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
@@ -48,7 +48,7 @@ const toggleRecording = () => {
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
-            <div class="flex items-center gap-1 rounded bg-surface-700 w-40 h-9">
+            <div class="flex items-center gap-1 rounded bg-surface-700 w-49 h-9">
                 <Button size="small" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="guidance:recording-studio" class="w-5 h-5" />
                 </Button>
@@ -57,6 +57,9 @@ const toggleRecording = () => {
                 </Button>
                 <Button size="small" text @click="showSettings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
+                </Button>
+                <Button size="small" text @click="duplicateTrack(track.id)">
+                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
                     <Icon icon="mdi:trash" class="w-5 h-5" />

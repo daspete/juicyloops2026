@@ -10,7 +10,7 @@ import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
 
-const { tracks, removeTrack, currentTick } = useJuicyLoops();
+const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
     trackId: string;
@@ -30,6 +30,10 @@ const updateTick = (tick: SamplerTick) => {
 const showSettings = (event: any) => {
     settingsPopover.value.toggle(event);
 };
+
+const onSampleUploaded = () => {
+    isWaveformExpanded.value = true;
+}
 </script>
 
 <template>
@@ -39,7 +43,7 @@ const showSettings = (event: any) => {
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-40 h-9">
+            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
                 <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="mdi:waveform" class="w-5 h-5" />
                 </Button>
@@ -48,6 +52,9 @@ const showSettings = (event: any) => {
                 </Button>
                 <Button size="small" text @click="showSettings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
+                </Button>
+                <Button size="small" text @click="duplicateTrack(track.id)">
+                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
                 </Button>
                 <Button size="small" text @click="removeTrack(track.id)">
                     <Icon icon="mdi:trash" class="w-5 h-5" />
@@ -70,7 +77,7 @@ const showSettings = (event: any) => {
                 </div>
 
                 <div v-if="!track.sampleName">
-                    <SamplerFileUpload :track="track" />
+                    <SamplerFileUpload :track="track" @uploaded="onSampleUploaded" />
                 </div>
 
                 <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />

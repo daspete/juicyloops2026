@@ -2,6 +2,7 @@ import { PanVol, Player } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
 import { SamplerTick } from '../ticks/SamplerTick';
+import { nextTick } from 'vue';
 
 export class SamplerTrack extends BaseTrack {
     type = 'sampler';
@@ -65,7 +66,7 @@ export class SamplerTrack extends BaseTrack {
                 return;
             }
 
-            this.setSampleName(file.name);
+
 
             const fileReader = new FileReader();
             fileReader.onload = async (e) => {
@@ -79,6 +80,9 @@ export class SamplerTrack extends BaseTrack {
                 this.isUpdatingSample = false;
 
                 resolve();
+
+                await nextTick();
+                this.setSampleName(file.name);
             };
 
             fileReader.readAsArrayBuffer(this.file);

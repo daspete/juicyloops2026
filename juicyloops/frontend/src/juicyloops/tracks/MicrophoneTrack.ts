@@ -77,7 +77,6 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     setSampleTimes(start: number, duration: number) {
-        console.log('Setting sample times:', { start, duration });
         this.sampleStartTime = start;
         this.sampleDuration = duration;
     }
