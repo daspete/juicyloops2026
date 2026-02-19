@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import { Button, ButtonGroup, InputNumber } from 'primevue';
-import { onMounted, ref } from 'vue';
+import { Button, ButtonGroup, Drawer, InputNumber } from 'primevue';
+import { ref } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import JuicySynthTrack from './tracks/JuicySynthTrack.vue';
 import JuicySamplerTrack from './tracks/JuicySamplerTrack.vue';
 import JuicyMicrophoneTrack from './tracks/JuicyMicrophoneTrack.vue';
+import GiscusLoader from './GiscusLoader.vue';
 
 const { engine, bpm, tracks, addSynth, addSampler, addMicrophone } = useJuicyLoops();
 
-onMounted(async () => {});
-
 const isInitialized = ref(false);
+const isDiscussionsOpen = ref(false);
 
 const initializeEngine = async () => {
     await engine.initialize();
@@ -37,6 +37,11 @@ const initializeEngine = async () => {
                         <Icon icon="material-symbols:stop" class="w-5 h-5" />
                     </Button>
                 </ButtonGroup>
+            </div>
+            <div>
+                <Button text size="small" @click="isDiscussionsOpen = true">
+                    <Icon icon="ph:chats" class="w-5 h-5" />
+                </Button>
             </div>
         </div>
 
@@ -88,4 +93,8 @@ const initializeEngine = async () => {
             <Button label="Start the engine" @click="initializeEngine" />
         </div>
     </div>
+
+    <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
+        <GiscusLoader />
+    </Drawer>
 </template>
