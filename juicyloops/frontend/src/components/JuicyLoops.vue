@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Button, InputNumber } from 'primevue';
+import { Button, ButtonGroup, InputNumber } from 'primevue';
 import { onMounted, ref } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
@@ -25,16 +25,18 @@ const initializeEngine = async () => {
             <div class="w-48">
                 <img src="/juicyloopslogo.svg" />
             </div>
-            <div class="flex-1 flex items-center gap-2 justify-center">
+            <div class="flex-1 flex items-center gap-1 justify-center">
                 <div class="w-30">
                     <InputNumber v-model="bpm" :min="10" :max="900" show-buttons placeholder="Tempo" suffix=" BPM" fluid size="small" />
                 </div>
-                <Button @click="engine.play()" size="small" severity="success">
-                    <Icon icon="material-symbols:play-arrow" class="w-6 h-6" />
-                </Button>
-                <Button @click="engine.stop()" size="small" severity="help">
-                    <Icon icon="material-symbols:stop" class="w-6 h-6" />
-                </Button>
+                <ButtonGroup>
+                    <Button @click="engine.play()" size="small">
+                        <Icon icon="material-symbols:play-arrow" class="w-5 h-5" />
+                    </Button>
+                    <Button @click="engine.stop()" size="small">
+                        <Icon icon="material-symbols:stop" class="w-5 h-5" />
+                    </Button>
+                </ButtonGroup>
             </div>
         </div>
 
