@@ -1,4 +1,4 @@
-import { PanVol, Player } from 'tone';
+import { Player } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
 import { SamplerTick } from '../ticks/SamplerTick';
@@ -7,7 +7,6 @@ import { nextTick } from 'vue';
 export class SamplerTrack extends BaseTrack {
     type = 'sampler';
 
-    audioController: PanVol;
     player: Player;
 
     ticks: SamplerTick[] = [];
@@ -31,11 +30,8 @@ export class SamplerTrack extends BaseTrack {
             this.ticks.push(new SamplerTick());
         }
 
-        this.audioController = new PanVol(0, 0).toDestination();
-        this.audioController.connect(this.engine.audioStream);
-
         this.player = new Player();
-        this.player.connect(this.audioController);
+        this.connect(this.player);
     }
 
     async setSampleFromArrayBuffer(arrayBuffer: ArrayBuffer) {
@@ -98,15 +94,6 @@ export class SamplerTrack extends BaseTrack {
         this.sampleDuration = duration;
     }
 
-    async setVolume(volume: number) {
-        await this.audioController.volume.rampTo(volume, 0.01);
-        this.volume = volume;
-    }
-    async setPan(pan: number) {
-        await this.audioController.pan.rampTo(pan, 0.01);
-        this.pan = pan;
-    }
-
     toggleReverse() {
         this.isReversed = !this.isReversed;
         this.player.reverse = this.isReversed;
@@ -126,7 +113,7 @@ export class SamplerTrack extends BaseTrack {
 
     async dispose() {
         this.player.dispose();
-        this.audioController.dispose();
+        super.dispose();
     }
 
     async serialize() {

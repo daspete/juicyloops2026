@@ -9,6 +9,7 @@ import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import TrackSampleSettings from './settings/TrackSampleSettings.vue';
+import EffectRack from '../effects/EffectRack.vue';
 
 const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
 
@@ -50,8 +51,8 @@ const showVolumeSettings = (event: any) => {
 <template>
     <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
         <div class="flex gap-2 items-start">
-            <div class="font-semibold bg-surface-700 flex h-9 rounded px-2 items-center gap-2">
-                <Icon icon="mdi:waveform" class="w-5 h-5" />
+            <div class="font-semibold bg-surface-900 flex h-9 rounded px-2 items-center gap-2">
+                <Icon icon="guidance:recording-studio" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
 
@@ -64,7 +65,7 @@ const showVolumeSettings = (event: any) => {
                 </Button>
             </div>
 
-            <div class="flex items-center gap-1 rounded bg-surface-700 w-49 h-9">
+            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
                 <Button size="small" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
                     <Icon icon="guidance:recording-studio" class="w-5 h-5" />
                 </Button>
@@ -123,9 +124,12 @@ const showVolumeSettings = (event: any) => {
         </div>
 
         <Popover ref="settingsPopover">
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1 justify-center">
                 <TrackPatternSettings :track="track" />
                 <TrackSampleSettings :track="track" />
+            </div>
+            <div class="mt-2 max-w-200">
+                <EffectRack :track="track" />
             </div>
         </Popover>
 

@@ -9,6 +9,7 @@ import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import SynthPatternSettings from './settings/SynthPatternSettings.vue';
 import SynthSettings from './settings/SynthSettings.vue';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
+import EffectRack from '../effects/EffectRack.vue';
 
 const { tracks, currentTick, removeTrack, duplicateTrack } = useJuicyLoops();
 
@@ -146,10 +147,13 @@ const showVolumeSettings = (event: any) => {
     </div>
 
     <Popover ref="settingsPopover">
-        <div class="flex items-center gap-1">
+        <div class="flex items-center gap-1 justify-center">
             <SynthSettings :track="track" />
             <TrackPatternSettings :track="track" />
             <SynthPatternSettings :track="track" />
+        </div>
+        <div class="mt-2 max-w-200">
+            <EffectRack :track="track" />
         </div>
     </Popover>
 

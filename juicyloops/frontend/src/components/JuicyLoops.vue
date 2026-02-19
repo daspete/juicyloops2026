@@ -20,7 +20,7 @@ const initializeEngine = async () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-4 w-full h-full">
+    <div class="flex flex-col gap-2 w-full h-full">
         <div class="flex items-center w-full px-4 py-2 bg-black">
             <div class="w-48">
                 <img src="/juicyloopslogo.svg" />
@@ -38,7 +38,7 @@ const initializeEngine = async () => {
             </div>
         </div>
 
-        <div class="overflow-hidden px-4 rounded">
+        <div class="overflow-hidden px-4 rounded flex-1">
             <div class="flex max-h-full overflow-hidden">
                 <div class="flex-1 flex flex-col overflow-auto gap-0.5">
                     <div v-for="(track, trackIndex) in tracks" :key="trackIndex">
@@ -50,17 +50,39 @@ const initializeEngine = async () => {
             </div>
         </div>
 
-        <div class="flex items-center gap-2 justify-center p-8 rounded bg-surface-800 mx-4">
-            <Button label="Add Synth track" severity="info" @click="addSynth" />
-            <Button label="Add Sampler track" severity="info" @click="addSampler" />
-            <Button label="Add Drum computer track" severity="info" @click="addSynth" />
-            <Button label="Add Microphone track" severity="info" @click="addMicrophone" />
+        <div class="flex items-center gap-2 justify-center p-8 rounded bg-surface-900 mx-4">
+            <Button severity="info" @click="addSynth">
+                <div class="flex flex-col gap-2 justify-center items-center w-42">
+                    <Icon icon="qlementine-icons:synthesizer-16" class="w-10 h-10" />
+                    <div class="font-semibold">New Synth track</div>
+                </div>
+            </Button>
+
+            <Button severity="info" @click="addSampler">
+                <div class="flex flex-col gap-2 justify-center items-center w-42">
+                    <Icon icon="mdi:waveform" class="w-10 h-10" />
+                    <div class="font-semibold">New Sampler track</div>
+                </div>
+            </Button>
+
+            <!-- <Button label="Add Drum computer track" severity="info" @click="addSynth" /> -->
+            <Button severity="info" @click="addMicrophone">
+                <div class="flex flex-col gap-2 justify-center items-center w-42">
+                    <Icon icon="mdi:microphone" class="w-10 h-10" />
+                    <div class="font-semibold">New Microphone track</div>
+                </div>
+            </Button>
+        </div>
+
+        <div class="flex justify-center pb-2">
+            Made with ❤️ in Vienna by&nbsp;<a href="https://daspete.at" target="_blank" rel="noopener noreferrer" class="text-orange-500">Pete</a>
         </div>
     </div>
 
     <div v-if="!isInitialized" class="absolute top-0 left-0 w-screen h-screen bg-black/50 z-50 flex items-center justify-center">
         <div class="bg-surface-800 p-8 rounded text-center">
-            <p class="mb-4">Welcome to your new project!</p>
+            <p class="mb-4 text-lg">Welcome to JuicyLoops!</p>
+            <p class="mb-4">Your step sequencer playground. Happy looping :)</p>
             <Button label="Start the engine" @click="initializeEngine" />
         </div>
     </div>

@@ -3,7 +3,7 @@ import { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
-import { sleep } from '@/juicyloops/utils/sleep';
+import { sleep } from '@/utils/sleep';
 import { ref, watch } from 'vue';
 
 const bpm = ref(136);
@@ -16,7 +16,7 @@ export const useJuicyLoops = () => {
     });
 
     const addSynth = async (): Promise<SynthTrack | null> => {
-        const synth = await engine.addTrack('synth') as SynthTrack;
+        const synth = (await engine.addTrack('synth')) as SynthTrack;
 
         if (!synth) {
             return null;
@@ -62,28 +62,28 @@ export const useJuicyLoops = () => {
             return;
         }
 
-        if(trackToDuplicate instanceof SynthTrack) {
-            const newTrack = await engine.addTrack('synth') as SynthTrack;
-            if(!newTrack) {
+        if (trackToDuplicate instanceof SynthTrack) {
+            const newTrack = (await engine.addTrack('synth')) as SynthTrack;
+            if (!newTrack) {
                 return;
             }
 
             newTrack.synth.oscillator.type = trackToDuplicate.synth.oscillator.type;
-            newTrack.ticks = trackToDuplicate.ticks.map(tick => JSON.parse(JSON.stringify(tick)));
+            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
 
             tracks.value.push(newTrack);
         }
 
-        if(trackToDuplicate instanceof SamplerTrack) {
-            const newTrack = await engine.addTrack('sampler') as SamplerTrack;
-            if(!newTrack) {
+        if (trackToDuplicate instanceof SamplerTrack) {
+            const newTrack = (await engine.addTrack('sampler')) as SamplerTrack;
+            if (!newTrack) {
                 return;
             }
 
-            newTrack.ticks = trackToDuplicate.ticks.map(tick => JSON.parse(JSON.stringify(tick)));
+            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
             newTrack.sampleName = trackToDuplicate.sampleName;
 
-            if(trackToDuplicate.file) {
+            if (trackToDuplicate.file) {
                 await newTrack.setFile(trackToDuplicate.file);
             }
 
@@ -95,16 +95,16 @@ export const useJuicyLoops = () => {
             tracks.value.push(newTrack);
         }
 
-        if(trackToDuplicate instanceof MicrophoneTrack) {
-            const newTrack = await engine.addTrack('microphone') as MicrophoneTrack;
-            if(!newTrack) {
+        if (trackToDuplicate instanceof MicrophoneTrack) {
+            const newTrack = (await engine.addTrack('microphone')) as MicrophoneTrack;
+            if (!newTrack) {
                 return;
             }
 
-            newTrack.ticks = trackToDuplicate.ticks.map(tick => JSON.parse(JSON.stringify(tick)));
+            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
             newTrack.sampleName = trackToDuplicate.sampleName;
 
-            if(trackToDuplicate.recordedAudio) {
+            if (trackToDuplicate.recordedAudio) {
                 newTrack.recordedAudio = trackToDuplicate.recordedAudio;
                 newTrack.recordedAudioObject = trackToDuplicate.recordedAudioObject;
                 await newTrack.player.load(newTrack.recordedAudioObject!);
@@ -119,7 +119,7 @@ export const useJuicyLoops = () => {
 
             tracks.value.push(newTrack);
         }
-    }
+    };
 
     return {
         bpm,

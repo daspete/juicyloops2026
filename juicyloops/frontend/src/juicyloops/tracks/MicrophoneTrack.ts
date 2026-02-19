@@ -1,4 +1,4 @@
-import { PanVol, Player, Recorder, UserMedia } from 'tone';
+import { Player, Recorder, UserMedia } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
 import { MicrophoneTick } from '../ticks/MicrophoneTick';
@@ -6,7 +6,6 @@ import { MicrophoneTick } from '../ticks/MicrophoneTick';
 export class MicrophoneTrack extends BaseTrack {
     type = 'microphone';
 
-    audioController: PanVol;
     player: Player;
     recorder!: Recorder;
     microphone!: UserMedia;
@@ -33,11 +32,8 @@ export class MicrophoneTrack extends BaseTrack {
             this.ticks.push(new MicrophoneTick());
         }
 
-        this.audioController = new PanVol(0, 0).toDestination();
-        this.audioController.connect(this.engine.audioStream);
-
         this.player = new Player();
-        this.player.connect(this.audioController);
+        this.connect(this.player);
 
         this.recorder = new Recorder();
         this.microphone = new UserMedia();
@@ -83,16 +79,8 @@ export class MicrophoneTrack extends BaseTrack {
         this.sampleDuration = duration;
     }
 
-    async setVolume(volume: number) {
-        await this.audioController.volume.rampTo(volume, 0.01);
-        this.volume = volume;
-    }
-    async setPan(pan: number) {
-        await this.audioController.pan.rampTo(pan, 0.01);
-        this.pan = pan;
-    }
-
     play(step: number, time: number) {
+        console.log('Playing microphone track - not implemented yet');
         if (this.isMuted) {
             return;
         }
@@ -111,7 +99,9 @@ export class MicrophoneTrack extends BaseTrack {
 
     async dispose() {
         this.player.dispose();
-        this.audioController.dispose();
+        this.recorder.dispose();
+        this.microphone.dispose();
+        super.dispose();
     }
 
     async serialize() {

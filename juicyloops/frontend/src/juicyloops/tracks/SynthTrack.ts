@@ -1,12 +1,10 @@
-import { PanVol, Synth } from 'tone';
+import { Synth } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
 import { SynthTick } from '../ticks/SynthTick';
 
 export class SynthTrack extends BaseTrack {
     type = 'synth';
-
-    audioController: PanVol;
 
     synth: Synth;
 
@@ -19,10 +17,9 @@ export class SynthTrack extends BaseTrack {
             this.ticks.push(new SynthTick());
         }
 
-        this.audioController = new PanVol(0, 0).toDestination();
-        this.audioController.connect(this.engine.audioStream);
+        this.synth = new Synth();
 
-        this.synth = new Synth().connect(this.audioController);
+        this.connect(this.synth);
     }
 
     play(step: number, time: number) {
@@ -40,18 +37,10 @@ export class SynthTrack extends BaseTrack {
         this.synth.oscillator.type = type;
     }
 
-    async setVolume(volume: number) {
-        await this.audioController.volume.rampTo(volume, 0.01);
-        this.volume = volume;
-    }
-    async setPan(pan: number) {
-        await this.audioController.pan.rampTo(pan, 0.01);
-        this.pan = pan;
-    }
-
     async dispose() {
         this.synth.dispose();
-        this.audioController.dispose();
+
+        super.dispose();
     }
 
     async serialize() {
