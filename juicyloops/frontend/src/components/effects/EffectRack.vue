@@ -21,7 +21,6 @@ const props = defineProps<{
 
 <template>
     <div class="flex gap-2">
-        <div class="w-8">b</div>
         <div class="flex flex-wrap gap-2 justify-center">
             <AutoFilterEffect :track="props.track" />
             <BitCrusherEffect :track="props.track" />

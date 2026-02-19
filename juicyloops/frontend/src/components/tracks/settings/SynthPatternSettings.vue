@@ -25,11 +25,11 @@ const changeOctave = (direction: number) => {
 <template>
     <div v-if="props.track" class="flex items-center gap-1">
         <div class="flex items-center gap-1 rounded bg-surface-800">
-            <Button size="small" text @click="changeOctave(1)">
+            <Button size="small" text @click="changeOctave(1)" title="Shift notes up an octave">
                 <Icon icon="ic:baseline-keyboard-arrow-up" class="w-6 h-6" />
             </Button>
 
-            <Button size="small" text @click="changeOctave(-1)">
+            <Button size="small" text @click="changeOctave(-1)" title="Shift notes down an octave">
                 <Icon icon="ic:baseline-keyboard-arrow-down" class="w-6 h-6" />
             </Button>
         </div>

@@ -34,26 +34,26 @@ const shiftNotes = (direction: number) => {
 <template>
     <div v-if="props.track" class="flex items-center gap-1">
         <div class="flex items-center gap-1 rounded bg-surface-800">
-            <Button size="small" text @click="setEveryNote(1)">
+            <Button size="small" text @click="setEveryNote(1)" title="Activate all notes">
                 <Icon icon="ph:number-circle-one" class="w-6 h-6" />
             </Button>
-            <Button size="small" text @click="setEveryNote(2)">
+            <Button size="small" text @click="setEveryNote(2)" title="Activate every 2nd note">
                 <Icon icon="ph:number-circle-two" class="w-6 h-6" />
             </Button>
-            <Button size="small" text @click="setEveryNote(4)">
+            <Button size="small" text @click="setEveryNote(4)" title="Activate every 4th note">
                 <Icon icon="ph:number-circle-four" class="w-6 h-6" />
             </Button>
-            <Button size="small" text @click="setEveryNote(8)">
+            <Button size="small" text @click="setEveryNote(8)" title="Activate every 8th note">
                 <Icon icon="ph:number-circle-eight" class="w-6 h-6" />
             </Button>
         </div>
 
         <div class="flex gap-2">
             <div class="flex items-center gap-1 rounded bg-surface-800">
-                <Button size="small" text @click="shiftNotes(-1)">
+                <Button size="small" text @click="shiftNotes(-1)" title="Shift notes left">
                     <Icon icon="material-symbols-light:move-selection-left" class="w-6 h-6" />
                 </Button>
-                <Button size="small" text @click="shiftNotes(1)">
+                <Button size="small" text @click="shiftNotes(1)" title="Shift notes right">
                     <Icon icon="material-symbols-light:move-selection-right" class="w-6 h-6" />
                 </Button>
             </div>

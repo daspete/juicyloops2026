@@ -52,28 +52,28 @@ const showVolumeSettings = (event: any) => {
             </div>
 
             <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
-                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()">
+                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()" :title="track.isMuted ? 'Unmute' : 'Mute'">
                     <Icon icon="fad:mute" class="w-5 h-5" />
                 </Button>
-                <Button text size="small" @click="showVolumeSettings">
+                <Button text size="small" @click="showVolumeSettings" title="Volume">
                     <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
                 </Button>
             </div>
 
             <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
-                <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded">
+                <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded" :title="isWaveformExpanded ? 'Hide waveform' : 'Show waveform'">
                     <Icon icon="mdi:waveform" class="w-5 h-5" />
                 </Button>
-                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded">
+                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded" title="Tick volume settings">
                     <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
                 </Button>
-                <Button size="small" text @click="showSettings">
+                <Button size="small" text @click="showSettings" title="Track settings">
                     <Icon icon="ic:baseline-settings" class="w-5 h-5" />
                 </Button>
-                <Button size="small" text @click="duplicateTrack(track.id)">
+                <Button size="small" text @click="duplicateTrack(track.id)" title="Duplicate track">
                     <Icon icon="mdi:content-copy" class="w-5 h-5" />
                 </Button>
-                <Button size="small" text @click="removeTrack(track.id)">
+                <Button size="small" text @click="removeTrack(track.id)" title="Remove track">
                     <Icon icon="mdi:trash" class="w-5 h-5" />
                 </Button>
             </div>
@@ -112,7 +112,7 @@ const showVolumeSettings = (event: any) => {
                 <TrackSampleSettings :track="track" />
             </div>
 
-            <div class="mt-2 max-w-200">
+            <div class="mt-2 max-w-164">
                 <EffectRack :track="track" />
             </div>
         </Popover>
