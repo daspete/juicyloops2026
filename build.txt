@@ -1,0 +1,150 @@
+#1 [internal] load local bake definitions
+#1 reading from stdin 627B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 545B done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/node:24
+#3 DONE 0.0s
+
+#4 [internal] load metadata for docker.io/library/nginx:latest
+#4 DONE 0.0s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 160B done
+#5 DONE 0.0s
+
+#6 [build 1/9] FROM docker.io/library/node:24
+#6 DONE 0.0s
+
+#7 [build 2/9] WORKDIR /app
+#7 CACHED
+
+#8 [runtime 1/3] FROM docker.io/library/nginx:latest
+#8 CACHED
+
+#9 [internal] load build context
+#9 transferring context: 5.97kB 0.0s done
+#9 DONE 0.0s
+
+#10 [runtime 2/3] COPY ./dev/nginx/production.juicyloops.daspete.test.conf /etc/nginx/nginx.conf
+#10 DONE 0.0s
+
+#11 [build 3/9] RUN ls -ahl
+#11 0.353 total 8.0K
+#11 0.353 drwxr-xr-x 2 root root 4.0K Jan 12 07:27 .
+#11 0.353 drwxr-xr-x 1 root root 4.0K Feb 20 09:41 ..
+#11 DONE 0.4s
+
+#12 [build 4/9] COPY ./juicyloops/frontend /app
+#12 DONE 0.1s
+
+#13 [build 5/9] RUN ls -ahl
+#13 0.395 total 84K
+#13 0.395 drwxr-xr-x  1 root root 4.0K Feb 20 09:41 .
+#13 0.395 drwxr-xr-x  1 root root 4.0K Feb 20 09:41 ..
+#13 0.395 -rw-r--r--  1 root root  217 Feb 12 11:41 .editorconfig
+#13 0.395 -rw-r--r--  1 root root   22 Feb 12 11:41 .env.example
+#13 0.395 -rw-r--r--  1 root root   19 Feb 12 11:41 .gitattributes
+#13 0.395 -rw-r--r--  1 root root  351 Feb 12 11:41 .gitignore
+#13 0.395 -rw-r--r--  1 root root  119 Feb 12 11:41 .prettierrc.json
+#13 0.395 -rw-r--r--  1 root root   25 Feb 20 09:40 .yarnrc.yml
+#13 0.395 -rw-r--r--  1 root root   38 Feb 12 11:41 env.d.ts
+#13 0.395 -rw-r--r--  1 root root 1.3K Feb 12 11:41 eslint.config.ts
+#13 0.395 -rw-r--r--  1 root root  352 Feb 13 07:02 index.html
+#13 0.395 -rw-r--r--  1 root root 1.6K Feb 20 09:40 package.json
+#13 0.395 -rw-r--r--  1 root root 3.0K Feb 12 11:41 playwright.config.ts
+#13 0.395 drwxr-xr-x  2 root root 4.0K Feb 12 11:48 public
+#13 0.395 drwxr-xr-x 11 root root 4.0K Feb 19 06:39 src
+#13 0.395 -rw-r--r--  1 root root  346 Feb 12 11:41 tsconfig.app.json
+#13 0.395 -rw-r--r--  1 root root  191 Feb 12 11:41 tsconfig.json
+#13 0.395 -rw-r--r--  1 root root  424 Feb 12 11:41 tsconfig.node.json
+#13 0.395 -rw-r--r--  1 root root  254 Feb 12 11:41 tsconfig.vitest.json
+#13 0.395 -rw-r--r--  1 root root  625 Feb 18 10:03 vite.config.ts
+#13 0.395 -rw-r--r--  1 root root  382 Feb 12 11:41 vitest.config.ts
+#13 DONE 0.4s
+
+#14 [build 6/9] RUN corepack enable
+#14 DONE 0.9s
+
+#15 [build 7/9] RUN yarn install
+#15 0.538 ! Corepack is about to download https://repo.yarnpkg.com/4.12.0/packages/yarnpkg-cli/bin/yarn.js
+#15 0.992 ➤ YN0000: · Yarn 4.12.0
+#15 1.004 ➤ YN0000: ┌ Resolution step
+#15 8.373 ➤ YN0085: │ + @iconify/vue@npm:5.0.0, @playwright/test@npm:1.58.2, @primeuix/themes@npm:2.0.3, @tailwindcss/vite@npm:4.2.0, @tsconfig/node24@npm:24.0.4, and 571 more.
+#15 8.391 ➤ YN0000: └ Completed in 7s 387ms
+#15 8.392 ➤ YN0000: ┌ Post-resolution validation
+#15 8.392 ➤ YN0002: │ @juicyloops/frontend@workspace:. doesn't provide vue-eslint-parser (pec20c3), requested by eslint-plugin-vue.
+#15 8.392 ➤ YN0086: │ Some peer dependencies are incorrectly met by your project; run yarn explain peer-requirements <hash> for details, where <hash> is the six-letter p-prefixed code.
+#15 8.392 ➤ YN0086: │ Some peer dependencies are incorrectly met by dependencies; run yarn explain peer-requirements for details.
+#15 8.392 ➤ YN0000: └ Completed
+#15 8.392 ➤ YN0000: ┌ Fetch step
+#15 12.56 ➤ YN0013: │ 492 packages were added to the project (+ 245.93 MiB).
+#15 12.56 ➤ YN0000: └ Completed in 4s 165ms
+#15 12.58 ➤ YN0000: ┌ Link step
+#15 17.87 ➤ YN0007: │ @parcel/watcher@npm:2.5.6 must be built because it never has been before or the last one failed
+#15 17.87 ➤ YN0007: │ esbuild@npm:0.27.3 must be built because it never has been before or the last one failed
+#15 18.07 ➤ YN0000: └ Completed in 5s 494ms
+#15 18.11 ➤ YN0000: · Done with warnings in 17s 122ms
+#15 DONE 18.5s
+
+#16 [build 8/9] RUN ls -ahl
+#16 0.582 total 300K
+#16 0.582 drwxr-xr-x   1 root root 4.0K Feb 20 09:41 .
+#16 0.582 drwxr-xr-x   1 root root 4.0K Feb 20 09:41 ..
+#16 0.582 -rw-r--r--   1 root root  217 Feb 12 11:41 .editorconfig
+#16 0.582 -rw-r--r--   1 root root   22 Feb 12 11:41 .env.example
+#16 0.582 -rw-r--r--   1 root root   19 Feb 12 11:41 .gitattributes
+#16 0.582 -rw-r--r--   1 root root  351 Feb 12 11:41 .gitignore
+#16 0.582 -rw-r--r--   1 root root  119 Feb 12 11:41 .prettierrc.json
+#16 0.582 drwxr-xr-x   2 root root 4.0K Feb 20 09:41 .yarn
+#16 0.582 -rw-r--r--   1 root root   25 Feb 20 09:40 .yarnrc.yml
+#16 0.582 -rw-r--r--   1 root root   38 Feb 12 11:41 env.d.ts
+#16 0.582 -rw-r--r--   1 root root 1.3K Feb 12 11:41 eslint.config.ts
+#16 0.582 -rw-r--r--   1 root root  352 Feb 13 07:02 index.html
+#16 0.582 drwxr-xr-x 346 root root  12K Feb 20 09:41 node_modules
+#16 0.582 -rw-r--r--   1 root root 1.6K Feb 20 09:40 package.json
+#16 0.582 -rw-r--r--   1 root root 3.0K Feb 12 11:41 playwright.config.ts
+#16 0.582 drwxr-xr-x   2 root root 4.0K Feb 12 11:48 public
+#16 0.582 drwxr-xr-x  11 root root 4.0K Feb 19 06:39 src
+#16 0.582 -rw-r--r--   1 root root  346 Feb 12 11:41 tsconfig.app.json
+#16 0.582 -rw-r--r--   1 root root  191 Feb 12 11:41 tsconfig.json
+#16 0.582 -rw-r--r--   1 root root  424 Feb 12 11:41 tsconfig.node.json
+#16 0.582 -rw-r--r--   1 root root  254 Feb 12 11:41 tsconfig.vitest.json
+#16 0.582 -rw-r--r--   1 root root  625 Feb 18 10:03 vite.config.ts
+#16 0.582 -rw-r--r--   1 root root  382 Feb 12 11:41 vitest.config.ts
+#16 0.582 -rw-r--r--   1 root root 198K Feb 20 09:41 yarn.lock
+#16 DONE 0.6s
+
+#17 [build 9/9] RUN yarn build
+#17 1.515 vite v7.3.1 building client environment for production...
+#17 1.596 transforming...
+#17 5.402 ✓ 1586 modules transformed.
+#17 5.611 rendering chunks...
+#17 5.749 computing gzip size...
+#17 5.769 dist/index.html                       0.45 kB │ gzip:   0.29 kB
+#17 5.769 dist/assets/index-d2bcGkZO.css       17.30 kB │ gzip:   3.95 kB
+#17 5.769 dist/assets/MainLayout-Cz0tIdp5.js    0.35 kB │ gzip:   0.26 kB
+#17 5.769 dist/assets/index-CU6V5IGT.js       414.53 kB │ gzip: 103.96 kB
+#17 5.769 dist/assets/index-Csgx4bYL.js       565.71 kB │ gzip: 138.25 kB
+#17 5.770 
+#17 5.770 (!) Some chunks are larger than 500 kB after minification. Consider:
+#17 5.770 - Using dynamic import() to code-split the application
+#17 5.770 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#17 5.770 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#17 5.770 ✓ built in 4.22s
+#17 DONE 5.9s
+
+#18 [runtime 3/3] COPY --from=build /app/dist /usr/share/nginx/html
+#18 DONE 0.0s
+
+#19 exporting to image
+#19 exporting layers 0.0s done
+#19 writing image sha256:b0f939e716b39fae3fd6497e47f249d4ce80280a055c1ab04996efa1611d5a56 done
+#19 naming to docker.io/library/juicyloops2026-web done
+#19 DONE 0.1s
+
+#20 resolving provenance for metadata file
+#20 DONE 0.1s

@@ -1,0 +1,24 @@
+services:
+  web:
+    build:
+      context: .
+      args:
+        - HOST=0.0.0.0
+        - PORT=3000
+      dockerfile: Dockerfile
+    ports:
+      - 3000:3000
+    hostname: web
+    volumes: 
+      - webvolume:/app
+    env_file:
+      - ./juicyloops/frontend/.env
+    networks:
+      - juicynet
+
+networks:
+  juicynet:
+    driver: bridge
+
+volumes:
+  webvolume:

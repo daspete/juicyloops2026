@@ -1,0 +1,5 @@
+#!/bin/bash
+
+docker tag juicyloops2026-web ghcr.io/daspete/juicyloops2026:latest
+
+docker push ghcr.io/daspete/juicyloops2026:latest

@@ -1,0 +1,4 @@
+#!/bin/bash
+
+./production-build
+./production-push
