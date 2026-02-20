@@ -9,17 +9,10 @@ ENV HOST=$HOST
 
 WORKDIR /app
 
-RUN ls -ahl
-
 COPY ./juicyloops/frontend /app
-
-RUN ls -ahl
 
 RUN corepack enable
 RUN yarn install
-
-RUN ls -ahl
-
 RUN yarn build
 
 FROM nginx:latest AS runtime
