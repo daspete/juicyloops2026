@@ -1,14 +1,15 @@
 <script setup lang="ts">
 import { Button, ButtonGroup, Drawer, InputNumber } from 'primevue';
-import { ref } from 'vue';
+import { defineAsyncComponent, ref } from 'vue';
 import { Icon } from '@iconify/vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import JuicySynthTrack from './tracks/JuicySynthTrack.vue';
 import JuicySamplerTrack from './tracks/JuicySamplerTrack.vue';
 import JuicyMicrophoneTrack from './tracks/JuicyMicrophoneTrack.vue';
-import GiscusLoader from './GiscusLoader.vue';
 
 const { engine, bpm, tracks, addSynth, addSampler, addMicrophone } = useJuicyLoops();
+const GiscusLoader = defineAsyncComponent(() => import('./GiscusLoader.vue'));
 
 const isInitialized = ref(false);
 const isDiscussionsOpen = ref(false);
@@ -17,6 +18,8 @@ const initializeEngine = async () => {
     await engine.initialize();
     isInitialized.value = true;
 };
+
+const toTrack = (track: unknown) => track as BaseTrack;
 </script>
 
 <template>
@@ -48,10 +51,10 @@ const initializeEngine = async () => {
         <div class="overflow-hidden px-4 rounded flex-1">
             <div class="flex max-h-full overflow-hidden">
                 <div class="flex-1 flex flex-col overflow-auto gap-0.5">
-                    <div v-for="(track, trackIndex) in tracks" :key="trackIndex">
-                        <JuicySynthTrack v-if="track.type === 'synth'" :trackId="track.id" :trackIndex="trackIndex" />
-                        <JuicySamplerTrack v-if="track.type === 'sampler'" :trackId="track.id" :trackIndex="trackIndex" />
-                        <JuicyMicrophoneTrack v-if="track.type === 'microphone'" :trackId="track.id" :trackIndex="trackIndex" />
+                    <div v-for="(track, trackIndex) in tracks" :key="track.id">
+                        <JuicySynthTrack v-if="track.type === 'synth'" :track="toTrack(track)" :trackIndex="trackIndex" />
+                        <JuicySamplerTrack v-if="track.type === 'sampler'" :track="toTrack(track)" :trackIndex="trackIndex" />
+                        <JuicyMicrophoneTrack v-if="track.type === 'microphone'" :track="toTrack(track)" :trackIndex="trackIndex" />
                     </div>
                 </div>
             </div>
@@ -95,6 +98,6 @@ const initializeEngine = async () => {
     </div>
 
     <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
-        <GiscusLoader />
+        <GiscusLoader v-if="isDiscussionsOpen" />
     </Drawer>
 </template>

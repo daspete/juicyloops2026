@@ -22,6 +22,10 @@ export class Engine {
         await this.sequencer.initialize();
     }
 
+    async decodeAudioData(arrayBuffer: ArrayBuffer) {
+        return await this.audioContext.rawContext.decodeAudioData(arrayBuffer.slice(0));
+    }
+
     async play() {
         this.transport.start();
     }

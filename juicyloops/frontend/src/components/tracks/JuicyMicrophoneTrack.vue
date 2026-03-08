@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { useTrackPlayhead } from '@/composables/useTrackPlayhead';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
 import { Button, Popover, Slider } from 'primevue';
-import { computed, onMounted, ref } from 'vue';
+import { ref } from 'vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
@@ -11,21 +13,19 @@ import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import TrackSampleSettings from './settings/TrackSampleSettings.vue';
 import EffectRack from '../effects/EffectRack.vue';
 
-const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
+const { removeTrack, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
-    trackId: string;
+    track: BaseTrack;
     trackIndex: number;
 }>();
+const track = props.track as MicrophoneTrack;
 
 const isVolumeSettingsExpanded = ref(false);
 const isWaveformExpanded = ref(false);
 const settingsPopover = ref();
 const volumePopover = ref();
-
-const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === props.trackId) as MicrophoneTrack);
-
-onMounted(async () => {});
+const { rootElement } = useTrackPlayhead([{ selector: '.tick', currentClass: 'tick--current' }]);
 
 const updateTick = (tick: MicrophoneTick) => {
     tick.isActive = !tick.isActive;
@@ -36,10 +36,10 @@ const showSettings = (event: any) => {
 };
 
 const toggleRecording = () => {
-    if (track.value.isRecording) {
-        track.value.stopRecording();
+    if (track.isRecording) {
+        track.stopRecording();
     } else {
-        track.value.startRecording();
+        track.startRecording();
     }
 };
 
@@ -49,7 +49,7 @@ const showVolumeSettings = (event: any) => {
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
+    <div ref="rootElement" class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
         <div class="flex gap-2 items-start">
             <div class="font-semibold bg-surface-900 flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="guidance:recording-studio" class="w-5 h-5" />
@@ -87,11 +87,11 @@ const showVolumeSettings = (event: any) => {
                 <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.hasRecordedAudio">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
+                            :data-tick-index="tickIndex"
                             class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
                             :class="{
                                 'tick--active': tick.isActive,
                                 'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
                             }"
                             @click="updateTick(tick)"
                         ></div>

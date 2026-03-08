@@ -2,7 +2,6 @@ import { Player } from 'tone';
 import type { Engine } from '../engine';
 import { BaseTrack } from './BaseTrack';
 import { SamplerTick } from '../ticks/SamplerTick';
-import { nextTick } from 'vue';
 
 export class SamplerTrack extends BaseTrack {
     type = 'sampler';
@@ -36,13 +35,11 @@ export class SamplerTrack extends BaseTrack {
 
     async setSampleFromArrayBuffer(arrayBuffer: ArrayBuffer) {
         this.arrayBuffer = arrayBuffer;
-        const audioContext = new AudioContext();
-        const source = audioContext.createBufferSource();
-        source.buffer = await audioContext.decodeAudioData(arrayBuffer);
+        const audioBuffer = await this.engine.decodeAudioData(arrayBuffer);
 
-        this.player.buffer.set(source.buffer);
+        this.player.buffer.set(audioBuffer);
 
-        this.setSampleTimes(0, source.buffer.duration);
+        this.setSampleTimes(0, audioBuffer.duration);
     }
 
     setSampleName(name: string) {
@@ -72,13 +69,11 @@ export class SamplerTrack extends BaseTrack {
                     resolve();
                     return;
                 }
-                this.setSampleFromArrayBuffer(result as ArrayBuffer);
+                await this.setSampleFromArrayBuffer(result as ArrayBuffer);
+                this.setSampleName(file.name);
                 this.isUpdatingSample = false;
 
                 resolve();
-
-                await nextTick();
-                this.setSampleName(file.name);
             };
 
             fileReader.readAsArrayBuffer(this.file);

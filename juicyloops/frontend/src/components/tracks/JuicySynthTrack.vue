@@ -1,24 +1,25 @@
 <script setup lang="ts">
+import { useTrackPlayhead } from '@/composables/useTrackPlayhead';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import type { SynthTick } from '@/juicyloops/ticks/SynthTick';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
 import { Button, Popover, Slider, VirtualScroller } from 'primevue';
-import { computed, nextTick, ref } from 'vue';
+import { nextTick, ref } from 'vue';
 import TrackPatternSettings from './settings/TrackPatternSettings.vue';
 import SynthPatternSettings from './settings/SynthPatternSettings.vue';
 import SynthSettings from './settings/SynthSettings.vue';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import EffectRack from '../effects/EffectRack.vue';
 
-const { tracks, currentTick, removeTrack, duplicateTrack } = useJuicyLoops();
+const { removeTrack, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
-    trackId: string;
+    track: BaseTrack;
     trackIndex: number;
 }>();
-
-const track = computed(() => tracks.value.find((t) => t.id === props.trackId) as SynthTrack);
+const track = props.track as SynthTrack;
 
 const isPianoRollExpanded = ref(false);
 const isVolumeSettingsExpanded = ref(false);
@@ -26,6 +27,7 @@ const isVolumeSettingsExpanded = ref(false);
 const scroller = ref();
 const settingsPopover = ref();
 const volumePopover = ref();
+const { rootElement } = useTrackPlayhead();
 
 const availableNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const availableOctaves = Array.from({ length: 11 }, (_, i) => i);
@@ -49,7 +51,7 @@ const togglePianoRoll = async () => {
     if (isPianoRollExpanded.value) {
         await nextTick();
 
-        const activeTick = track.value.ticks.find((tick) => tick.isActive);
+        const activeTick = track.ticks.find((tick) => tick.isActive);
         const activeNoteIndex = activeTick ? allNotes.findIndex((note) => note === activeTick.note) : -1;
         if (activeNoteIndex !== -1) {
             scroller.value.scrollToIndex(activeNoteIndex - 4);
@@ -69,7 +71,7 @@ const showVolumeSettings = (event: any) => {
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-2 track">
+    <div ref="rootElement" class="pl-2 py-1 pr-6 flex flex-col gap-2 track">
         <div class="flex gap-2 items-start">
             <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="qlementine-icons:synthesizer-16" class="w-5 h-5" />
@@ -107,11 +109,11 @@ const showVolumeSettings = (event: any) => {
                 <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
+                            :data-tick-index="tickIndex"
                             class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick text-sm"
                             :class="{
                                 'tick--active': tick.isActive,
                                 'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
                             }"
                             @click="updateTick(tick, tick.note)"
                         >
@@ -127,11 +129,11 @@ const showVolumeSettings = (event: any) => {
                                 <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex" class="flex flex-col items-center relative">
                                     <div v-if="tickIndex === 0" class="absolute left-0.5 text-xs mt-0.5 pointer-events-none z-20 text-white">{{ note }}</div>
                                     <div
+                                        :data-tick-index="tickIndex"
                                         class="w-full h-5 cursor-pointer rounded shadow border border-transparent bg-surface-800 group-hover:bg-surface-700 pianotick"
                                         :class="{
                                             'pianotick--active': tick.note === note && tick.isActive,
                                             'pianotick--inactive': tick.note !== note || !tick.isActive,
-                                            'pianotick--current': currentTick === tickIndex,
                                         }"
                                         @click="updateTick(tick, note)"
                                     ></div>

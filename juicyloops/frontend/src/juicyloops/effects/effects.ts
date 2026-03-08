@@ -20,140 +20,308 @@ import type { BaseTrack } from '../tracks/BaseTrack';
 export class Effects {
     track: BaseTrack;
 
-    chorus: Chorus;
-    phaser: Phaser;
-    distortion: Distortion;
-    bitCrusher: BitCrusher;
-    autoFilter: AutoFilter;
-    tremolo: Tremolo;
-    vibrato: Vibrato;
-    delay: FeedbackDelay;
-    reverb: Reverb;
-    compressor: Compressor;
-    equalizer: EQ3;
-    limiter: Limiter;
+    private sourceNode?: ToneAudioNode;
+
+    private _chorus?: Chorus;
+    private _phaser?: Phaser;
+    private _distortion?: Distortion;
+    private _bitCrusher?: BitCrusher;
+    private _autoFilter?: AutoFilter;
+    private _tremolo?: Tremolo;
+    private _vibrato?: Vibrato;
+    private _delay?: FeedbackDelay;
+    private _reverb?: Reverb;
+    private _compressor?: Compressor;
+    private _equalizer?: EQ3;
+    private _limiter?: Limiter;
 
     constructor(track: BaseTrack) {
         this.track = track;
+    }
 
-        this.chorus = new Chorus().start();
-        this.phaser = new Phaser();
-        this.distortion = new Distortion();
-        this.bitCrusher = new BitCrusher(8);
-        this.autoFilter = new AutoFilter().start();
-        this.tremolo = new Tremolo().start();
-        this.vibrato = new Vibrato();
-        this.delay = new FeedbackDelay();
-        this.reverb = new Reverb();
-        this.compressor = new Compressor();
-        this.equalizer = new EQ3();
-        this.limiter = new Limiter(-1);
+    get chorus() {
+        if (!this._chorus) {
+            this._chorus = new Chorus().start();
+            this.applyChorusParams(this._chorus, { wet: 0 });
+            this.rebuildChain();
+        }
 
-        this.setChorus({ wet: 0 });
-        this.setPhaser({ wet: 0 });
-        this.setDistortion({ wet: 0 });
-        this.setBitCrusher({ wet: 0 });
-        this.setAutoFilter({ wet: 0 });
-        this.setTremolo({ wet: 0 });
-        this.setVibrato({ wet: 0 });
-        this.setDelay({ wet: 0 });
-        this.setReverb({ wet: 0 });
-        this.setCompressor({ threshold: -24, ratio: 12, attack: 0.003, release: 0.25 });
-        this.setEqualizer({ low: 0, mid: 0, high: 0 });
-        this.setLimiter(-1);
+        return this._chorus;
+    }
+
+    get phaser() {
+        if (!this._phaser) {
+            this._phaser = new Phaser();
+            this.applyPhaserParams(this._phaser, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._phaser;
+    }
+
+    get distortion() {
+        if (!this._distortion) {
+            this._distortion = new Distortion();
+            this.applyDistortionParams(this._distortion, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._distortion;
+    }
+
+    get bitCrusher() {
+        if (!this._bitCrusher) {
+            this._bitCrusher = new BitCrusher(8);
+            this.applyBitCrusherParams(this._bitCrusher, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._bitCrusher;
+    }
+
+    get autoFilter() {
+        if (!this._autoFilter) {
+            this._autoFilter = new AutoFilter().start();
+            this.applyAutoFilterParams(this._autoFilter, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._autoFilter;
+    }
+
+    get tremolo() {
+        if (!this._tremolo) {
+            this._tremolo = new Tremolo().start();
+            this.applyTremoloParams(this._tremolo, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._tremolo;
+    }
+
+    get vibrato() {
+        if (!this._vibrato) {
+            this._vibrato = new Vibrato();
+            this.applyVibratoParams(this._vibrato, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._vibrato;
+    }
+
+    get delay() {
+        if (!this._delay) {
+            this._delay = new FeedbackDelay();
+            this.applyDelayParams(this._delay, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._delay;
+    }
+
+    get reverb() {
+        if (!this._reverb) {
+            this._reverb = new Reverb();
+            this.applyReverbParams(this._reverb, { wet: 0 });
+            this.rebuildChain();
+        }
+
+        return this._reverb;
+    }
+
+    get compressor() {
+        if (!this._compressor) {
+            this._compressor = new Compressor();
+            this.applyCompressorParams(this._compressor, { threshold: -24, ratio: 12, attack: 0.003, release: 0.25 });
+            this.rebuildChain();
+        }
+
+        return this._compressor;
+    }
+
+    get equalizer() {
+        if (!this._equalizer) {
+            this._equalizer = new EQ3();
+            this.applyEqualizerParams(this._equalizer, { low: 0, mid: 0, high: 0 });
+            this.rebuildChain();
+        }
+
+        return this._equalizer;
+    }
+
+    get limiter() {
+        if (!this._limiter) {
+            this._limiter = new Limiter(-1);
+            this.applyLimiterParams(this._limiter, -1);
+            this.rebuildChain();
+        }
+
+        return this._limiter;
     }
 
     connect(node: ToneAudioNode) {
-        this.track.audioController.disconnect();
-        node.disconnect();
+        this.sourceNode = node;
+        this.rebuildChain();
+    }
 
-        connectSeries(
-            node,
-            this.chorus,
-            this.phaser,
-            this.distortion,
-            this.bitCrusher,
-            this.autoFilter,
-            this.tremolo,
-            this.vibrato,
-            this.delay,
-            this.reverb,
-            this.compressor,
-            this.equalizer,
-            this.limiter,
-            this.track.audioController,
-        );
+    dispose() {
+        this._chorus?.dispose();
+        this._phaser?.dispose();
+        this._distortion?.dispose();
+        this._bitCrusher?.dispose();
+        this._autoFilter?.dispose();
+        this._tremolo?.dispose();
+        this._vibrato?.dispose();
+        this._delay?.dispose();
+        this._reverb?.dispose();
+        this._compressor?.dispose();
+        this._equalizer?.dispose();
+        this._limiter?.dispose();
     }
 
     setChorus(p: Partial<ChorusParams>): void {
-        if (p.frequency !== undefined) this.chorus.frequency.value = p.frequency;
-        if (p.delayTime !== undefined) this.chorus.delayTime = p.delayTime;
-        if (p.depth !== undefined) this.chorus.depth = p.depth;
-        if (p.wet !== undefined) this.chorus.wet.value = p.wet;
+        this.applyChorusParams(this.chorus, p);
     }
 
     setPhaser(p: Partial<PhaserParams>): void {
-        if (p.frequency !== undefined) this.phaser.frequency.value = p.frequency;
-        if (p.octaves !== undefined) this.phaser.octaves = p.octaves;
-        if (p.baseFrequency !== undefined) this.phaser.baseFrequency = p.baseFrequency;
-        if (p.wet !== undefined) this.phaser.wet.value = p.wet;
+        this.applyPhaserParams(this.phaser, p);
     }
 
     setDistortion(p: Partial<DistortionParams>): void {
-        if (p.distortion !== undefined) this.distortion.distortion = p.distortion;
-        if (p.wet !== undefined) this.distortion.wet.value = p.wet;
+        this.applyDistortionParams(this.distortion, p);
     }
 
     setBitCrusher(p: Partial<BitCrusherParams>): void {
-        if (p.bits !== undefined) this.bitCrusher.bits.value = p.bits;
-        if (p.wet !== undefined) this.bitCrusher.wet.value = p.wet;
+        this.applyBitCrusherParams(this.bitCrusher, p);
     }
 
     setAutoFilter(p: Partial<AutoFilterParams>): void {
-        if (p.frequency !== undefined) this.autoFilter.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.autoFilter.depth.value = p.depth;
-        if (p.wet !== undefined) this.autoFilter.wet.value = p.wet;
+        this.applyAutoFilterParams(this.autoFilter, p);
     }
 
     setTremolo(p: Partial<TremoloParams>): void {
-        if (p.frequency !== undefined) this.tremolo.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.tremolo.depth.value = p.depth;
-        if (p.wet !== undefined) this.tremolo.wet.value = p.wet;
+        this.applyTremoloParams(this.tremolo, p);
     }
 
     setVibrato(p: Partial<VibratoParams>): void {
-        if (p.frequency !== undefined) this.vibrato.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.vibrato.depth.value = p.depth;
-        if (p.wet !== undefined) this.vibrato.wet.value = p.wet;
+        this.applyVibratoParams(this.vibrato, p);
     }
 
     setDelay(p: Partial<DelayParams>): void {
-        if (p.delayTime !== undefined) this.delay.delayTime.value = p.delayTime;
-        if (p.feedback !== undefined) this.delay.feedback.value = p.feedback;
-        if (p.wet !== undefined) this.delay.wet.value = p.wet;
+        this.applyDelayParams(this.delay, p);
     }
 
     setReverb(p: Partial<ReverbParams>): void {
-        if (p.decay !== undefined) this.reverb.decay = p.decay;
-        if (p.preDelay !== undefined) this.reverb.preDelay = p.preDelay;
-        if (p.wet !== undefined) this.reverb.wet.value = p.wet;
+        this.applyReverbParams(this.reverb, p);
     }
 
     setCompressor(p: Partial<CompressorParams>): void {
-        if (p.threshold !== undefined) this.compressor.threshold.value = p.threshold;
-        if (p.ratio !== undefined) this.compressor.ratio.value = p.ratio;
-        if (p.attack !== undefined) this.compressor.attack.value = p.attack;
-        if (p.release !== undefined) this.compressor.release.value = p.release;
+        this.applyCompressorParams(this.compressor, p);
     }
 
     setEqualizer(p: Partial<EqualizerParams>): void {
-        if (p.low !== undefined) this.equalizer.low.value = p.low;
-        if (p.mid !== undefined) this.equalizer.mid.value = p.mid;
-        if (p.high !== undefined) this.equalizer.high.value = p.high;
+        this.applyEqualizerParams(this.equalizer, p);
     }
 
     setLimiter(db: number): void {
-        this.limiter.threshold.rampTo(db, 0.05);
+        this.applyLimiterParams(this.limiter, db);
+    }
+
+    private rebuildChain() {
+        if (!this.sourceNode) {
+            return;
+        }
+
+        this.track.audioController.disconnect();
+        this.sourceNode.disconnect();
+
+        const effectNodes: ToneAudioNode[] = [];
+
+        if (this._chorus) effectNodes.push(this._chorus);
+        if (this._phaser) effectNodes.push(this._phaser);
+        if (this._distortion) effectNodes.push(this._distortion);
+        if (this._bitCrusher) effectNodes.push(this._bitCrusher);
+        if (this._autoFilter) effectNodes.push(this._autoFilter);
+        if (this._tremolo) effectNodes.push(this._tremolo);
+        if (this._vibrato) effectNodes.push(this._vibrato);
+        if (this._delay) effectNodes.push(this._delay);
+        if (this._reverb) effectNodes.push(this._reverb);
+        if (this._compressor) effectNodes.push(this._compressor);
+        if (this._equalizer) effectNodes.push(this._equalizer);
+        if (this._limiter) effectNodes.push(this._limiter);
+
+        connectSeries(this.sourceNode, ...effectNodes, this.track.audioController);
+    }
+
+    private applyChorusParams(node: Chorus, p: Partial<ChorusParams>) {
+        if (p.frequency !== undefined) node.frequency.value = p.frequency;
+        if (p.delayTime !== undefined) node.delayTime = p.delayTime;
+        if (p.depth !== undefined) node.depth = p.depth;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyPhaserParams(node: Phaser, p: Partial<PhaserParams>) {
+        if (p.frequency !== undefined) node.frequency.value = p.frequency;
+        if (p.octaves !== undefined) node.octaves = p.octaves;
+        if (p.baseFrequency !== undefined) node.baseFrequency = p.baseFrequency;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyDistortionParams(node: Distortion, p: Partial<DistortionParams>) {
+        if (p.distortion !== undefined) node.distortion = p.distortion;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyBitCrusherParams(node: BitCrusher, p: Partial<BitCrusherParams>) {
+        if (p.bits !== undefined) node.bits.value = p.bits;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyAutoFilterParams(node: AutoFilter, p: Partial<AutoFilterParams>) {
+        if (p.frequency !== undefined) node.frequency.value = p.frequency;
+        if (p.depth !== undefined) node.depth.value = p.depth;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyTremoloParams(node: Tremolo, p: Partial<TremoloParams>) {
+        if (p.frequency !== undefined) node.frequency.value = p.frequency;
+        if (p.depth !== undefined) node.depth.value = p.depth;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyVibratoParams(node: Vibrato, p: Partial<VibratoParams>) {
+        if (p.frequency !== undefined) node.frequency.value = p.frequency;
+        if (p.depth !== undefined) node.depth.value = p.depth;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyDelayParams(node: FeedbackDelay, p: Partial<DelayParams>) {
+        if (p.delayTime !== undefined) node.delayTime.value = p.delayTime;
+        if (p.feedback !== undefined) node.feedback.value = p.feedback;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyReverbParams(node: Reverb, p: Partial<ReverbParams>) {
+        if (p.decay !== undefined) node.decay = p.decay;
+        if (p.preDelay !== undefined) node.preDelay = p.preDelay;
+        if (p.wet !== undefined) node.wet.value = p.wet;
+    }
+
+    private applyCompressorParams(node: Compressor, p: Partial<CompressorParams>) {
+        if (p.threshold !== undefined) node.threshold.value = p.threshold;
+        if (p.ratio !== undefined) node.ratio.value = p.ratio;
+        if (p.attack !== undefined) node.attack.value = p.attack;
+        if (p.release !== undefined) node.release.value = p.release;
+    }
+
+    private applyEqualizerParams(node: EQ3, p: Partial<EqualizerParams>) {
+        if (p.low !== undefined) node.low.value = p.low;
+        if (p.mid !== undefined) node.mid.value = p.mid;
+        if (p.high !== undefined) node.high.value = p.high;
+    }
+
+    private applyLimiterParams(node: Limiter, db: number) {
+        node.threshold.rampTo(db, 0.05);
     }
 }
 

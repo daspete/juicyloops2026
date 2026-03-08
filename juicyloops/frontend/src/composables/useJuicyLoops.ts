@@ -8,12 +8,51 @@ import { ref, watch } from 'vue';
 
 const bpm = ref(136);
 const tracks = ref<BaseTrack[]>([]);
-const currentTick = ref(0);
+let currentTick = 0;
+
+type TickListener = (step: number, previousStep: number) => void;
+
+const tickListeners = new Set<TickListener>();
+let isBpmWatcherInitialized = false;
+
+const ensureBpmWatcher = () => {
+    if (isBpmWatcherInitialized) {
+        return;
+    }
+
+    isBpmWatcherInitialized = true;
+
+    watch(
+        bpm,
+        (newBPM) => {
+            void engine.setBPM(newBPM);
+        },
+        { immediate: true },
+    );
+};
+
+export const getCurrentTick = () => currentTick;
+
+export const setCurrentTick = (step: number) => {
+    const previousStep = currentTick;
+    currentTick = step;
+
+    for (const listener of tickListeners) {
+        listener(step, previousStep);
+    }
+};
+
+export const subscribeToCurrentTick = (listener: TickListener) => {
+    tickListeners.add(listener);
+    listener(currentTick, -1);
+
+    return () => {
+        tickListeners.delete(listener);
+    };
+};
 
 export const useJuicyLoops = () => {
-    watch(bpm, (newBPM) => {
-        engine.setBPM(newBPM);
-    });
+    ensureBpmWatcher();
 
     const addSynth = async (): Promise<SynthTrack | null> => {
         const synth = (await engine.addTrack('synth')) as SynthTrack;
@@ -125,7 +164,6 @@ export const useJuicyLoops = () => {
         bpm,
         engine,
         tracks,
-        currentTick,
         addSynth,
         addSampler,
         addMicrophone,

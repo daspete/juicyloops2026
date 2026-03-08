@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { useTrackPlayhead } from '@/composables/useTrackPlayhead';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
 import { Button, Popover, Slider } from 'primevue';
-import { computed, ref } from 'vue';
+import { ref } from 'vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
 import type { SamplerTick } from '@/juicyloops/ticks/SamplerTick';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
@@ -12,19 +14,19 @@ import SamplerFileUpload from './settings/SamplerFileUpload.vue';
 import TrackSampleSettings from './settings/TrackSampleSettings.vue';
 import EffectRack from '../effects/EffectRack.vue';
 
-const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
+const { removeTrack, duplicateTrack } = useJuicyLoops();
 
 const props = defineProps<{
-    trackId: string;
+    track: BaseTrack;
     trackIndex: number;
 }>();
-
-const track = computed<SamplerTrack>(() => tracks.value.find((t) => t.id === props.trackId) as SamplerTrack);
+const track = props.track as SamplerTrack;
 
 const isVolumeSettingsExpanded = ref(false);
 const isWaveformExpanded = ref(false);
 const settingsPopover = ref();
 const volumePopover = ref();
+const { rootElement } = useTrackPlayhead([{ selector: '.tick', currentClass: 'tick--current' }]);
 
 const updateTick = (tick: SamplerTick) => {
     tick.isActive = !tick.isActive;
@@ -44,7 +46,7 @@ const showVolumeSettings = (event: any) => {
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
+    <div ref="rootElement" class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
         <div class="flex gap-2 items-start">
             <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
@@ -82,11 +84,11 @@ const showVolumeSettings = (event: any) => {
                 <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.sampleName">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div
+                            :data-tick-index="tickIndex"
                             class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
                             :class="{
                                 'tick--active': tick.isActive,
                                 'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
                             }"
                             @click="updateTick(tick)"
                         ></div>

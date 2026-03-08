@@ -25,22 +25,19 @@ export class BaseTrack {
     constructor(engine: Engine) {
         this.engine = engine;
 
-        this.audioController = new PanVol(0, 0);//.toDestination();
+        this.audioController = new PanVol(0, 0);
+        this.audioController.toDestination();
         this.effects = new Effects(this);
-
-        // this.audioController.connect(this.engine.audioStream);
     }
 
     connect(node: ToneAudioNode) {
         this.effects.connect(node);
-        this.audioController.toDestination();
     }
 
-    play(step: number, time: number) {
-        console.log(`Playing step ${step} at time ${time} - nothing implemented yet`);
-    }
+    play(_step: number, _time: number) {}
 
     async dispose() {
+        this.effects.dispose();
         this.audioController.dispose();
     }
 

@@ -15,6 +15,7 @@ export class MicrophoneTrack extends BaseTrack {
 
     recordedAudio: Blob | null = null;
     recordedAudioObject: string | null = null;
+    isMicrophoneOpen: boolean = false;
 
     sampleName: string | null = null;
 
@@ -38,13 +39,32 @@ export class MicrophoneTrack extends BaseTrack {
         this.recorder = new Recorder();
         this.microphone = new UserMedia();
         this.microphone.connect(this.recorder);
-        this.microphone.open();
+    }
+
+    async ensureMicrophoneOpen() {
+        if (this.isMicrophoneOpen) {
+            return;
+        }
+
+        await this.microphone.open();
+        this.isMicrophoneOpen = true;
+    }
+
+    revokeRecordedAudioObject() {
+        if (!this.recordedAudioObject) {
+            return;
+        }
+
+        URL.revokeObjectURL(this.recordedAudioObject);
+        this.recordedAudioObject = null;
     }
 
     async startRecording() {
         if (this.isRecording) {
             return;
         }
+
+        await this.ensureMicrophoneOpen();
         this.isRecording = true;
 
         await this.recorder.start();
@@ -56,15 +76,14 @@ export class MicrophoneTrack extends BaseTrack {
         }
 
         this.recordedAudio = await this.recorder.stop();
+        this.revokeRecordedAudioObject();
         this.recordedAudioObject = URL.createObjectURL(this.recordedAudio);
 
-        const audioContext = new AudioContext();
-        const source = audioContext.createBufferSource();
-        source.buffer = await audioContext.decodeAudioData(await this.recordedAudio.arrayBuffer());
+        const audioBuffer = await this.engine.decodeAudioData(await this.recordedAudio.arrayBuffer());
 
-        this.player.buffer.set(source.buffer);
+        this.player.buffer.set(audioBuffer);
 
-        this.setSampleTimes(0, source.buffer.duration);
+        this.setSampleTimes(0, audioBuffer.duration);
 
         this.hasRecordedAudio = true;
         this.isRecording = false;
@@ -80,7 +99,6 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     play(step: number, time: number) {
-        console.log('Playing microphone track - not implemented yet');
         if (this.isMuted) {
             return;
         }
@@ -98,6 +116,7 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     async dispose() {
+        this.revokeRecordedAudioObject();
         this.player.dispose();
         this.recorder.dispose();
         this.microphone.dispose();
