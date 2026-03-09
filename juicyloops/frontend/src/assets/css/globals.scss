@@ -1,9 +1,15 @@
 html {
     font-size: 14px;
+    min-height: 100%;
+}
+
+body, #app {
+    min-height: 100%;
 }
 
 body {
     @apply bg-surface-100;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .dark {
@@ -65,4 +71,12 @@ body {
 
 .waveform--reversed ::part(canvases) {
     transform: scaleX(-1);
+}
+
+@media (max-width: 768px) {
+    .touch-target.p-button,
+    .track-toolbar .p-button {
+        min-width: 2.5rem;
+        min-height: 2.5rem;
+    }
 }

@@ -8,6 +8,17 @@ import tailwindcss from '@tailwindcss/vite';
 // https://vite.dev/config/
 export default defineConfig({
     clearScreen: false,
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    tone: ['tone'],
+                    primevue: ['primevue'],
+                    wavesurfer: ['wavesurfer.js'],
+                },
+            },
+        },
+    },
     server: {
         allowedHosts: true,
         port: process.env.PORT ? parseInt(process.env.PORT, 10) : 3000,

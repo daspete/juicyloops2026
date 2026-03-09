@@ -38,15 +38,18 @@ export class MicrophoneTrack extends BaseTrack {
         this.recorder = new Recorder();
         this.microphone = new UserMedia();
         this.microphone.connect(this.recorder);
-        this.microphone.open();
     }
 
     async startRecording() {
         if (this.isRecording) {
             return;
         }
-        this.isRecording = true;
 
+        if (this.microphone.state !== 'started') {
+            await this.microphone.open();
+        }
+
+        this.isRecording = true;
         await this.recorder.start();
     }
 
@@ -56,15 +59,15 @@ export class MicrophoneTrack extends BaseTrack {
         }
 
         this.recordedAudio = await this.recorder.stop();
+
+        if (this.recordedAudioObject) {
+            URL.revokeObjectURL(this.recordedAudioObject);
+        }
         this.recordedAudioObject = URL.createObjectURL(this.recordedAudio);
 
-        const audioContext = new AudioContext();
-        const source = audioContext.createBufferSource();
-        source.buffer = await audioContext.decodeAudioData(await this.recordedAudio.arrayBuffer());
-
-        this.player.buffer.set(source.buffer);
-
-        this.setSampleTimes(0, source.buffer.duration);
+        const audioBuffer = await this.engine.decodeAudioData(await this.recordedAudio.arrayBuffer());
+        this.player.buffer.set(audioBuffer);
+        this.setSampleTimes(0, audioBuffer.duration);
 
         this.hasRecordedAudio = true;
         this.isRecording = false;
@@ -80,7 +83,6 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     play(step: number, time: number) {
-        console.log('Playing microphone track - not implemented yet');
         if (this.isMuted) {
             return;
         }
@@ -98,10 +100,19 @@ export class MicrophoneTrack extends BaseTrack {
     }
 
     async dispose() {
+        this.player.stop();
         this.player.dispose();
         this.recorder.dispose();
+        if (this.microphone.state === 'started') {
+            await this.microphone.close();
+        }
         this.microphone.dispose();
-        super.dispose();
+        if (this.recordedAudioObject) {
+            URL.revokeObjectURL(this.recordedAudioObject);
+            this.recordedAudioObject = null;
+        }
+        this.recordedAudio = null;
+        await super.dispose();
     }
 
     async serialize() {

@@ -1,22 +1,23 @@
 <script setup lang="ts">
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
-import AutoFilterEffect from './controls/AutoFilterEffect.vue';
-import BitCrusherEffect from './controls/BitCrusherEffect.vue';
-import ChorusEffect from './controls/ChorusEffect.vue';
-import CompressorEffect from './controls/CompressorEffect.vue';
-import DelayEffect from './controls/DelayEffect.vue';
-import ReverbEffect from './controls/ReverbEffect.vue';
-import DistortionEffect from './controls/DistortionEffect.vue';
-import EqualizerEffect from './controls/EqualizerEffect.vue';
-import LimiterEffect from './controls/LimiterEffect.vue';
-import PhaserEffect from './controls/PhaserEffect.vue';
-import TremoloEffect from './controls/TremoloEffect.vue';
-import VibratoEffect from './controls/VibratoEffect.vue';
+import { defineAsyncComponent } from 'vue';
 
 const props = defineProps<{
     track: BaseTrack;
 }>();
 
+const AutoFilterEffect = defineAsyncComponent(() => import('./controls/AutoFilterEffect.vue'));
+const BitCrusherEffect = defineAsyncComponent(() => import('./controls/BitCrusherEffect.vue'));
+const ChorusEffect = defineAsyncComponent(() => import('./controls/ChorusEffect.vue'));
+const CompressorEffect = defineAsyncComponent(() => import('./controls/CompressorEffect.vue'));
+const DelayEffect = defineAsyncComponent(() => import('./controls/DelayEffect.vue'));
+const ReverbEffect = defineAsyncComponent(() => import('./controls/ReverbEffect.vue'));
+const DistortionEffect = defineAsyncComponent(() => import('./controls/DistortionEffect.vue'));
+const EqualizerEffect = defineAsyncComponent(() => import('./controls/EqualizerEffect.vue'));
+const LimiterEffect = defineAsyncComponent(() => import('./controls/LimiterEffect.vue'));
+const PhaserEffect = defineAsyncComponent(() => import('./controls/PhaserEffect.vue'));
+const TremoloEffect = defineAsyncComponent(() => import('./controls/TremoloEffect.vue'));
+const VibratoEffect = defineAsyncComponent(() => import('./controls/VibratoEffect.vue'));
 </script>
 
 <template>

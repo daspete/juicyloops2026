@@ -9,6 +9,7 @@ services:
       juicyloopsnet:
         aliases:
           - juicyloops.test
+          - dev.juicyloops.dev.alpenstudios.com
 
   install-dependencies: 
     image: node:24

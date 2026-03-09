@@ -33,15 +33,19 @@ export class Effects {
     equalizer: EQ3;
     limiter: Limiter;
 
+    isChorusStarted: boolean = false;
+    isAutoFilterStarted: boolean = false;
+    isTremoloStarted: boolean = false;
+
     constructor(track: BaseTrack) {
         this.track = track;
 
-        this.chorus = new Chorus().start();
+        this.chorus = new Chorus();
         this.phaser = new Phaser();
         this.distortion = new Distortion();
         this.bitCrusher = new BitCrusher(8);
-        this.autoFilter = new AutoFilter().start();
-        this.tremolo = new Tremolo().start();
+        this.autoFilter = new AutoFilter();
+        this.tremolo = new Tremolo();
         this.vibrato = new Vibrato();
         this.delay = new FeedbackDelay();
         this.reverb = new Reverb();
@@ -90,6 +94,9 @@ export class Effects {
         if (p.delayTime !== undefined) this.chorus.delayTime = p.delayTime;
         if (p.depth !== undefined) this.chorus.depth = p.depth;
         if (p.wet !== undefined) this.chorus.wet.value = p.wet;
+        if (p.wet !== undefined) {
+            this.isChorusStarted = this.updateAnimatedEffectState(this.chorus, p.wet, this.isChorusStarted);
+        }
     }
 
     setPhaser(p: Partial<PhaserParams>): void {
@@ -113,12 +120,18 @@ export class Effects {
         if (p.frequency !== undefined) this.autoFilter.frequency.value = p.frequency;
         if (p.depth !== undefined) this.autoFilter.depth.value = p.depth;
         if (p.wet !== undefined) this.autoFilter.wet.value = p.wet;
+        if (p.wet !== undefined) {
+            this.isAutoFilterStarted = this.updateAnimatedEffectState(this.autoFilter, p.wet, this.isAutoFilterStarted);
+        }
     }
 
     setTremolo(p: Partial<TremoloParams>): void {
         if (p.frequency !== undefined) this.tremolo.frequency.value = p.frequency;
         if (p.depth !== undefined) this.tremolo.depth.value = p.depth;
         if (p.wet !== undefined) this.tremolo.wet.value = p.wet;
+        if (p.wet !== undefined) {
+            this.isTremoloStarted = this.updateAnimatedEffectState(this.tremolo, p.wet, this.isTremoloStarted);
+        }
     }
 
     setVibrato(p: Partial<VibratoParams>): void {
@@ -154,6 +167,39 @@ export class Effects {
 
     setLimiter(db: number): void {
         this.limiter.threshold.rampTo(db, 0.05);
+    }
+
+    dispose(): void {
+        this.chorus.dispose();
+        this.phaser.dispose();
+        this.distortion.dispose();
+        this.bitCrusher.dispose();
+        this.autoFilter.dispose();
+        this.tremolo.dispose();
+        this.vibrato.dispose();
+        this.delay.dispose();
+        this.reverb.dispose();
+        this.compressor.dispose();
+        this.equalizer.dispose();
+        this.limiter.dispose();
+    }
+
+    private updateAnimatedEffectState(
+        effect: { start: () => void; stop: () => void },
+        wet: number,
+        isStarted: boolean,
+    ): boolean {
+        if (wet > 0 && !isStarted) {
+            effect.start();
+            return true;
+        }
+
+        if (wet <= 0 && isStarted) {
+            effect.stop();
+            return false;
+        }
+
+        return isStarted;
     }
 }
 

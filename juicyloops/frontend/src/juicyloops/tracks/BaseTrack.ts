@@ -41,6 +41,7 @@ export class BaseTrack {
     }
 
     async dispose() {
+        this.effects.dispose();
         this.audioController.dispose();
     }
 

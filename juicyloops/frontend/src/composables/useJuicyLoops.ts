@@ -10,11 +10,11 @@ const bpm = ref(136);
 const tracks = ref<BaseTrack[]>([]);
 const currentTick = ref(0);
 
-export const useJuicyLoops = () => {
-    watch(bpm, (newBPM) => {
-        engine.setBPM(newBPM);
-    });
+watch(bpm, (newBPM) => {
+    engine.setBPM(newBPM);
+});
 
+export const useJuicyLoops = () => {
     const addSynth = async (): Promise<SynthTrack | null> => {
         const synth = (await engine.addTrack('synth')) as SynthTrack;
 

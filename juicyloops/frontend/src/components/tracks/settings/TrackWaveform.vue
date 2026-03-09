@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
-import { onMounted, ref } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 
@@ -43,6 +43,11 @@ onMounted(async () => {
             props.track.setSampleTimes(region.start, region.end - region.start);
         });
     });
+});
+
+onBeforeUnmount(() => {
+    waveSurfer.value?.destroy();
+    waveSurfer.value = null;
 });
 </script>
 

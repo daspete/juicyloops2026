@@ -4,6 +4,8 @@ import { BaseTrack } from './BaseTrack';
 import { SamplerTick } from '../ticks/SamplerTick';
 import { nextTick } from 'vue';
 
+const MAX_SAMPLE_FILE_SIZE_BYTES = 20 * 1024 * 1024;
+
 export class SamplerTrack extends BaseTrack {
     type = 'sampler';
 
@@ -36,13 +38,9 @@ export class SamplerTrack extends BaseTrack {
 
     async setSampleFromArrayBuffer(arrayBuffer: ArrayBuffer) {
         this.arrayBuffer = arrayBuffer;
-        const audioContext = new AudioContext();
-        const source = audioContext.createBufferSource();
-        source.buffer = await audioContext.decodeAudioData(arrayBuffer);
-
-        this.player.buffer.set(source.buffer);
-
-        this.setSampleTimes(0, source.buffer.duration);
+        const audioBuffer = await this.engine.decodeAudioData(arrayBuffer);
+        this.player.buffer.set(audioBuffer);
+        this.setSampleTimes(0, audioBuffer.duration);
     }
 
     setSampleName(name: string) {
@@ -51,38 +49,25 @@ export class SamplerTrack extends BaseTrack {
 
     async setFile(file: File) {
         if (!file) {
+            console.error('Cannot set sample file: no file provided.');
+            return;
+        }
+
+        if (file.size > MAX_SAMPLE_FILE_SIZE_BYTES) {
+            console.error(`Sample file is too large. Maximum supported size is ${MAX_SAMPLE_FILE_SIZE_BYTES / (1024 * 1024)}MB.`);
             return;
         }
 
         this.file = file;
         this.isUpdatingSample = true;
 
-        return new Promise<void>((resolve) => {
-            if (!this.file) {
-                this.isUpdatingSample = false;
-                resolve();
-                return;
-            }
-
-            const fileReader = new FileReader();
-            fileReader.onload = async (e) => {
-                const result = e.target?.result;
-                if (!result) {
-                    this.isUpdatingSample = false;
-                    resolve();
-                    return;
-                }
-                this.setSampleFromArrayBuffer(result as ArrayBuffer);
-                this.isUpdatingSample = false;
-
-                resolve();
-
-                await nextTick();
-                this.setSampleName(file.name);
-            };
-
-            fileReader.readAsArrayBuffer(this.file);
-        });
+        try {
+            await this.setSampleFromArrayBuffer(await file.arrayBuffer());
+            await nextTick();
+            this.setSampleName(file.name);
+        } finally {
+            this.isUpdatingSample = false;
+        }
     }
 
     async setSampleFromUrl(url: string) {
@@ -112,8 +97,11 @@ export class SamplerTrack extends BaseTrack {
     }
 
     async dispose() {
+        this.player.stop();
         this.player.dispose();
-        super.dispose();
+        this.arrayBuffer = null;
+        this.file = null;
+        await super.dispose();
     }
 
     async serialize() {

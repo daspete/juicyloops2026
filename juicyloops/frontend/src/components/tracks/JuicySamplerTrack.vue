@@ -44,14 +44,14 @@ const showVolumeSettings = (event: any) => {
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
-        <div class="flex gap-2 items-start">
+    <div class="px-2 py-2 sm:py-1 sm:pr-6 flex flex-col gap-4 track">
+        <div class="flex flex-wrap lg:flex-nowrap gap-2 items-start">
             <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
                 <Icon icon="mdi:waveform" class="w-5 h-5" />
                 <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
             </div>
 
-            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
+            <div class="track-toolbar flex h-9 gap-1 items-center rounded bg-surface-800">
                 <Button :text="!track.isMuted" size="small" @click="track.toggleMute()" :title="track.isMuted ? 'Unmute' : 'Mute'">
                     <Icon icon="fad:mute" class="w-5 h-5" />
                 </Button>
@@ -60,7 +60,7 @@ const showVolumeSettings = (event: any) => {
                 </Button>
             </div>
 
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
+            <div class="track-toolbar flex items-center gap-1 rounded bg-surface-800 w-full sm:w-49 h-9">
                 <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded" :title="isWaveformExpanded ? 'Hide waveform' : 'Show waveform'">
                     <Icon icon="mdi:waveform" class="w-5 h-5" />
                 </Button>
@@ -78,7 +78,7 @@ const showVolumeSettings = (event: any) => {
                 </Button>
             </div>
 
-            <div class="flex-1 flex flex-col gap-2">
+            <div class="w-full lg:flex-1 flex flex-col gap-2">
                 <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.sampleName">
                     <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
                         <div

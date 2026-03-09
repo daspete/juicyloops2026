@@ -4,7 +4,7 @@ import JuicyLoops from '@/components/JuicyLoops.vue';
 </script>
 
 <template>
-    <div class="w-screen h-screen ">
+    <div class="w-full min-h-dvh">
         <JuicyLoops />
     </div>
 </template>

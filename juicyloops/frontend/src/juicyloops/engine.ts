@@ -53,6 +53,10 @@ export class Engine {
     async setBPM(bpm: number) {
         this.transport.bpm.value = bpm;
     }
+
+    async decodeAudioData(arrayBuffer: ArrayBuffer): Promise<AudioBuffer> {
+        return await this.audioContext.rawContext.decodeAudioData(arrayBuffer.slice(0));
+    }
 }
 
 export const engine = new Engine();
