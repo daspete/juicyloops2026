@@ -81,7 +81,7 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     /** Sets one stage of the amplitude envelope, e.g. `setEnvelope('attack', 0.2)`. */
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void {
-        atTime(time, () => {
+        atTime(this.synth.context, time, () => {
             this.synth.envelope[param] = value;
         });
         if (time === undefined) {

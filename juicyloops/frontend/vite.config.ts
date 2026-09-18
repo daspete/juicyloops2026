@@ -29,5 +29,23 @@ export default defineConfig({
               emptyOutDir: true,
               rollupOptions: { output: { entryFileNames: 'entry-server.js' } },
           }
-        : undefined,
+        : {
+              /* The prerenderer reads the manifest to preload each page's chunks; it deletes it afterwards. */
+              manifest: true,
+              rollupOptions: {
+                  output: {
+                      /* Big, rarely changing libraries get their own chunks so a change in the app does not bust their cache. */
+                      advancedChunks: {
+                          /* Group by the module's own path only; otherwise Vue would be dragged into the PrimeVue chunk. */
+                          includeDependenciesRecursively: false,
+                          groups: [
+                              /* Tone stays with the engine code: pulled into its own chunk it ends up in a circular pair with it and fails at load. */
+                              { name: 'vendor-wavesurfer', test: /node_modules[\\/]wavesurfer\.js[\\/]/ },
+                              { name: 'vendor-primevue', test: /node_modules[\\/](primevue|@primeuix|@primevue)[\\/]/ },
+                              { name: 'vendor-vue', test: /node_modules[\\/](@vue|vue|vue-router)[\\/]/ },
+                          ],
+                      },
+                  },
+              },
+          },
 });

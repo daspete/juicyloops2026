@@ -930,7 +930,7 @@ html:not(.dark) .mk-theme {
     }
 }
 
-/* The chain: one signal line runs behind twelve modules, each with a knob and a power light. */
+/* The chain: twelve modules, each with a knob and a power light. */
 .mk-rack-list {
     position: relative;
     display: grid;
@@ -940,24 +940,6 @@ html:not(.dark) .mk-theme {
     padding: 1rem 0;
     list-style: none;
 
-    /* The signal: a dashed line that keeps flowing through the rack. */
-    &::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        right: 0;
-        top: 50%;
-        height: 3px;
-        background: repeating-linear-gradient(90deg, var(--jl-brand) 0 14px, transparent 14px 28px);
-        opacity: 0.8;
-        animation: mk-signal 1.2s linear infinite;
-    }
-}
-
-@keyframes mk-signal {
-    to {
-        background-position: 28px 0;
-    }
 }
 
 .mk-module {
@@ -1074,55 +1056,201 @@ html:not(.dark) .mk-theme {
     padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
 }
 
-.mk-pads {
+/*
+ * The mixer: six channel strips side by side. Each strip has a meter lit up to its level, a fader
+ * sitting at the same level, a tape label with the shortcut, then the copy. On hover the channel is
+ * pushed to full and the meter dances.
+ */
+.mk-mixer {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.75rem;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.6rem;
     margin: clamp(2rem, 4vw, 3.5rem) 0 0;
-    padding: 0;
+    padding: 0.9rem;
     list-style: none;
-}
-
-/* A pad: dark rubber with a coloured underglow that lights up when you press it. */
-.mk-pad {
-    position: relative;
-    padding: 1.6rem 1.5rem 1.8rem;
-    border-radius: 1.2rem;
-    background: var(--jl-panel);
+    border-radius: 1.6rem;
+    background:
+        linear-gradient(180deg, color-mix(in oklab, var(--jl-text) 6%, transparent), transparent 40%),
+        var(--jl-panel);
     box-shadow:
         inset 0 0 0 1px var(--jl-line-strong),
-        inset 0 -6px 0 color-mix(in oklab, var(--c) 55%, transparent);
-    transition: transform 0.12s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+        var(--jl-shadow);
+}
+
+.mk-strip {
+    --lit: var(--level);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.9rem 0.9rem 1.2rem;
+    border-radius: 1rem;
+    background:
+        linear-gradient(180deg, color-mix(in oklab, var(--c) 22%, transparent), color-mix(in oklab, var(--c) 4%, transparent) 55%, transparent),
+        var(--jl-bg);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 35%, var(--jl-line));
+    transition: box-shadow 0.25s ease, translate 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
 
     & .mk-h3 {
-        font-size: 1.25rem;
-        margin-top: 1.4rem;
+        margin-top: 0.4rem;
+        font-size: 1.05rem;
+        line-height: 1.2;
     }
 
     & p {
+        margin: 0;
+        font-size: 0.86rem;
+        line-height: 1.45;
         color: var(--jl-muted);
     }
 
     &:hover {
-        transform: translateY(2px) scale(0.99);
-        background: color-mix(in oklab, var(--c) 16%, var(--jl-panel));
+        --lit: 100;
+        translate: 0 -4px;
         box-shadow:
             inset 0 0 0 1px var(--c),
-            inset 0 -6px 0 var(--c),
-            0 0 40px -10px var(--c);
+            0 22px 40px -22px var(--c);
     }
 }
 
-.mk-pad-key {
-    display: inline-block;
-    padding: 0.35rem 0.6rem;
+.mk-strip-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    color: var(--c);
+}
+
+.mk-strip-led {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--c);
+    box-shadow: 0 0 10px var(--c);
+    animation: mk-led 2.4s ease-in-out calc(var(--i) * 0.37s) infinite;
+}
+
+/* Meter and fader side by side; both read --lit so they move together. */
+.mk-strip-gear {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 0.6rem;
+    height: 9.5rem;
+    margin: 0.4rem 0 0.6rem;
+}
+
+.mk-meter {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 3px;
+    padding: 5px;
     border-radius: 0.5rem;
+    background: color-mix(in oklab, var(--jl-text) 8%, transparent);
+
+    & i {
+        flex: 1;
+        border-radius: 2px;
+        background: color-mix(in oklab, var(--jl-text) 10%, transparent);
+        transition: background-color 0.18s ease calc((var(--s) / 10) * 0.03s), box-shadow 0.18s ease;
+    }
+
+    /* Lit when the segment is at or below the level; the top two run hot in the brand pink. */
+    & i[data-lit='true'],
+    .mk-strip:hover & i {
+        background: var(--c);
+        box-shadow: 0 0 8px color-mix(in oklab, var(--c) 70%, transparent);
+    }
+
+    & i[data-hot='true'][data-lit='true'],
+    .mk-strip:hover & i[data-hot='true'] {
+        background: var(--jl-brand-2);
+        box-shadow: 0 0 8px var(--jl-brand-2);
+    }
+
+    .mk-strip:hover & i {
+        animation: mk-meter-bounce 0.55s ease-in-out calc(var(--s) * -0.05s) infinite alternate;
+    }
+}
+
+@keyframes mk-meter-bounce {
+    to {
+        opacity: 0.45;
+    }
+}
+
+.mk-fader {
+    position: relative;
+    display: flex;
+    justify-content: center;
+
+    /* The slot the cap slides in. */
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0.5rem;
+        bottom: 0.5rem;
+        width: 4px;
+        border-radius: 999px;
+        background: color-mix(in oklab, var(--jl-text) 18%, transparent);
+    }
+}
+
+.mk-fader-scale {
+    position: absolute;
+    inset: 0.5rem auto 0.5rem 0.2rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+
+    & i {
+        width: 0.5rem;
+        height: 1px;
+        background: color-mix(in oklab, var(--jl-text) 30%, transparent);
+    }
+}
+
+.mk-fader-cap {
+    position: absolute;
+    bottom: calc(0.5rem + (100% - 1rem - 1.4rem) * var(--lit) / 100);
+    width: 1.5rem;
+    height: 1.4rem;
+    border-radius: 0.35rem;
+    background: linear-gradient(180deg, color-mix(in oklab, var(--c) 40%, #2a2438), #17131f);
+    box-shadow:
+        inset 0 0 0 1px color-mix(in oklab, var(--c) 60%, transparent),
+        0 6px 14px -6px #000;
+    transition: bottom 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+
+    /* The grip line across the cap, in the channel colour. */
+    &::after {
+        content: '';
+        position: absolute;
+        left: 0.25rem;
+        right: 0.25rem;
+        top: 50%;
+        height: 2px;
+        margin-top: -1px;
+        border-radius: 1px;
+        background: var(--c);
+        box-shadow: 0 0 6px var(--c);
+    }
+}
+
+/* Tape on the scribble strip, slightly askew like real tape. */
+.mk-strip-tag {
+    align-self: flex-start;
+    padding: 0.3rem 0.55rem;
+    border-radius: 0.2rem;
     background: var(--c);
     color: #14100c;
     font-family: var(--font-mono);
-    font-size: 0.8rem;
+    font-size: 0.74rem;
     letter-spacing: 0.08em;
-    text-transform: uppercase;
+    white-space: nowrap;
+    rotate: calc(-2deg + var(--i) * 0.8deg);
+    box-shadow: 0 2px 6px -2px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- final call: a solid colour block ---------- */
@@ -1209,9 +1337,11 @@ html:not(.dark) .mk-theme {
 
 @media (max-width: 56rem) {
     .mk-flow-list,
-    .mk-pads,
     .mk-rack-copy {
         grid-template-columns: 1fr;
+    }
+    .mk-mixer {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
     }
     .mk-rack-copy .mk-lead {
         grid-column: 1;
@@ -1231,6 +1361,41 @@ html:not(.dark) .mk-theme {
 @media (max-width: 40rem) {
     .mk-rack-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .mk-mixer {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    /* On a phone each channel lies on its side: gear on the left, copy on the right. */
+    .mk-strip {
+        display: grid;
+        grid-template-columns: 6.5rem 1fr;
+        grid-template-areas:
+            'top top'
+            'gear tag'
+            'gear title'
+            'gear text';
+        column-gap: 0.9rem;
+        row-gap: 0.3rem;
+    }
+    .mk-strip-top {
+        grid-area: top;
+    }
+    .mk-strip-gear {
+        grid-area: gear;
+        height: 8rem;
+        margin: 0;
+    }
+    .mk-strip-tag {
+        grid-area: tag;
+        justify-self: start;
+    }
+    .mk-strip .mk-h3 {
+        grid-area: title;
+        margin-top: 0;
+    }
+    .mk-strip p {
+        grid-area: text;
     }
     .mk-nav .mk-navlink {
         display: none;
@@ -1320,9 +1485,13 @@ html:not(.dark) .mk-theme {
     .mk-mini-grid i,
     .mk-mini-lane i,
     .mk-mini-curve path,
-    .mk-rack-list::before,
-    .mk-module-led {
+    .mk-module-led,
+    .mk-strip-led,
+    .mk-meter i {
         animation: none;
+    }
+    .mk-fader-cap {
+        transition: none;
     }
     .mk-mini-curve path {
         stroke-dashoffset: 0;

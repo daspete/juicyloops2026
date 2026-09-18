@@ -1,4 +1,4 @@
-import { getDraw, getTransport } from 'tone';
+import { getDraw, getTransport, type DrawInstance, type TransportInstance } from 'tone';
 import { markRaw, reactive, toRaw } from 'vue';
 import { toValue, valueAt, type Automatable, type AutomationTarget } from './automation';
 import { STEP_SUBDIVISION } from './constants';
@@ -39,6 +39,13 @@ export class Sequencer {
     /** The master channel: every container feeds it, it feeds the speakers. */
     readonly master = markRaw(new MixBus());
 
+    /**
+     * The transport and draw loop of the context the sequencer was created in. Kept as references, so a sequencer
+     * built inside an offline context (see `render.ts`) keeps driving that context after the global one is switched back.
+     */
+    private readonly transport: TransportInstance = getTransport();
+    private readonly draw: DrawInstance = getDraw();
+
     mode: PlaybackMode = 'loop';
 
     /** The container the track editor shows and loop mode plays. */
@@ -58,7 +65,7 @@ export class Sequencer {
             return;
         }
 
-        this.eventId = getTransport().scheduleRepeat((time) => this.playStep(time), STEP_SUBDIVISION, 0);
+        this.eventId = this.transport.scheduleRepeat((time) => this.playStep(time), STEP_SUBDIVISION, 0);
     }
 
     setMode(mode: PlaybackMode): void {
@@ -67,7 +74,7 @@ export class Sequencer {
 
     /** Moves the play position to a step (also while playing). */
     seekToStep(step: number): void {
-        getTransport().ticks = Math.max(0, step) * this.ticksPerStep;
+        this.transport.ticks = Math.max(0, step) * this.ticksPerStep;
     }
 
     /**
@@ -95,6 +102,31 @@ export class Sequencer {
         if (container) {
             this.currentContainer = container;
         }
+    }
+
+    /** Resolves once every sample is decoded and every effect can sound; what an offline render waits for. */
+    async whenReady(): Promise<void> {
+        const containers = toRaw(this.containers).map((container) => toRaw(container));
+        const tracks = containers.flatMap((container) => container.tracks.map((track) => toRaw(track)));
+        await Promise.all([
+            ...tracks.map((track) => track.whenReady()),
+            ...tracks.map((track) => track.effects.whenReady()),
+            ...containers.map((container) => container.bus.effects.whenReady()),
+            this.master.effects.whenReady(),
+        ]);
+    }
+
+    /** Takes the step callback off the transport and frees every audio node. For sequencers that only lived for a render. */
+    dispose(): void {
+        if (this.eventId !== null) {
+            this.transport.clear(this.eventId);
+            this.eventId = null;
+        }
+        for (const container of toRaw(this.containers)) {
+            toRaw(container).dispose();
+        }
+        this.containers.length = 0;
+        this.master.dispose();
     }
 
     /** Puts every automated parameter back to its stored value, e.g. when playback stops. */
@@ -205,7 +237,7 @@ export class Sequencer {
 
     private get ticksPerStep(): number {
         // A step is a sixteenth note and PPQ is the number of ticks per quarter note.
-        return getTransport().PPQ / 4;
+        return this.transport.PPQ / 4;
     }
 
     private playStep(time: number): void {
@@ -215,7 +247,7 @@ export class Sequencer {
          * end of the arrangement, so the song loops, and every clip plays its container from
          * the clip's own start.
          */
-        const absoluteStep = Math.round(getTransport().getTicksAtTime(time) / this.ticksPerStep);
+        const absoluteStep = Math.round(this.transport.getTicksAtTime(time) / this.ticksPerStep);
         const song = toRaw(this.song);
         const songLength = song.length;
         const step = this.mode === 'song' ? (songLength ? absoluteStep % songLength : 0) : absoluteStep;
@@ -231,6 +263,6 @@ export class Sequencer {
         }
 
         // The callback fires ahead of time (transport look-ahead), so UI updates are deferred until the step is heard.
-        getDraw().schedule(() => this.stepListeners.forEach((listener) => listener(step)), time);
+        this.draw.schedule(() => this.stepListeners.forEach((listener) => listener(step)), time);
     }
 }

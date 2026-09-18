@@ -77,7 +77,7 @@ watch(
         <RouterView />
 
         <footer class="mk-foot">
-            <span>Made with ❤️ in Vienna by <a href="https://daspete.at" target="_blank" rel="noopener noreferrer">Pete</a></span>
+            <span>Made with love in Vienna by <a href="https://daspete.at" target="_blank" rel="noopener noreferrer">Pete</a></span>
             <span class="mk-foot-links">
                 <a href="https://github.com/daspete/juicyloops2026" target="_blank" rel="noopener noreferrer">Source</a>
                 <a href="https://github.com/daspete/juicyloops2026/discussions" target="_blank" rel="noopener noreferrer">Discussions</a>

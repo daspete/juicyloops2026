@@ -1,174 +1,7 @@
-@theme {
-    --font-sans: 'Exo 2', ui-sans-serif, system-ui, sans-serif;
-    --font-display: 'Orbitron', 'Exo 2', ui-sans-serif, sans-serif;
-    --font-mono: 'Share Tech Mono', ui-monospace, 'SF Mono', monospace;
-}
-
 /*
- * Every colour in the app comes from these tokens. `html.dark` (the PrimeVue dark selector)
- * flips the set, so light and dark mode are one stylesheet.
- *
- * The workspace is built from three flat surfaces, darkest at the back:
- *  - bg:     the workspace floor, what the grids sit on
- *  - panel:  the chrome around it (transport bar, channel heads, detail panel, arranger)
- *  - raised: anything that sits on a panel (groups of controls, devices)
- *
- * Two colour families are painted on top:
- *  - the brand (violet to magenta, from the logo) for everything that belongs to the shell:
- *    play button, playhead, containers, the song grid.
- *  - the juice: one colour per track type. Rows set --jl-accent to their own, and everything
- *    inside a row (pads, knobs, sliders, the detail panel) inherits it.
+ * Studio styles: everything for the sequencer under /app. Loaded by MainLayout only, so the
+ * prerendered marketing pages ship without it. Shared tokens, fonts and the page frame live in base.css.
  */
-:root {
-    --jl-brand: #7c3aed;
-    --jl-brand-2: #d926a9;
-    --jl-brand-ink: #ffffff;
-    --jl-brand-gradient: linear-gradient(135deg, var(--jl-brand), var(--jl-brand-2));
-
-    --jl-synth: #f26d0b;
-    --jl-sampler: #65b10a;
-    --jl-mic: #e62c6b;
-    --jl-accent: var(--jl-synth);
-    --jl-accent-ink: #14100c;
-
-    --jl-bg: #e8e6f2;
-    --jl-panel: #f7f6fc;
-    --jl-raised: #ffffff;
-    --jl-cell: #dcd9ec;
-    --jl-cell-hover: #cdc8e6;
-    --jl-cell-downbeat: #d3cfe8;
-    --jl-line: rgba(24, 14, 64, 0.09);
-    --jl-line-strong: rgba(24, 14, 64, 0.2);
-    --jl-bar: #a9a1cf;
-    --jl-text: #17132b;
-    --jl-muted: #6b6591;
-    --jl-overlay: rgba(247, 246, 252, 0.9);
-    --jl-key-white: #ffffff;
-    --jl-key-white-ink: #17132b;
-    --jl-key-black: #2c2547;
-    --jl-key-black-ink: #ece8fb;
-    --jl-shadow: 0 10px 28px -16px rgba(40, 20, 120, 0.4);
-    --jl-focus: var(--jl-brand);
-
-    /* Kept for anything that still points at the old names. */
-    --jl-surface: var(--jl-panel);
-    --jl-surface-2: var(--jl-raised);
-
-    /* Width of the channel head on the left of every track row. The step ruler uses it too. */
-    --jl-track-head: 16rem;
-    /* Gap between that column and the grid. */
-    --jl-track-gap: 0.75rem;
-    /* Head plus gap: how far the step grids of a row are indented. Zero when the head sits above the grid. */
-    --jl-head-space: calc(var(--jl-track-head) + var(--jl-track-gap));
-    /* Padding of the timeline on either side of its content. */
-    --jl-row-pad: 0.75rem;
-    /* Width of the note-name column in the piano roll. */
-    --jl-key-width: 3rem;
-    /* Gap between beats in every step grid, and between the cells of one beat. */
-    --jl-beat-gap: 0.5rem;
-    --jl-cell-gap: 3px;
-
-    color-scheme: light;
-}
-
-html.dark {
-    --jl-brand: #a78bfa;
-    --jl-brand-2: #f06ee6;
-    --jl-brand-ink: #14092b;
-    --jl-brand-gradient: linear-gradient(135deg, #8b5cf6, #e040d0);
-
-    --jl-synth: #ff8c1a;
-    --jl-sampler: #b6f04a;
-    --jl-mic: #ff4f8b;
-
-    --jl-bg: #0a0913;
-    --jl-panel: #14111f;
-    --jl-raised: #1c1830;
-    --jl-cell: #201c36;
-    --jl-cell-hover: #2d284a;
-    --jl-cell-downbeat: #26213f;
-    --jl-line: rgba(255, 255, 255, 0.07);
-    --jl-line-strong: rgba(255, 255, 255, 0.16);
-    --jl-bar: #4d4579;
-    --jl-text: #f4f1ff;
-    --jl-muted: #928bb8;
-    --jl-overlay: rgba(20, 17, 31, 0.9);
-    --jl-key-white: #ebe7fa;
-    --jl-key-white-ink: #17132b;
-    --jl-key-black: #17132b;
-    --jl-key-black-ink: #b3abd6;
-    --jl-shadow: 0 14px 36px -18px rgba(0, 0, 0, 0.85);
-
-    color-scheme: dark;
-}
-
-html {
-    font-size: 14px;
-    height: 100%;
-}
-
-body {
-    height: 100%;
-    margin: 0;
-    overflow: hidden;
-    font-family: var(--font-sans);
-    color: var(--jl-text);
-    background: var(--jl-bg);
-    -webkit-font-smoothing: antialiased;
-    transition:
-        background-color 0.25s ease,
-        color 0.25s ease;
-}
-
-#app {
-    height: 100%;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
-
-* {
-    user-select: none;
-    scrollbar-width: thin;
-    scrollbar-color: var(--jl-line-strong) transparent;
-}
-
-*::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-}
-
-*::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-*::-webkit-scrollbar-thumb {
-    background: var(--jl-line-strong);
-    border-radius: 999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-}
-
-input,
-textarea {
-    user-select: text;
-}
-
-.sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-    white-space: nowrap;
-}
 
 /* ---------- the frame ---------- */
 
@@ -1446,6 +1279,127 @@ textarea {
 }
 
 /* The piano roll in its own window: the key column is just the keys, and the beats share the window's width. */
+/* ---------- export dialog ---------- */
+
+.export {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding-top: 0.25rem;
+}
+
+.export-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    min-width: 0;
+}
+
+.export-group:disabled {
+    opacity: 0.6;
+}
+
+.export-label {
+    padding: 0;
+    margin-bottom: 0.1rem;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+.export-kinds {
+    display: flex;
+    gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.export-kind {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 2.1rem;
+    padding: 0 0.85rem;
+    border-radius: 0.6rem;
+    border: 1px solid var(--jl-line);
+    background: var(--jl-raised);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    cursor: pointer;
+    transition:
+        background-color 0.12s ease,
+        color 0.12s ease,
+        border-color 0.12s ease,
+        box-shadow 0.12s ease;
+}
+
+.export-kind:hover:not(:disabled) {
+    color: var(--jl-text);
+    border-color: var(--jl-line-strong);
+}
+
+.export-kind[data-active='true'] {
+    color: var(--jl-text);
+    background: color-mix(in oklab, var(--jl-brand) 22%, var(--jl-raised));
+    border-color: color-mix(in oklab, var(--jl-brand) 70%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--jl-brand) 35%, transparent);
+}
+
+.export-kind:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.export-row {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.export-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex: 1 1 8rem;
+    min-width: 0;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+}
+
+.export-field .select {
+    height: 2rem;
+    width: 100%;
+}
+
+.export-outlook {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.6rem;
+    background: var(--jl-bg);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+    font-size: 0.78rem;
+    color: var(--jl-muted);
+}
+
+.export-outlook[data-error='true'] {
+    color: #e5484d;
+}
+
+.export-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
 .pianoroll-dialog .p-dialog-content {
     display: flex;
     flex-direction: column;

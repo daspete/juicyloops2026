@@ -4,11 +4,11 @@
  * privacy notes a visitor needs. Fill in `OWNER` before the page goes live.
  */
 const OWNER = {
-    name: '[Full name]',
-    street: '[Street and number]',
-    city: '[Postal code] Vienna',
+    name: 'Peter Braith',
+    street: 'Berresgasse 11',
+    city: '1220 Vienna',
     country: 'Austria',
-    email: '[email address]',
+    email: 'daspetemail@gmail.com',
     website: 'https://daspete.at',
 };
 </script>

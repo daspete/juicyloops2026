@@ -6,6 +6,8 @@ export interface RenderedPage {
     html: string;
     title: string;
     description: string;
+    /** Source files (manifest keys) of the layout and page the route renders; the prerenderer preloads their chunks. */
+    modules: string[];
 }
 
 /** Renders one marketing route to HTML; the prerender script writes it into the built index.html. */
@@ -21,6 +23,7 @@ export const render = async (url: string): Promise<RenderedPage> => {
         html,
         title: (route.meta.title as string | undefined) ?? 'Juicy Loops',
         description: (route.meta.description as string | undefined) ?? '',
+        modules: route.matched.flatMap((record) => (typeof record.meta.module === 'string' ? [record.meta.module] : [])),
     };
 };
 

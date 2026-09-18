@@ -104,19 +104,26 @@ const WAVE = [
     63, 51,
 ];
 
-/* Six pads, like a drum pad bank: each with a colour and a short key label. */
+/*
+ * Six channel strips on a mixer: each small thing is a channel with its own colour, a fader
+ * sitting at a level and a meter lit up to it. The levels are fixed so both sides draw the same.
+ */
 const DETAILS = [
-    { key: 'Q/P', title: 'Quick or Pro', text: 'Start with just the grid. Switch to Pro for the arranger, mixer and automation whenever you feel like it.' },
-    { key: 'Ctrl+Z', title: 'Undo everything', text: 'Every tap, drag and knob turn is one step back. Ctrl+Z as deep as you like, Ctrl+Y forward again.' },
+    { key: 'Q / P', title: 'Quick or Pro', level: 62, text: 'Start with just the grid. Switch to Pro for the arranger, mixer and automation whenever you feel like it.' },
+    { key: 'Ctrl+Z', title: 'Undo everything', level: 84, text: 'Every tap, drag and knob turn is one step back. Ctrl+Z as deep as you like, Ctrl+Y forward again.' },
     {
         key: 'Ctrl+S',
         title: 'One file, all of it',
+        level: 48,
         text: 'Save the session to your disk as a single file: tracks, samples, recordings, automation. Open it on any machine.',
     },
-    { key: '0 MB', title: 'Nothing to install', text: 'No account, no download, no plugins. It runs in the browser you already have, on a phone too.' },
-    { key: '☾ / ☀', title: 'Light or dark', text: 'Follows your system, or flip it yourself. The colours of the tracks stay the same either way.' },
-    { key: 'Space', title: 'Keyboard first', text: 'Space plays and stops, Ctrl+S saves, Ctrl+O opens. Hold a button to repeat it, the app keeps up.' },
+    { key: '0 MB', title: 'Nothing to install', level: 91, text: 'No account, no download, no plugins. It runs in the browser you already have, on a phone too.' },
+    { key: 'Light / Dark', title: 'Light or dark', level: 55, text: 'Follows your system, or flip it yourself. The colours of the tracks stay the same either way.' },
+    { key: 'Space', title: 'Keyboard first', level: 73, text: 'Space plays and stops, Ctrl+S saves, Ctrl+O opens. Hold a button to repeat it, the app keeps up.' },
 ].map((item, index) => ({ ...item, color: JUICE_CYCLE[index % JUICE_CYCLE.length] }));
+
+/* Ten segments per meter, bottom to top. */
+const METER = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
 </script>
 
 <template>
@@ -167,7 +174,7 @@ const DETAILS = [
                 <li v-for="(step, index) in FLOW" :key="step.beat" class="mk-clip" :style="{ '--c': step.color, '--i': index }" data-reveal>
                     <div class="mk-clip-bar">
                         <span class="mk-clip-beat">{{ step.beat }}</span>
-                        <span class="mk-clip-name">Bars {{ index * 4 + 1 }}–{{ index * 4 + 4 }}</span>
+                        <span class="mk-clip-name">Bars {{ index * 4 + 1 }}-{{ index * 4 + 4 }}</span>
                     </div>
                     <div class="mk-clip-body">
                         <div class="mk-clip-visual" aria-hidden="true">
@@ -221,9 +228,22 @@ const DETAILS = [
                 <p class="mk-eyebrow" data-reveal>The small things</p>
                 <h2 id="details-title" class="mk-h2" data-reveal>Built to stay out of your way.</h2>
             </div>
-            <ul class="mk-pads">
-                <li v-for="(item, index) in DETAILS" :key="item.title" class="mk-pad" :style="{ '--i': index, '--c': item.color }" data-reveal>
-                    <span class="mk-pad-key">{{ item.key }}</span>
+            <ul class="mk-mixer" aria-label="Six things the app does for you">
+                <li v-for="(item, index) in DETAILS" :key="item.title" class="mk-strip" :style="{ '--i': index, '--c': item.color, '--level': item.level }" data-reveal>
+                    <div class="mk-strip-top" aria-hidden="true">
+                        <span class="mk-strip-no">{{ String(index + 1).padStart(2, '0') }}</span>
+                        <span class="mk-strip-led"></span>
+                    </div>
+                    <div class="mk-strip-gear" aria-hidden="true">
+                        <div class="mk-meter">
+                            <i v-for="segment in METER" :key="segment" :data-lit="segment <= item.level" :data-hot="segment > 80" :style="{ '--s': segment }"></i>
+                        </div>
+                        <div class="mk-fader">
+                            <span class="mk-fader-scale"><i v-for="tick in 6" :key="tick"></i></span>
+                            <span class="mk-fader-cap"></span>
+                        </div>
+                    </div>
+                    <span class="mk-strip-tag">{{ item.key }}</span>
                     <h3 class="mk-h3">{{ item.title }}</h3>
                     <p>{{ item.text }}</p>
                 </li>

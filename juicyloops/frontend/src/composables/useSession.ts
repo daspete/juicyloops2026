@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue';
 import { engine } from '@/juicyloops/engine';
 import { packSession, SESSION_FILE_EXTENSION, SESSION_FILE_MIME, SessionFileError, sessionFileName, sessionNameOf, unpackSession, type SavedSession } from '@/juicyloops/sessionFile';
+import { downloadBlob } from './download';
 import { useHistory } from './useHistory';
 import { useJuicyLoops } from './useJuicyLoops';
 
@@ -64,16 +65,6 @@ const setHandle = (next: FileSystemFileHandle | null): void => {
 
 const capture = (): SavedSession => ({ name: name.value, bpm: bpm.value, session: engine.capture() });
 
-const download = (blob: Blob, fileName: string): void => {
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.click();
-    // The click has taken the URL; revoking it right away can cut the download short in some browsers.
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-};
-
 /** What went wrong, in the words a person needs. */
 const describe = (error: unknown, fallback: string): string => {
     if (error instanceof SessionFileError) {
@@ -107,7 +98,7 @@ const save = async (options: { as?: boolean } = {}): Promise<SessionResult> => {
             await writable.write(blob);
             await writable.close();
         } else {
-            download(packSession(capture()), sessionFileName(name.value));
+            downloadBlob(packSession(capture()), sessionFileName(name.value));
         }
         savedRevision.value = revision.value;
         return { ok: true, fileName: handle?.name ?? sessionFileName(name.value) };

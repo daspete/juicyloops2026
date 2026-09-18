@@ -254,6 +254,14 @@ export class Effects {
         }
     }
 
+    /**
+     * Resolves once every effect can make a sound. A reverb renders its impulse response in the background
+     * after it is created or changed; until then it is silent. Offline rendering waits for this.
+     */
+    async whenReady(): Promise<void> {
+        await Promise.all([...this.nodes.values()].map((node) => (node as { ready?: Promise<unknown> }).ready));
+    }
+
     dispose(): void {
         for (const node of this.nodes.values()) {
             node.dispose();
@@ -336,7 +344,7 @@ export class Effects {
             return;
         }
 
-        atTime(time, () => {
+        atTime(node.context, time, () => {
             (node as unknown as Record<string, number>)[param] = value;
         });
     }

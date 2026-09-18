@@ -16,6 +16,7 @@
         "check": "yarn type-check && yarn lint && yarn test:unit"
     },
     "dependencies": {
+        "@breezystack/lamejs": "^1.2.7",
         "@iconify/vue": "^5.0.2",
         "@primeuix/themes": "^2.0.3",
         "@tailwindcss/vite": "^4.3.3",

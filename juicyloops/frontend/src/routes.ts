@@ -6,24 +6,31 @@ const DESCRIPTION =
 /**
  * The marketing pages (`/`, `/imprint`) are prerendered to static HTML at build time and hydrated
  * in the browser; the studio under `/app` is client only. `meta.title` and `meta.description`
- * feed the document head on both sides.
+ * feed the document head on both sides. `meta.module` names the record's source file so the
+ * prerenderer can look its chunks up in the build manifest and preload them.
  */
 const routes: Array<RouteRecordRaw> = [
     {
         path: '/',
         component: () => import('@/layouts/MarketingLayout.vue'),
+        meta: { module: 'src/layouts/MarketingLayout.vue' },
         children: [
             {
                 path: '',
                 name: 'home',
                 component: () => import('@/pages/home.vue'),
-                meta: { title: 'Juicy Loops', description: DESCRIPTION, prerender: true },
+                meta: { title: 'Juicy Loops - Make beats in your browser', description: DESCRIPTION, prerender: true, module: 'src/pages/home.vue' },
             },
             {
                 path: 'imprint',
                 name: 'imprint',
                 component: () => import('@/pages/imprint.vue'),
-                meta: { title: 'Imprint · Juicy Loops', description: 'Legal notice and contact for Juicy Loops.', prerender: true },
+                meta: {
+                    title: 'Imprint - Juicy Loops',
+                    description: 'Legal notice and contact for Juicy Loops.',
+                    prerender: true,
+                    module: 'src/pages/imprint.vue',
+                },
             },
         ],
     },
