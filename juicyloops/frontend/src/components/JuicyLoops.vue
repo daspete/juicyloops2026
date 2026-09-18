@@ -8,6 +8,7 @@ import { useHistory } from '@/composables/useHistory';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useSession, type SessionResult } from '@/composables/useSession';
 import { useTheme } from '@/composables/useTheme';
+import { useViewport } from '@/composables/useViewport';
 import { useWorkspace, type WorkspaceMode } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
 import DetailPanel from './detail/DetailPanel.vue';
@@ -25,6 +26,8 @@ const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togg
 const { theme, toggleTheme } = useTheme();
 const { mode, isPro, setMode, isMixerOpen, toggleMixer, isDetailOpen, toggleDetail } = useWorkspace();
 const { canUndo, canRedo, commit, undo, redo } = useHistory();
+/* On a phone the view switch and the panel toggles move to a bar at the bottom, where a thumb can reach them. */
+const { isPhone } = useViewport();
 const session = useSession();
 const route = useRoute();
 const router = useRouter();
@@ -344,7 +347,7 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
 
-                <nav v-if="isPro" class="viewswitch" aria-label="Editor">
+                <nav v-if="isPro && !isPhone" class="viewswitch" aria-label="Editor">
                     <RouterLink
                         v-for="view in VIEWS"
                         :key="view.name"
@@ -426,6 +429,7 @@ onBeforeUnmount(() => {
                         :aria-checked="mode === item.key"
                         :data-active="mode === item.key"
                         :data-mode="item.key"
+                        :aria-label="item.label"
                         v-tooltip.bottom="{ value: item.hint, showDelay: 400 }"
                         @click="setMode(item.key)"
                     >
@@ -434,7 +438,7 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
                 <button
-                    v-if="!isSongView"
+                    v-if="!isSongView && !isPhone"
                     type="button"
                     class="chip"
                     :data-active="isDetailOpen"
@@ -446,7 +450,7 @@ onBeforeUnmount(() => {
                     <span>Tweak</span>
                 </button>
                 <button
-                    v-if="isPro"
+                    v-if="isPro && !isPhone"
                     type="button"
                     class="chip"
                     :data-active="isMixerOpen"
@@ -457,7 +461,7 @@ onBeforeUnmount(() => {
                     <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
                     <span>Mixer</span>
                 </button>
-                <span class="vrule"></span>
+                <span v-if="!isPhone" class="vrule"></span>
                 <button
                     type="button"
                     class="iconbtn"
@@ -467,7 +471,7 @@ onBeforeUnmount(() => {
                 >
                     <Icon :icon="theme === 'dark' ? 'ph:sun' : 'ph:moon'" class="w-5 h-5" />
                 </button>
-                <button type="button" class="iconbtn" aria-label="Questions and feedback" v-tooltip.bottom="'Questions and feedback'" @click="isDiscussionsOpen = true">
+                <button v-if="!isPhone" type="button" class="iconbtn" aria-label="Questions and feedback" v-tooltip.bottom="'Questions and feedback'" @click="isDiscussionsOpen = true">
                     <Icon icon="ph:chats" class="w-5 h-5" />
                 </button>
             </div>
@@ -485,7 +489,35 @@ onBeforeUnmount(() => {
             <MixPanel v-if="isPro && isMixerOpen" />
         </div>
 
-        <footer class="statusbar">
+        <nav v-if="isPhone" class="bottombar" aria-label="Editor">
+            <template v-if="isPro">
+                <RouterLink v-for="view in VIEWS" :key="view.name" :to="{ name: view.name }" class="bottombar-item" :data-active="route.name === view.name">
+                    <Icon :icon="view.icon" class="w-5 h-5" />
+                    <span>{{ view.label }}</span>
+                </RouterLink>
+            </template>
+            <button
+                v-if="!isSongView"
+                type="button"
+                class="bottombar-item"
+                :data-active="isDetailOpen"
+                :aria-pressed="isDetailOpen"
+                @click="toggleDetail"
+            >
+                <Icon icon="mdi:tune-variant" class="w-5 h-5" />
+                <span>Tweak</span>
+            </button>
+            <button v-if="isPro" type="button" class="bottombar-item" :data-active="isMixerOpen" :aria-pressed="isMixerOpen" @click="toggleMixer">
+                <Icon icon="mdi:tune-vertical" class="w-5 h-5" />
+                <span>Mixer</span>
+            </button>
+            <button type="button" class="bottombar-item" @click="isDiscussionsOpen = true">
+                <Icon icon="ph:chats" class="w-5 h-5" />
+                <span>Chat</span>
+            </button>
+        </nav>
+
+        <footer v-else class="statusbar">
             <span class="statusbar-hint">{{ statusHint }}</span>
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>

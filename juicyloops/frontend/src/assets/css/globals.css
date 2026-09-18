@@ -3385,6 +3385,276 @@ textarea {
     box-shadow: 0 0 8px var(--jl-accent);
 }
 
+/* ---------- phones ---------- */
+
+/*
+ * Below 48rem the app is held in one hand. The top bar keeps the file, mode and transport controls in two tight rows;
+ * the view switch and the panel toggles move into a bar along the bottom, where a thumb reaches them; the keyboard
+ * hints of the status bar go away. Every channel head spans the screen and stays put while its grid scrolls under it,
+ * and the step cells grow to a size a finger can hit. The panels cover the whole stage instead of docking beside it.
+ * The shell decides what to render from the same breakpoint (useViewport.ts); this block only lays it out.
+ */
+@media (max-width: 47.9rem) {
+    .app {
+        /* Tracks the browser chrome on phones, where the address bar comes and goes. */
+        height: 100dvh;
+    }
+
+    .transportbar {
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.4rem 0.5rem;
+        padding: 0.45rem 0.6rem;
+        padding-top: max(0.45rem, env(safe-area-inset-top));
+    }
+
+    .transportbar-left {
+        gap: 0.5rem;
+    }
+
+    .logo {
+        height: 1.6rem;
+    }
+
+    .filebar {
+        padding-left: 0.4rem;
+    }
+
+    /* The mode switch says it with icons; the buttons keep their names for screen readers. */
+    .modeswitch-item {
+        padding: 0 0.6rem;
+    }
+
+    .modeswitch-item > span {
+        display: none;
+    }
+
+    .transport {
+        gap: 0.35rem;
+    }
+
+    .readout {
+        padding: 0 0.55rem 0 0.5rem;
+    }
+
+    .readout-unit,
+    .tempo .vrule,
+    .tempo .vrule + .iconbtn {
+        display: none;
+    }
+
+    .history {
+        margin-left: 0;
+    }
+
+    /* The bottom bar: every destination one thumb away. */
+    .bottombar {
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: minmax(0, 1fr);
+        gap: 0.25rem;
+        padding: 0.3rem 0.5rem;
+        padding-bottom: max(0.3rem, env(safe-area-inset-bottom));
+        flex-shrink: 0;
+        background: var(--jl-panel);
+        border-top: 1px solid var(--jl-line);
+        position: relative;
+        z-index: 20;
+    }
+
+    .bottombar-item {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.15rem;
+        min-width: 0;
+        height: 3rem;
+        border-radius: 0.65rem;
+        font-size: 0.66rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        color: var(--jl-muted);
+        text-decoration: none;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+            background-color 0.15s ease,
+            color 0.15s ease;
+    }
+
+    .bottombar-item[data-active='true'] {
+        color: var(--jl-brand);
+        background: color-mix(in oklab, var(--jl-brand) 12%, transparent);
+    }
+
+    .bottombar-item:focus-visible {
+        outline: 2px solid var(--jl-brand);
+        outline-offset: -2px;
+    }
+
+    /* Panels take the whole stage; the bottom bar stays to close them again. */
+    .dock {
+        width: 100%;
+        box-shadow: none;
+        border: 0;
+    }
+
+    .dock-body {
+        padding: 0.75rem;
+    }
+
+    .dock-note {
+        display: none;
+    }
+
+    /* The container bar: the list scrolls sideways, the tools stay on the right. */
+    .scenes {
+        gap: 0.35rem;
+        padding: 0.3rem 0.6rem;
+    }
+
+    .scenes > .eyebrow,
+    .scenes .chip > span {
+        display: none;
+    }
+
+    .scenes-list {
+        flex: 1 1 auto;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+        padding: 2px;
+        margin: -2px;
+    }
+
+    .scenes-list::-webkit-scrollbar {
+        display: none;
+    }
+
+    .scenes-list .iconbtn > span {
+        display: none;
+    }
+
+    .scenes .chip {
+        padding: 0 0.5rem;
+    }
+
+    /* Rows: the head spans the screen and sticks while the grid scrolls; cells are finger-sized. */
+    .timeline {
+        --jl-lane: max(calc(100cqw - 2 * var(--jl-row-pad)), calc(8 * (4 * 2rem + 3 * var(--jl-cell-gap)) + 7 * var(--jl-beat-gap)));
+    }
+
+    .track-head,
+    .autolane-head,
+    .automation-foot-head {
+        position: sticky;
+        left: var(--jl-row-pad);
+        width: calc(100cqw - 2 * var(--jl-row-pad));
+    }
+
+    .track-head {
+        padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+        gap: 0.3rem 0.5rem;
+    }
+
+    .track-head > * {
+        flex: 1 1 100%;
+    }
+
+    .track-actions {
+        opacity: 1;
+    }
+
+    .tools {
+        grid-auto-flow: column;
+        grid-template-columns: none;
+        grid-auto-columns: minmax(0, 1fr);
+    }
+
+    .tools:has(> :nth-child(4)) {
+        grid-auto-flow: row;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .addrow {
+        flex-wrap: wrap;
+        gap: 0.4rem;
+        padding: 0.75rem 0.25rem 1.25rem;
+    }
+
+    .addrow .eyebrow {
+        flex-basis: 100%;
+        margin: 0;
+    }
+
+    .hero {
+        gap: 1.5rem;
+        padding: 1.5rem 1rem 2.5rem;
+    }
+
+    .hero-title {
+        font-size: 2.1rem;
+    }
+
+    /* The song editor: a slimmer lane column, wrapped toolbars, the hint out of the way. */
+    :root {
+        --jl-lane-head: 7.5rem;
+    }
+
+    .toolbar {
+        gap: 0.4rem;
+        padding: 0.4rem 0.6rem;
+    }
+
+    .toolbar-meta {
+        white-space: normal;
+    }
+
+    .toolbar .viewswitch-item > span {
+        display: none;
+    }
+
+    .toolbar .viewswitch-item {
+        padding: 0 0.6rem;
+    }
+
+    .palette {
+        padding: 0.4rem 0.6rem;
+    }
+
+    .palette-hint,
+    .song-hint {
+        display: none;
+    }
+
+    .arr-head {
+        padding-left: 0.6rem;
+    }
+
+    .arr-corner {
+        padding-left: 0.6rem;
+    }
+}
+
+/* The bottom bar is a phone thing; the shell only renders it there, this keeps it out of the way elsewhere. */
+@media (min-width: 48rem) {
+    .bottombar {
+        display: none;
+    }
+}
+
+/* Touch screens have no hover: what only showed under the pointer is simply there. */
+@media (hover: none) {
+    .track-actions,
+    .note-handle {
+        opacity: 1;
+    }
+
+    .note-handle {
+        width: 6px;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
