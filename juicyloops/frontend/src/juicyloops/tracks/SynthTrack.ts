@@ -3,7 +3,7 @@ import { markRaw } from 'vue';
 import { atTime, type AutomationParam } from '../automation';
 import { shiftOctave, type NoteLength, type OscillatorType } from '../notes';
 import { SynthTick } from '../ticks/SynthTick';
-import { BaseTrack, type TrackSnapshot } from './BaseTrack';
+import { BaseTrack, type TrackSnapshot, type TrackState } from './BaseTrack';
 
 /** Amplitude envelope of the synth voice. Times are seconds, sustain is a level between 0 and 1. */
 export interface SynthEnvelope {
@@ -36,6 +36,11 @@ export interface SynthTrackSnapshot extends TrackSnapshot {
     envelope: SynthEnvelope;
 }
 
+export interface SynthTrackState extends TrackState {
+    oscillatorType: OscillatorType;
+    envelope: SynthEnvelope;
+}
+
 export class SynthTrack extends BaseTrack<SynthTick> {
     readonly type = 'synth';
 
@@ -45,8 +50,8 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     envelope: SynthEnvelope = { ...DEFAULT_ENVELOPE };
 
-    constructor() {
-        super();
+    constructor(id?: string) {
+        super(id);
         this.synth.set({ envelope: this.envelope });
         this.connectSource(this.synth);
     }
@@ -79,7 +84,9 @@ export class SynthTrack extends BaseTrack<SynthTick> {
         atTime(time, () => {
             this.synth.envelope[param] = value;
         });
-        this.envelope = { ...this.envelope, [param]: value };
+        if (time === undefined) {
+            this.envelope = { ...this.envelope, [param]: value };
+        }
     }
 
     protected ownParameters(): readonly AutomationParam[] {
@@ -118,6 +125,19 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     dispose(): void {
         this.synth.dispose();
         super.dispose();
+    }
+
+    capture(): SynthTrackState {
+        return { ...super.capture(), oscillatorType: this.oscillatorType, envelope: { ...this.envelope } };
+    }
+
+    restore(state: TrackState): void {
+        super.restore(state);
+        const synth = state as SynthTrackState;
+        this.setOscillatorType(synth.oscillatorType);
+        for (const param of Object.keys(synth.envelope) as SynthEnvelopeParam[]) {
+            this.setEnvelope(param, synth.envelope[param]);
+        }
     }
 
     async serialize(): Promise<SynthTrackSnapshot> {

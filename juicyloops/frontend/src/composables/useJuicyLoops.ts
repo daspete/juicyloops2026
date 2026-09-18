@@ -144,7 +144,7 @@ const removeTrack = (id: string): void => {
 };
 
 /** What a song automation lane drives, or undefined when it was deleted. */
-const resolveTarget = (target: AutomationTarget): Automatable | undefined => engine.resolveTarget(target);
+const resolveTarget = (target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined => engine.resolveTarget(target);
 
 const duplicateTrack = (id: string): Promise<BaseTrack | null> => currentContainer.value.duplicateTrack(id);
 

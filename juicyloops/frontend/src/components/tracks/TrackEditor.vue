@@ -75,7 +75,7 @@ const add = (type: TrackType) => {
 
         <div v-else class="hero">
             <div>
-                <h2 class="hero-title">Start with <mark>a track</mark></h2>
+                <h2 class="hero-title">Start with a track</h2>
                 <p v-if="isPro" class="hero-text">
                     Every track is its own loop, 32 steps unless you say otherwise. Put as many as you like into <b>{{ currentContainer.name }}</b
                     >, then arrange your containers in the song.

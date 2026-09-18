@@ -1,9 +1,16 @@
 import type { ToneAudioNode } from 'tone';
 import { markRaw } from 'vue';
 import { createId } from './audio';
-import { MixBus } from './mixBus';
-import type { BaseTrack } from './tracks/BaseTrack';
+import { MixBus, type BusSnapshot } from './mixBus';
+import type { BaseTrack, TrackState } from './tracks/BaseTrack';
 import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
+
+export interface ContainerState {
+    id: string;
+    name: string;
+    bus: BusSnapshot;
+    tracks: TrackState[];
+}
 
 /**
  * A group of tracks that loop together: what the track editor edits and what the song arranges.
@@ -11,13 +18,18 @@ import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
  * All tracks are summed on the container's bus, which has its own effect rack and level before it goes to the master.
  */
 export class TrackContainer {
-    readonly id = createId();
+    readonly id: string;
     readonly tracks: BaseTrack[] = [];
 
     /** The container channel: every track feeds it, it feeds the master. Not reactive, it owns Tone nodes. */
     readonly bus = markRaw(new MixBus());
 
-    constructor(public name: string) {}
+    constructor(
+        public name: string,
+        id = createId(),
+    ) {
+        this.id = id;
+    }
 
     /** Sends the container into a node (the master bus). */
     connectTo(destination: ToneAudioNode): void {
@@ -78,6 +90,37 @@ export class TrackContainer {
             this.tracks.push(copy);
         }
         this.bus.copyFrom(source.bus);
+    }
+
+    /* ---- history ---- */
+
+    capture(): ContainerState {
+        return { id: this.id, name: this.name, bus: this.bus.capture(), tracks: this.tracks.map((track) => track.capture()) };
+    }
+
+    /**
+     * Takes a captured state back. Tracks that still exist keep their objects (and their decoded samples),
+     * deleted ones come back with their old ids, and ones the state does not know are disposed.
+     */
+    restore(state: ContainerState): void {
+        this.name = state.name;
+        this.bus.restore(state.bus);
+
+        const next = state.tracks.map((trackState) => {
+            const existing = this.tracks.find((track) => track.id === trackState.id && track.type === trackState.type);
+            const track: BaseTrack = existing ?? createTrack(trackState.type, trackState.id);
+            if (!existing) {
+                track.connectTo(this.bus.input);
+            }
+            track.restore(trackState);
+            return track;
+        });
+        for (const track of this.tracks) {
+            if (!next.includes(track)) {
+                track.dispose();
+            }
+        }
+        this.tracks.splice(0, this.tracks.length, ...next);
     }
 
     dispose(): void {

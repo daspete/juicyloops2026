@@ -88,81 +88,7 @@ export const atTime = (time: number | undefined, fn: () => void): void => {
     }
 };
 
-/* ---- step lanes (track view) ---- */
-
-/** One value per step of a track's pattern, 0..1, for one parameter. */
-export interface StepAutomationLane {
-    readonly id: string;
-    param: string;
-    /** As many entries as the track has steps. */
-    values: number[];
-}
-
-export interface StepAutomationSnapshot {
-    param: string;
-    values: number[];
-}
-
-/** The step lanes of one track. Keeps them as long as the pattern. */
-export class TrackAutomation {
-    readonly lanes: StepAutomationLane[] = [];
-
-    constructor(private length: number) {}
-
-    laneFor(param: string): StepAutomationLane | undefined {
-        return this.lanes.find((lane) => lane.param === param);
-    }
-
-    /** Adds a lane for a parameter, flat at `initial`. A parameter has one lane at most; an existing one is returned. */
-    add(param: string, initial = 0.5): StepAutomationLane {
-        const existing = this.laneFor(param);
-        if (existing) {
-            return existing;
-        }
-        const lane: StepAutomationLane = { id: createId(), param, values: Array.from({ length: this.length }, () => clamp01(initial)) };
-        this.lanes.push(lane);
-        return lane;
-    }
-
-    remove(id: string): void {
-        const index = this.lanes.findIndex((lane) => lane.id === id);
-        if (index !== -1) {
-            this.lanes.splice(index, 1);
-        }
-    }
-
-    /** Follows the pattern's length: new steps continue the last value, removed ones are gone. */
-    resize(length: number): void {
-        this.length = length;
-        for (const lane of this.lanes) {
-            if (lane.values.length > length) {
-                lane.values.splice(length);
-            } else {
-                const last = lane.values[lane.values.length - 1] ?? 0.5;
-                while (lane.values.length < length) {
-                    lane.values.push(last);
-                }
-            }
-        }
-    }
-
-    copyFrom(other: TrackAutomation): void {
-        this.lanes.splice(0);
-        for (const lane of other.lanes) {
-            this.lanes.push({ id: createId(), param: lane.param, values: [...lane.values] });
-        }
-        this.resize(this.length);
-    }
-
-    serialize(): StepAutomationSnapshot[] {
-        return this.lanes.map((lane) => ({ param: lane.param, values: [...lane.values] }));
-    }
-}
-
-/* ---- breakpoint lanes (song view) ---- */
-
-/** What a song lane drives. */
-export type AutomationTarget = { kind: 'master' } | { kind: 'container'; containerId: string } | { kind: 'track'; containerId: string; trackId: string };
+/* ---- points: the same curve in both views ---- */
 
 export interface AutomationPoint {
     step: number;
@@ -170,23 +96,13 @@ export interface AutomationPoint {
     value: number;
 }
 
-/** A parameter drawn over the song's timeline: straight lines between points, flat before the first and after the last. */
-export interface SongAutomationLane {
-    readonly id: string;
-    target: AutomationTarget;
-    param: string;
+/** Anything that carries a curve: a track's step lane or a song lane. */
+export interface AutomationCurve {
     /** Sorted by step; never two points on one step. */
     readonly points: AutomationPoint[];
 }
 
-export const createSongLane = (target: AutomationTarget, param: string): SongAutomationLane => ({ id: createId(), target, param, points: [] });
-
-export const sameTarget = (a: AutomationTarget, b: AutomationTarget): boolean =>
-    a.kind === b.kind &&
-    (a.kind === 'master' || a.containerId === (b as { containerId: string }).containerId) &&
-    (a.kind !== 'track' || a.trackId === (b as { trackId: string }).trackId);
-
-/** The lane's value at a step, or null when it has no points yet. */
+/** The curve's value at a step (straight lines between points, flat before the first and after the last), or null without points. */
 export const valueAt = (points: readonly AutomationPoint[], step: number): number | null => {
     if (!points.length) {
         return null;
@@ -206,32 +122,32 @@ export const valueAt = (points: readonly AutomationPoint[], step: number): numbe
     return points[points.length - 1]!.value;
 };
 
-const sortPoints = (lane: SongAutomationLane): void => {
-    lane.points.sort((a, b) => a.step - b.step);
+const sortPoints = (curve: AutomationCurve): void => {
+    curve.points.sort((a, b) => a.step - b.step);
 };
 
 /** Places a point, replacing any point already on that step. Returns its index. */
-export const setPoint = (lane: SongAutomationLane, step: number, value: number): number => {
+export const setPoint = (curve: AutomationCurve, step: number, value: number): number => {
     const at = Math.max(0, Math.round(step));
     const clamped = clamp01(value);
-    const existing = lane.points.find((point) => point.step === at);
+    const existing = curve.points.find((point) => point.step === at);
     if (existing) {
         existing.value = clamped;
     } else {
-        lane.points.push({ step: at, value: clamped });
-        sortPoints(lane);
+        curve.points.push({ step: at, value: clamped });
+        sortPoints(curve);
     }
-    return lane.points.findIndex((point) => point.step === at);
+    return curve.points.findIndex((point) => point.step === at);
 };
 
 /** Moves a point to another step and value. It cannot land on a neighbour; it stops next to it. Returns the new index. */
-export const movePoint = (lane: SongAutomationLane, index: number, step: number, value: number): number => {
-    const point = lane.points[index];
+export const movePoint = (curve: AutomationCurve, index: number, step: number, value: number): number => {
+    const point = curve.points[index];
     if (!point) {
         return index;
     }
-    const previous = lane.points[index - 1];
-    const next = lane.points[index + 1];
+    const previous = curve.points[index - 1];
+    const next = curve.points[index + 1];
     const low = previous ? previous.step + 1 : 0;
     const high = next ? next.step - 1 : Number.POSITIVE_INFINITY;
     point.step = Math.min(high, Math.max(low, Math.round(step)));
@@ -239,8 +155,104 @@ export const movePoint = (lane: SongAutomationLane, index: number, step: number,
     return index;
 };
 
-export const removePoint = (lane: SongAutomationLane, index: number): void => {
-    if (index >= 0 && index < lane.points.length) {
-        lane.points.splice(index, 1);
+export const removePoint = (curve: AutomationCurve, index: number): void => {
+    if (index >= 0 && index < curve.points.length) {
+        curve.points.splice(index, 1);
     }
 };
+
+/* ---- step lanes (track view) ---- */
+
+/** A curve over a track's pattern, for one parameter. Its steps run from 0 to the pattern's length. */
+export interface StepAutomationLane extends AutomationCurve {
+    readonly id: string;
+    param: string;
+}
+
+export interface StepAutomationSnapshot {
+    param: string;
+    points: AutomationPoint[];
+}
+
+/** The step lanes of one track. Keeps them inside the pattern's length. */
+export class TrackAutomation {
+    readonly lanes: StepAutomationLane[] = [];
+
+    constructor(private length: number) {}
+
+    laneFor(param: string): StepAutomationLane | undefined {
+        return this.lanes.find((lane) => lane.param === param);
+    }
+
+    /** Adds a lane for a parameter, flat at `initial` (one point at the start). A parameter has one lane at most; an existing one is returned. */
+    add(param: string, initial = 0.5): StepAutomationLane {
+        const existing = this.laneFor(param);
+        if (existing) {
+            return existing;
+        }
+        const lane: StepAutomationLane = { id: createId(), param, points: [{ step: 0, value: clamp01(initial) }] };
+        this.lanes.push(lane);
+        return lane;
+    }
+
+    remove(id: string): void {
+        const index = this.lanes.findIndex((lane) => lane.id === id);
+        if (index !== -1) {
+            this.lanes.splice(index, 1);
+        }
+    }
+
+    /** Follows the pattern's length: points past the end are dropped, the last of them lands on the last step so the curve keeps its end. */
+    resize(length: number): void {
+        this.length = length;
+        for (const lane of this.lanes) {
+            const beyond = lane.points.filter((point) => point.step >= length);
+            if (!beyond.length) {
+                continue;
+            }
+            lane.points.splice(lane.points.length - beyond.length, beyond.length);
+            const last = length - 1;
+            if (!lane.points.some((point) => point.step === last)) {
+                lane.points.push({ step: last, value: beyond[0]!.value });
+            }
+        }
+    }
+
+    copyFrom(other: TrackAutomation): void {
+        this.lanes.splice(0);
+        for (const lane of other.lanes) {
+            this.lanes.push({ id: createId(), param: lane.param, points: lane.points.map((point) => ({ ...point })) });
+        }
+        this.resize(this.length);
+    }
+
+    serialize(): StepAutomationSnapshot[] {
+        return this.lanes.map((lane) => ({ param: lane.param, points: lane.points.map((point) => ({ ...point })) }));
+    }
+
+    /** Replaces the lanes with a snapshot's, keeping the ids of lanes that are still there. */
+    restore(lanes: readonly StepAutomationSnapshot[]): void {
+        const kept = lanes.map((lane) => ({ id: this.laneFor(lane.param)?.id ?? createId(), param: lane.param, points: lane.points.map((point) => ({ ...point })) }));
+        this.lanes.splice(0, this.lanes.length, ...kept);
+        this.resize(this.length);
+    }
+}
+
+/* ---- breakpoint lanes (song view) ---- */
+
+/** What a song lane drives. */
+export type AutomationTarget = { kind: 'master' } | { kind: 'container'; containerId: string } | { kind: 'track'; containerId: string; trackId: string };
+
+/** A parameter of the master, a container or a track, drawn over the song's timeline. */
+export interface SongAutomationLane extends AutomationCurve {
+    readonly id: string;
+    target: AutomationTarget;
+    param: string;
+}
+
+export const createSongLane = (target: AutomationTarget, param: string, id = createId()): SongAutomationLane => ({ id, target, param, points: [] });
+
+export const sameTarget = (a: AutomationTarget, b: AutomationTarget): boolean =>
+    a.kind === b.kind &&
+    (a.kind === 'master' || a.containerId === (b as { containerId: string }).containerId) &&
+    (a.kind !== 'track' || a.trackId === (b as { trackId: string }).trackId);

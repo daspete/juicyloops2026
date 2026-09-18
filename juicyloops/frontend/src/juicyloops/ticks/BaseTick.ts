@@ -15,6 +15,11 @@ export class BaseTick {
         return copy;
     }
 
+    /** Takes the values of a snapshot (of the same tick class). */
+    restore(snapshot: TickSnapshot): void {
+        Object.assign(this, snapshot);
+    }
+
     serialize(): TickSnapshot {
         return {
             isActive: this.isActive,

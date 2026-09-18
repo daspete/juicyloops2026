@@ -35,7 +35,8 @@ const isMixerOpen = ref(false);
 
 const selectedTrackId = ref<string | null>(null);
 const trackTab = ref<TrackTab>('sound');
-const isDetailOpen = ref(true);
+/** Closed until a track's Tweak button or the chip in the top bar opens it. */
+const isDetailOpen = ref(false);
 
 watch(mode, (value) => {
     if (value === 'quick') {

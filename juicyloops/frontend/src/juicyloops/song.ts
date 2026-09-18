@@ -1,6 +1,12 @@
 import { createId } from './audio';
 import { createSongLane, type AutomationTarget, type SongAutomationLane } from './automation';
 
+/** The arrangement as history keeps it: plain copies of the lanes, clips and automation. */
+export interface SongState {
+    lanes: SongLane[];
+    automation: SongAutomationLane[];
+}
+
 /** Steps per bar; the song grid snaps to beats of `SONG_SNAP` steps. */
 export const SONG_STEPS_PER_BAR = 16;
 export const SONG_SNAP = 4;
@@ -29,7 +35,7 @@ export interface SongLane {
 /** Snaps a step to the song grid. */
 export const snapStep = (step: number): number => Math.max(0, Math.round(step / SONG_SNAP) * SONG_SNAP);
 
-const createLane = (name: string): SongLane => ({ id: createId(), name, isMuted: false, clips: [] });
+const createLane = (name: string, id = createId()): SongLane => ({ id, name, isMuted: false, clips: [] });
 
 /**
  * The arrangement: lanes of clips on a shared timeline measured in steps, plus automation lanes
@@ -279,6 +285,36 @@ export class Song {
     /** Forgets the automation of a deleted track. */
     removeTrack(trackId: string): void {
         this.pruneAutomation((target) => target.kind === 'track' && target.trackId === trackId);
+    }
+
+    /* ---- history ---- */
+
+    capture(): SongState {
+        return {
+            lanes: this.lanes.map((lane) => ({ ...lane, clips: lane.clips.map((clip) => ({ ...clip })) })),
+            automation: this.automation.map((lane) => ({ ...lane, target: { ...lane.target }, points: lane.points.map((point) => ({ ...point })) })),
+        };
+    }
+
+    /** Takes a captured state back. Lanes keep their objects where they still exist, so nothing jumps. */
+    restore(state: SongState): void {
+        const lanes = state.lanes.map((laneState) => {
+            const lane = this.getLane(laneState.id) ?? createLane(laneState.name, laneState.id);
+            lane.name = laneState.name;
+            lane.isMuted = laneState.isMuted;
+            lane.clips.splice(0, lane.clips.length, ...laneState.clips.map((clip) => ({ ...clip })));
+            return lane;
+        });
+        this.lanes.splice(0, this.lanes.length, ...lanes);
+
+        const automation = state.automation.map((laneState) => {
+            const lane = this.automation.find((candidate) => candidate.id === laneState.id) ?? createSongLane(laneState.target, laneState.param, laneState.id);
+            lane.target = { ...laneState.target };
+            lane.param = laneState.param;
+            lane.points.splice(0, lane.points.length, ...laneState.points.map((point) => ({ ...point })));
+            return lane;
+        });
+        this.automation.splice(0, this.automation.length, ...automation);
     }
 
     private pruneAutomation(gone: (target: AutomationTarget) => boolean): void {

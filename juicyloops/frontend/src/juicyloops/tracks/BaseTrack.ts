@@ -1,9 +1,9 @@
 import { PanVol, type ToneAudioNode } from 'tone';
 import { markRaw } from 'vue';
 import { createId } from '../audio';
-import { MIX_PARAMS, toNormalized, toValue, TrackAutomation, type Automatable, type AutomationParam, type StepAutomationLane, type StepAutomationSnapshot } from '../automation';
+import { MIX_PARAMS, toNormalized, toValue, TrackAutomation, valueAt, type Automatable, type AutomationParam, type StepAutomationLane, type StepAutomationSnapshot } from '../automation';
 import { normalizeTrackLength, PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
-import { EFFECT_PARAMS, Effects } from '../effects/effects';
+import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from '../effects/effects';
 import type { BaseTick, TickSnapshot } from '../ticks/BaseTick';
 import type { TrackType } from './registry';
 
@@ -14,6 +14,12 @@ export interface TrackSnapshot {
     volume: number;
     pan: number;
     automation: StepAutomationSnapshot[];
+}
+
+/** Everything about a track that history keeps: what `serialize` gives, minus decoded audio, plus what the user can change. */
+export interface TrackState extends TrackSnapshot {
+    isMuted: boolean;
+    effects: EffectsSnapshot;
 }
 
 /**
@@ -31,7 +37,7 @@ export interface TrackSnapshot {
  * is plain data and can be observed by the UI.
  */
 export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Automatable {
-    readonly id = createId();
+    readonly id: string;
 
     abstract readonly type: TrackType;
 
@@ -49,7 +55,8 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
     pan = 0;
     isMuted = false;
 
-    constructor() {
+    constructor(id = createId()) {
+        this.id = id;
         this.ticks = Array.from({ length: STEP_COUNT }, () => this.createTick());
     }
 
@@ -106,14 +113,19 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         return tick?.isActive ? tick : null;
     }
 
+    /** With a `time` the level is only played, not stored (automation); see `settle`. */
     setVolume(volume: number, time?: number): void {
         this.output.volume.rampTo(volume, PARAM_RAMP_TIME, time);
-        this.volume = volume;
+        if (time === undefined) {
+            this.volume = volume;
+        }
     }
 
     setPan(pan: number, time?: number): void {
         this.output.pan.rampTo(pan, PARAM_RAMP_TIME, time);
-        this.pan = pan;
+        if (time === undefined) {
+            this.pan = pan;
+        }
     }
 
     toggleMute(): void {
@@ -156,6 +168,18 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         }
     }
 
+    /** Puts the stored value of a parameter back on the sound, after automation moved it. */
+    settle(key: string): void {
+        this.setParameter(key, this.getParameter(key));
+    }
+
+    /** Puts every automated parameter of this track back to its stored value. */
+    settleAll(): void {
+        for (const lane of this.automation.lanes) {
+            this.settle(lane.param);
+        }
+    }
+
     /** Adds a step lane for a parameter, flat at the parameter's current value, so the sound does not change until you draw. */
     addAutomation(key: string): StepAutomationLane | null {
         const param = this.parameter(key);
@@ -165,8 +189,8 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
     private applyAutomation(index: number, time: number): void {
         for (const lane of this.automation.lanes) {
             const param = this.parameter(lane.param);
-            const position = lane.values[index];
-            if (param && position !== undefined) {
+            const position = valueAt(lane.points, index);
+            if (param && position !== null) {
                 this.setParameter(lane.param, toValue(param, position), time);
             }
         }
@@ -215,6 +239,33 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
     dispose(): void {
         this.effects.dispose();
         this.output.dispose();
+    }
+
+    /* ---- history ---- */
+
+    /** The track as history keeps it. Synchronous, and cheap: no audio is copied. */
+    capture(): TrackState {
+        return {
+            id: this.id,
+            type: this.type,
+            ticks: this.ticks.map((tick) => tick.serialize()),
+            volume: this.volume,
+            pan: this.pan,
+            isMuted: this.isMuted,
+            effects: this.effects.capture(),
+            automation: this.automation.serialize(),
+        };
+    }
+
+    /** Takes a captured state back. Ticks keep their objects, so the grid does not re-render from scratch. */
+    restore(state: TrackState): void {
+        this.setLength(state.ticks.length);
+        state.ticks.forEach((tick, index) => this.ticks[index]!.restore(tick));
+        this.setVolume(state.volume);
+        this.setPan(state.pan);
+        this.isMuted = state.isMuted;
+        this.effects.restore(state.effects);
+        this.automation.restore(state.automation);
     }
 
     async serialize(): Promise<TrackSnapshot> {

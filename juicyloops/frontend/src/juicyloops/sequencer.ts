@@ -1,10 +1,18 @@
 import { getDraw, getTransport } from 'tone';
-import { markRaw } from 'vue';
+import { markRaw, reactive, toRaw } from 'vue';
 import { toValue, valueAt, type Automatable, type AutomationTarget } from './automation';
 import { STEP_SUBDIVISION } from './constants';
-import { MixBus } from './mixBus';
-import { Song } from './song';
-import { TrackContainer } from './trackContainer';
+import { MixBus, type BusSnapshot } from './mixBus';
+import { Song, type SongState } from './song';
+import { TrackContainer, type ContainerState } from './trackContainer';
+
+/** The whole session as history keeps it. Tempo is added by the UI, which owns it. */
+export interface SessionState {
+    containers: ContainerState[];
+    currentContainerId: string;
+    song: SongState;
+    master: BusSnapshot;
+}
 
 /**
  * `loop` plays the current container over and over (the track editor).
@@ -18,10 +26,15 @@ export type PlaybackMode = 'loop' | 'song';
  */
 export type StepListener = (step: number) => void;
 
-/** Owns the containers, the song and the master bus, and drives playback from a repeating transport event. */
+/**
+ * Owns the containers, the song and the master bus, and drives playback from a repeating transport event.
+ *
+ * The containers and the song are reactive, so the UI sees every change made here (adding, removing,
+ * restoring from history). Playback goes through the raw objects: the audio callback must not pay for proxies.
+ */
 export class Sequencer {
-    readonly containers: TrackContainer[] = [];
-    readonly song = new Song();
+    readonly containers: TrackContainer[] = reactive([]);
+    readonly song: Song = reactive(new Song()) as Song;
 
     /** The master channel: every container feeds it, it feeds the speakers. */
     readonly master = markRaw(new MixBus());
@@ -78,9 +91,57 @@ export class Sequencer {
     }
 
     setCurrentContainer(id: string): void {
-        const container = this.getContainer(id);
+        const container = this.rawContainer(id);
         if (container) {
             this.currentContainer = container;
+        }
+    }
+
+    /** Puts every automated parameter back to its stored value, e.g. when playback stops. */
+    settleAutomation(): void {
+        for (const container of toRaw(this.containers)) {
+            for (const track of container.tracks) {
+                track.settleAll();
+            }
+        }
+        for (const lane of this.song.automation) {
+            this.resolveTarget(lane.target)?.settle(lane.param);
+        }
+    }
+
+    /* ---- history ---- */
+
+    capture(): SessionState {
+        return {
+            containers: this.containers.map((container) => container.capture()),
+            currentContainerId: this.currentContainer.id,
+            song: this.song.capture(),
+            master: this.master.capture(),
+        };
+    }
+
+    /** Takes a captured state back. Containers that still exist keep their objects, deleted ones return with their ids. */
+    restore(state: SessionState): void {
+        const next = state.containers.map((containerState) => {
+            const existing = this.getContainer(containerState.id);
+            const container = existing ?? new TrackContainer(containerState.name, containerState.id);
+            if (!existing) {
+                container.connectTo(this.master.input);
+            }
+            container.restore(containerState);
+            return container;
+        });
+        for (const container of this.containers) {
+            if (!next.includes(container)) {
+                toRaw(container).dispose();
+            }
+        }
+        this.containers.splice(0, this.containers.length, ...next);
+        this.song.restore(state.song);
+        this.master.restore(state.master);
+        this.setCurrentContainer(state.currentContainerId);
+        if (!this.containers.some((container) => container.id === this.currentContainer.id)) {
+            this.currentContainer = toRaw(this.containers[0]!);
         }
     }
 
@@ -91,22 +152,27 @@ export class Sequencer {
             return;
         }
 
-        this.containers[index]!.dispose();
+        toRaw(this.containers[index]!).dispose();
         this.containers.splice(index, 1);
         this.song.removeContainer(id);
 
         if (this.currentContainer.id === id) {
-            this.currentContainer = this.containers[Math.min(index, this.containers.length - 1)]!;
+            this.currentContainer = toRaw(this.containers[Math.min(index, this.containers.length - 1)]!);
         }
     }
 
-    /** What a song automation lane drives, or undefined when it was deleted. */
-    resolveTarget(target: AutomationTarget): Automatable | undefined {
+    /** What a song automation lane drives (the raw object, this runs during playback), or undefined when it was deleted. */
+    resolveTarget(target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined {
         if (target.kind === 'master') {
             return this.master;
         }
-        const container = this.getContainer(target.containerId);
+        const container = this.rawContainer(target.containerId);
         return target.kind === 'container' ? container?.bus : container?.getTrack(target.trackId);
+    }
+
+    /** The container without its reactive proxy, for everything that runs in the audio callback. */
+    private rawContainer(id: string): TrackContainer | undefined {
+        return toRaw(this.containers).find((container) => container.id === id);
     }
 
     /** Creates a container with copies of all tracks, right after the original. */
@@ -123,8 +189,8 @@ export class Sequencer {
         return copy;
     }
 
-    private applySongAutomation(step: number, time: number): void {
-        for (const lane of this.song.automation) {
+    private applySongAutomation(song: Song, step: number, time: number): void {
+        for (const lane of song.automation) {
             const target = this.resolveTarget(lane.target);
             const param = target?.parameters.find((candidate) => candidate.key === lane.param);
             const position = valueAt(lane.points, step);
@@ -147,17 +213,18 @@ export class Sequencer {
          * the clip's own start.
          */
         const absoluteStep = Math.round(getTransport().getTicksAtTime(time) / this.ticksPerStep);
-        const songLength = this.song.length;
+        const song = toRaw(this.song);
+        const songLength = song.length;
         const step = this.mode === 'song' ? (songLength ? absoluteStep % songLength : 0) : absoluteStep;
 
         if (this.mode === 'loop') {
             this.currentContainer.play(step, time);
         } else {
-            for (const [containerId, patternStep] of this.song.playingAt(step)) {
-                this.getContainer(containerId)?.play(patternStep, time);
+            for (const [containerId, patternStep] of song.playingAt(step)) {
+                this.rawContainer(containerId)?.play(patternStep, time);
             }
             // Song lanes come last, so they win over a track's own step lanes for the same parameter.
-            this.applySongAutomation(step, time);
+            this.applySongAutomation(song, step, time);
         }
 
         // The callback fires ahead of time (transport look-ahead), so UI updates are deferred until the step is heard.

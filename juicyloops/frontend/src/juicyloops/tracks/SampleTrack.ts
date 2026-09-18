@@ -2,13 +2,22 @@ import { Player } from 'tone';
 import { markRaw } from 'vue';
 import { decodeBlob } from '../audio';
 import { SampleTick } from '../ticks/SampleTick';
-import { BaseTrack, type TrackSnapshot } from './BaseTrack';
+import { BaseTrack, type TrackSnapshot, type TrackState } from './BaseTrack';
 
 export interface SampleTrackSnapshot extends TrackSnapshot {
     sampleName: string | null;
     sampleStartTime: number;
     sampleDuration: number;
     buffer: ArrayBuffer | null;
+}
+
+/** History keeps the sample by reference: the blob is never copied, only pointed at. */
+export interface SampleTrackState extends TrackState {
+    sampleBlob: Blob | null;
+    sampleName: string | null;
+    sampleStartTime: number;
+    sampleDuration: number;
+    isReversed: boolean;
 }
 
 /**
@@ -29,8 +38,8 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
 
     isReversed = false;
 
-    constructor() {
-        super();
+    constructor(id?: string) {
+        super(id);
         this.connectSource(this.player);
     }
 
@@ -47,6 +56,15 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         this.sampleName = name;
         this.setSampleTimes(0, buffer.duration);
         this.hasSample = true;
+    }
+
+    /** Forgets the sample; the row shows its drop zone or record button again. */
+    clearSample(): void {
+        this.player.stop();
+        this.sampleBlob = null;
+        this.sampleName = null;
+        this.hasSample = false;
+        this.setSampleTimes(0, 0);
     }
 
     setSampleTimes(start: number, duration: number): void {
@@ -85,6 +103,34 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
     dispose(): void {
         this.player.dispose();
         super.dispose();
+    }
+
+    capture(): SampleTrackState {
+        return {
+            ...super.capture(),
+            sampleBlob: this.sampleBlob,
+            sampleName: this.sampleName,
+            sampleStartTime: this.sampleStartTime,
+            sampleDuration: this.sampleDuration,
+            isReversed: this.isReversed,
+        };
+    }
+
+    restore(state: TrackState): void {
+        super.restore(state);
+        const sample = state as SampleTrackState;
+        if (sample.sampleBlob !== this.sampleBlob) {
+            if (sample.sampleBlob) {
+                // Decoding is asynchronous; the slice is set once the audio is back.
+                void this.loadSample(sample.sampleBlob, sample.sampleName).then(() => this.setSampleTimes(sample.sampleStartTime, sample.sampleDuration));
+            } else {
+                this.clearSample();
+            }
+        } else {
+            this.sampleName = sample.sampleName;
+            this.setSampleTimes(sample.sampleStartTime, sample.sampleDuration);
+        }
+        this.setReversed(sample.isReversed);
     }
 
     async serialize(): Promise<SampleTrackSnapshot> {

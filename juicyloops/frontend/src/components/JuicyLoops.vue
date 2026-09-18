@@ -4,9 +4,10 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useHistory } from '@/composables/useHistory';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useTheme } from '@/composables/useTheme';
-import { useWorkspace } from '@/composables/useWorkspace';
+import { useWorkspace, type WorkspaceMode } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
 import DetailPanel from './detail/DetailPanel.vue';
 import GiscusLoader from './GiscusLoader.vue';
@@ -19,9 +20,10 @@ import { TRACK_META } from './tracks/trackMeta';
  * The track editor and the song editor are routes rendered into the main area; the mixer docks to its right,
  * the detail panel below it.
  */
-const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode: setPlaybackMode, containers } = useJuicyLoops();
+const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode: setPlaybackMode, containers, song } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
-const { mode, isPro, setMode, isMixerOpen, toggleMixer } = useWorkspace();
+const { mode, isPro, setMode, isMixerOpen, toggleMixer, isDetailOpen, toggleDetail } = useWorkspace();
+const { canUndo, canRedo, commit, undo, redo } = useHistory();
 const route = useRoute();
 const router = useRouter();
 
@@ -29,6 +31,7 @@ const router = useRouter();
 const isSongView = computed(() => route.name === 'app.song');
 watch(isSongView, (value) => setPlaybackMode(value ? 'song' : 'loop'), { immediate: true });
 
+/* The track panel belongs to the track view: the song view hides it (and its chip) and shows it again on the way back. */
 /* Quick mode has no song view: leaving Pro while arranging brings you back to the tracks. */
 watch(
     [isPro, isSongView],
@@ -46,8 +49,8 @@ const VIEWS = [
 ] as const;
 
 const MODES = [
-    { key: 'quick', label: 'Quick', icon: 'mdi:lightning-bolt', hint: 'Just the tracks: add, paint, tweak' },
-    { key: 'pro', label: 'Pro', icon: 'mdi:tune-vertical-variant', hint: 'Containers, song arranger, mixer and automation' },
+    { key: 'quick', label: 'Quick', icon: 'mdi:lightning-bolt', hint: 'Just the tracks: add, paint, tweak', blurb: 'Just the tracks. Add one, paint steps, shape its sound.' },
+    { key: 'pro', label: 'Pro', icon: 'mdi:tune-vertical-variant', hint: 'Containers, song arranger, mixer and automation', blurb: 'The whole studio: containers, song arranger, mixer and automation.' },
 ] as const;
 
 /** What the status bar suggests, depending on where you are. */
@@ -63,7 +66,9 @@ const statusHint = computed(() => {
 const isInitialized = ref(false);
 const isDiscussionsOpen = ref(false);
 
-const initializeEngine = async () => {
+/** The first click, which the browser needs before it allows sound, also picks the mode. */
+const start = async (chosen: WorkspaceMode) => {
+    setMode(chosen);
     await engine.initialize();
     isInitialized.value = true;
 };
@@ -136,17 +141,70 @@ const isTypingTarget = (target: EventTarget | null) => {
     return !!element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable);
 };
 
-/** Space plays and stops, like in every DAW. */
+/** Space plays and stops, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, like in every DAW. */
 const onKeyDown = (event: KeyboardEvent) => {
-    if (event.code !== 'Space' || !isInitialized.value || isTypingTarget(event.target)) {
+    if (isTypingTarget(event.target)) {
         return;
     }
-    event.preventDefault();
-    togglePlay();
+    const modifier = event.ctrlKey || event.metaKey;
+    if (modifier && (event.key === 'z' || event.key === 'Z' || event.key === 'y')) {
+        event.preventDefault();
+        if (event.key === 'y' || event.shiftKey) {
+            redo();
+        } else {
+            undo();
+        }
+        return;
+    }
+    if (event.code === 'Space' && isInitialized.value) {
+        event.preventDefault();
+        togglePlay();
+    }
 };
 
-onMounted(() => window.addEventListener('keydown', onKeyDown));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
+/*
+ * History: every gesture ends in one of these events, so a snapshot is taken right after it, and once more a
+ * moment later for changes that land asynchronously (a decoded sample, a duplicated track). Changes that arrive
+ * with no gesture at all (a finished recording) are caught by the watcher on the model, once the pointer is up.
+ */
+const HISTORY_EVENTS = ['pointerup', 'keyup', 'change', 'drop', 'dragend'] as const;
+const LATE_COMMIT_MS = 500;
+let lateCommit: ReturnType<typeof setTimeout> | null = null;
+let isPointerDown = false;
+
+const scheduleCommit = () => {
+    queueMicrotask(commit);
+    if (lateCommit) {
+        clearTimeout(lateCommit);
+    }
+    lateCommit = setTimeout(commit, LATE_COMMIT_MS);
+};
+
+const onPointerDown = () => (isPointerDown = true);
+const onPointerUp = () => (isPointerDown = false);
+
+watch(
+    [containers, song],
+    () => {
+        if (!isPointerDown) {
+            scheduleCommit();
+        }
+    },
+    { deep: true, flush: 'post' },
+);
+
+onMounted(() => {
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('pointerup', onPointerUp, true);
+    HISTORY_EVENTS.forEach((type) => window.addEventListener(type, scheduleCommit, true));
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pointerdown', onPointerDown, true);
+    window.removeEventListener('pointerup', onPointerUp, true);
+    HISTORY_EVENTS.forEach((type) => window.removeEventListener(type, scheduleCommit, true));
+});
 </script>
 
 <template>
@@ -217,6 +275,15 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                     <span class="vrule"></span>
                     <button type="button" class="iconbtn" v-tooltip.bottom="'Tap along to set the tempo'" @click="tapTempo">Tap</button>
                 </div>
+
+                <div class="history">
+                    <button type="button" class="iconbtn" :disabled="!canUndo" aria-label="Undo" v-tooltip.bottom="'Undo (Ctrl+Z)'" @click="undo">
+                        <Icon icon="mdi:undo" class="w-5 h-5" />
+                    </button>
+                    <button type="button" class="iconbtn" :disabled="!canRedo" aria-label="Redo" v-tooltip.bottom="'Redo (Ctrl+Shift+Z)'" @click="redo">
+                        <Icon icon="mdi:redo" class="w-5 h-5" />
+                    </button>
+                </div>
             </div>
 
             <div class="transportbar-right">
@@ -237,6 +304,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                         <span>{{ item.label }}</span>
                     </button>
                 </div>
+                <button
+                    v-if="!isSongView"
+                    type="button"
+                    class="chip"
+                    :data-active="isDetailOpen"
+                    :aria-pressed="isDetailOpen"
+                    v-tooltip.bottom="'Track panel: sound, pattern tools and effects of the selected track'"
+                    @click="toggleDetail"
+                >
+                    <Icon icon="mdi:tune-variant" class="w-4 h-4" />
+                    <span>Tweak</span>
+                </button>
                 <button
                     v-if="isPro"
                     type="button"
@@ -266,6 +345,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
         </header>
 
         <div class="stage">
+            <DetailPanel v-if="isDetailOpen && !isSongView" />
             <main class="workspace">
                 <Suspense>
                     <RouterView v-slot="{ Component }">
@@ -276,11 +356,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
             <MixPanel v-if="isPro && isMixerOpen" />
         </div>
 
-        <DetailPanel />
-
         <footer class="statusbar">
             <span class="statusbar-hint">{{ statusHint }}</span>
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
+            <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             <span class="flex-1"></span>
             <span class="statusbar-credit">
                 Made with ❤️ in Vienna by <a href="https://daspete.at" target="_blank" rel="noopener noreferrer">Pete</a>
@@ -294,14 +373,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                 <JuicyLogo />
             </div>
             <h1 class="welcome-title">Make a loop<br />in a minute.</h1>
-            <p class="welcome-text">Add a track, tap some steps, press play. Your browser needs one click before it is allowed to make sound.</p>
+            <p class="welcome-text">Add a track, tap some steps, press play. Pick how much studio you want; you can switch any time from the top bar.</p>
             <div class="welcome-juice" aria-hidden="true">
                 <span v-for="(meta, type) in TRACK_META" :key="type" :style="{ '--jl-accent': meta.accent }"><i></i>{{ meta.label }}</span>
             </div>
-            <button type="button" class="playbtn playbtn--wide" @click="initializeEngine">
-                <Icon icon="material-symbols:play-arrow-rounded" class="w-6 h-6" />
-                <span>Start</span>
-            </button>
+            <div class="welcome-modes">
+                <button v-for="item in MODES" :key="item.key" type="button" class="modecard" :data-mode="item.key" :data-current="mode === item.key" @click="start(item.key)">
+                    <span class="modecard-icon"><Icon :icon="item.icon" class="w-5 h-5" /></span>
+                    <span class="modecard-title">{{ item.label }}</span>
+                    <span class="modecard-text">{{ item.blurb }}</span>
+                    <span class="modecard-go"><Icon icon="material-symbols:play-arrow-rounded" class="w-4 h-4" /> Start</span>
+                </button>
+            </div>
+            <p class="welcome-foot">Your browser needs this one click before it is allowed to make sound.</p>
         </div>
     </div>
 

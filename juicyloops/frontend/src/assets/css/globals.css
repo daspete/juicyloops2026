@@ -174,7 +174,7 @@ textarea {
 
 /*
  * The app is one column that fills the window, like any DAW: transport on top, the stage in the middle
- * (the workspace, with the mixer docked to its right in Pro mode), the detail panel docked below it
+ * (the workspace, with the track panel docked to its left and the mixer to its right)
  * and a status line at the very bottom. Only the workspace scrolls.
  */
 .app {
@@ -280,7 +280,7 @@ textarea {
     border-radius: 0.4rem;
 }
 
-:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn, .tool, .mutebtn, .detail-toggle, .detail-tab, .modeswitch-item, .select, .auto-point):focus-visible {
+:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn, .tool, .mutebtn, .detail-tab, .modeswitch-item, .select, .auto-point):focus-visible {
     outline: 2px solid var(--jl-accent);
     outline-offset: 2px;
 }
@@ -622,6 +622,18 @@ textarea {
 .bpm-input:focus-visible,
 .bpm-input--dragging {
     color: var(--jl-brand-2);
+}
+
+/* Undo and redo, next to the tempo. */
+.history {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    height: 2.3rem;
+    padding: 0 0.2rem;
+    border-radius: 0.6rem;
+    background: var(--jl-bg);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
 }
 
 /* ---------- view switcher ---------- */
@@ -1016,27 +1028,104 @@ textarea {
 
 /* ---------- automation lanes (track view) ---------- */
 
+/*
+ * Like the piano roll, the lanes reach back under the channel head: every lane has a head column of the same width
+ * as the track head, so the bars stay aligned with the grid and the playhead beam runs between head and grid.
+ */
 .automation {
-    gap: 0.6rem;
+    margin-left: calc(-1 * var(--jl-head-space));
+    gap: 0.5rem;
+}
+
+.autolane,
+.automation-foot {
+    display: grid;
+    grid-template-columns: var(--jl-track-head) max-content;
+    align-items: center;
+    gap: 0 var(--jl-track-gap);
 }
 
 .autolane {
     --jl-lane-color: var(--jl-auto);
+}
+
+/* As wide as the pad grid of the pattern (`--jl-auto-beats` beats), so the curve spans exactly the loop. */
+.autolane-body {
+    position: relative;
+    width: calc(var(--jl-auto-beats) * (var(--jl-beat-w) + var(--jl-beat-gap)) - var(--jl-beat-gap));
+    height: 3.6rem;
+    border-radius: 0.45rem;
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: none;
+    background:
+        linear-gradient(180deg, color-mix(in oklab, var(--jl-auto) 8%, transparent), transparent),
+        repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(400% / var(--jl-auto-steps))),
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(100% / var(--jl-auto-steps))),
+        var(--jl-cell);
+}
+
+.autolane-target {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    height: 1.55rem;
+    padding: 0 0.5rem;
+    border-radius: 0.5rem;
+    background: color-mix(in oklab, var(--jl-accent) 14%, transparent);
+    color: var(--jl-accent);
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The head stays put while the timeline scrolls, like the track head above it. */
+.autolane-head,
+.automation-foot-head {
+    position: sticky;
+    left: var(--jl-row-pad);
+    z-index: 2;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    gap: 0.3rem;
+    min-width: 0;
+    height: 100%;
+    padding: 0.3rem 0.4rem 0.3rem 0.8rem;
+    border-radius: 0.55rem;
+    background: var(--jl-panel);
+    box-shadow:
+        inset 0 0 0 1px var(--jl-line),
+        calc(-1 * var(--jl-row-pad)) 0 0 0 var(--jl-bg);
+}
+
+.autolane-head::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 3px;
+    border-radius: 0 999px 999px 0;
+    background: var(--jl-auto);
+}
+
+.autolane-head .arr-head-title {
     gap: 0.35rem;
 }
 
-.autolane .barlane-cell {
-    height: 3rem;
-    background: color-mix(in oklab, var(--jl-auto) 8%, var(--jl-cell));
+.autolane-head .select {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
 }
 
-.autolane-head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-height: 1.75rem;
+.automation-foot-head {
+    box-shadow: none;
+    background: transparent;
 }
 
 .autolane-swatch {
@@ -1615,12 +1704,19 @@ textarea {
 
 /* The tool row under the volume: what the row can show or open. */
 .tools {
-    display: flex;
-    align-items: center;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
     gap: 2px;
     padding: 2px;
     border-radius: 0.55rem;
     background: color-mix(in oklab, var(--jl-cell) 70%, transparent);
+}
+
+/* With four tools the row would overflow the head; two rows of two keep every label readable. */
+.tools:has(> :nth-child(4)) {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .tool {
@@ -1628,9 +1724,9 @@ textarea {
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
-    flex: 1 1 0;
+    min-width: 0;
     height: 1.6rem;
-    padding: 0 0.4rem;
+    padding: 0 0.3rem;
     border-radius: 0.4rem;
     font-size: 0.74rem;
     font-weight: 600;
@@ -1741,6 +1837,24 @@ textarea {
         flex-basis: var(--jl-key-width);
         padding-right: 0;
     }
+
+    .automation {
+        margin-left: 0;
+    }
+
+    .autolane,
+    .automation-foot {
+        grid-template-columns: max-content;
+        gap: 0.35rem 0;
+    }
+
+    .autolane-head,
+    .automation-foot-head {
+        position: static;
+        width: var(--jl-lane);
+        height: auto;
+        box-shadow: inset 0 0 0 1px var(--jl-line);
+    }
 }
 
 /* ---------- empty state and add cards ---------- */
@@ -1765,12 +1879,6 @@ textarea {
     letter-spacing: -0.03em;
 }
 
-.hero-title mark {
-    background: var(--jl-brand-gradient);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-}
 
 .hero-text {
     max-width: 34rem;
@@ -2000,51 +2108,88 @@ textarea {
     color: var(--jl-muted);
 }
 
-/* ---------- detail panel ---------- */
+/* ---------- docks (track panel on the left, mixer on the right) ---------- */
 
 /*
- * Docked under the workspace, it shows the sound, pattern tools and effects of the selected track.
- * The bar stays when the panel is folded away, so it is one click from coming back.
+ * The two side panels of the stage. The track panel (Tweak) docks left of the workspace, the mixer right of it,
+ * both in signal order with the tracks in between. On narrow screens they slide over the workspace instead of squeezing it.
  */
-.detail {
-    flex-shrink: 0;
+.dock {
+    flex: 0 0 var(--jl-dock-w);
     display: flex;
     flex-direction: column;
+    min-height: 0;
     background: var(--jl-panel);
-    border-top: 1px solid var(--jl-line);
     position: relative;
-    z-index: 10;
+    z-index: 8;
 }
 
-.detail-bar {
+.dock--left {
+    --jl-dock-w: 25rem;
+    border-right: 1px solid var(--jl-line);
+    box-shadow: 12px 0 30px -24px rgba(0, 0, 0, 0.5);
+}
+
+.dock--right {
+    --jl-dock-w: 23rem;
+    border-left: 1px solid var(--jl-line);
+    box-shadow: -12px 0 30px -24px rgba(0, 0, 0, 0.5);
+}
+
+.dock-bar {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    height: 2.6rem;
-    padding: 0 0.9rem 0 0.5rem;
+    gap: 0.5rem;
+    height: 2.75rem;
+    padding: 0 0.5rem 0 0.9rem;
+    flex-shrink: 0;
     border-bottom: 1px solid var(--jl-line);
-    overflow: hidden;
-}
-
-.detail[data-open='false'] .detail-bar {
-    border-bottom: 0;
-}
-
-.detail-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.6rem;
-    height: 1.6rem;
-    border-radius: 0.4rem;
     color: var(--jl-muted);
-    cursor: pointer;
 }
 
-.detail-toggle:hover {
-    background: var(--jl-cell-hover);
+.dock-title {
+    font-family: var(--font-display);
+    font-weight: 700;
     color: var(--jl-text);
 }
+
+.dock-note {
+    font-size: 0.72rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.dock-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.9rem;
+}
+
+@media (max-width: 71.9rem) {
+    .dock {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: min(var(--jl-dock-w), 100%);
+    }
+
+    .dock--left {
+        left: 0;
+        box-shadow: 20px 0 50px -20px rgba(0, 0, 0, 0.55);
+    }
+
+    .dock--right {
+        right: 0;
+        box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.55);
+    }
+}
+
+/* ---------- track panel (Tweak) ---------- */
 
 /* Which track the panel is about: its badge and name, lit in its own colour. */
 .detail-scope {
@@ -2060,6 +2205,7 @@ textarea {
     font-weight: 700;
     color: var(--jl-text);
     white-space: nowrap;
+    min-width: 0;
 }
 
 .detail-scope[data-empty='true'] {
@@ -2070,19 +2216,26 @@ textarea {
 
 .detail-scope-name {
     font-family: var(--font-display);
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
+/* The pages of the panel, a row of tabs under its bar. */
 .detail-tabs {
-    display: inline-flex;
-    gap: 0.1rem;
+    display: flex;
+    flex-shrink: 0;
+    padding: 0 0.5rem;
+    border-bottom: 1px solid var(--jl-line);
 }
 
 .detail-tab {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.4rem;
-    height: 2.6rem;
-    padding: 0 0.7rem;
+    flex: 1 1 0;
+    height: 2.4rem;
+    padding: 0 0.5rem;
     font-size: 0.8rem;
     font-weight: 600;
     color: var(--jl-muted);
@@ -2105,89 +2258,22 @@ textarea {
 
 .detail-note {
     font-size: 0.76rem;
+    line-height: 1.4;
     color: var(--jl-muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.detail-body {
-    height: 14.5rem;
-    overflow: auto;
-    padding: 0.9rem 1rem 1rem;
 }
 
 .detail-empty {
     display: flex;
+    flex-direction: column;
     align-items: center;
     gap: 0.6rem;
-    height: 100%;
-    justify-content: center;
+    padding: 2rem 1rem;
+    text-align: center;
     color: var(--jl-muted);
     font-size: 0.85rem;
 }
 
-@media (max-width: 47.9rem) {
-    .detail-tabs {
-        display: none;
-    }
-
-    .detail-note {
-        display: none;
-    }
-}
-
 /* ---------- mixer (container channel, master) ---------- */
-
-/*
- * Docked to the right of the workspace: the two summing stages after the tracks, in signal order top to bottom.
- * On narrow screens it slides over the workspace instead of squeezing it.
- */
-.mixer {
-    flex: 0 0 23rem;
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-    background: var(--jl-panel);
-    border-left: 1px solid var(--jl-line);
-    box-shadow: -12px 0 30px -24px rgba(0, 0, 0, 0.5);
-    position: relative;
-    z-index: 8;
-}
-
-.mixer-bar {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 2.75rem;
-    padding: 0 0.5rem 0 0.9rem;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--jl-line);
-    color: var(--jl-muted);
-}
-
-.mixer-title {
-    font-family: var(--font-display);
-    font-weight: 700;
-    color: var(--jl-text);
-}
-
-.mixer-note {
-    font-size: 0.72rem;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.mixer-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.9rem;
-}
 
 .mixer-flow {
     display: flex;
@@ -2253,25 +2339,18 @@ textarea {
     gap: 0.5rem;
 }
 
-@media (max-width: 71.9rem) {
-    .mixer {
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(23rem, 100%);
-        box-shadow: -20px 0 50px -20px rgba(0, 0, 0, 0.55);
-    }
-}
-
 /* ---------- settings ---------- */
 
 /* Settings sit in one wrapping row with a common rhythm; every block has a label above one control strip. */
 .settings {
     display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 1rem;
+}
+
+.settings .setting-row {
     flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 1rem 1.5rem;
 }
 
 .setting-row--tall {
@@ -2637,6 +2716,9 @@ textarea {
     left: 0;
     z-index: 4;
     flex: 0 0 var(--jl-lane-head);
+    width: var(--jl-lane-head);
+    min-width: 0;
+    overflow: hidden;
     background: var(--jl-panel);
     border-right: 1px solid var(--jl-line);
 }
@@ -2914,12 +2996,20 @@ textarea {
     gap: 0.35rem;
 }
 
+/* The menus take what is left of the column instead of widening it. */
+.arr-head--auto .select {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+}
+
 .arr-row--auto {
     --jl-lane-color: var(--jl-auto);
 }
 
 /* The lane body: the curve is drawn with the timeline's units, the points sit on top as real circles. */
 .arr-lane--auto {
+    position: relative;
     height: 4rem;
     cursor: crosshair;
     background:
@@ -2928,8 +3018,12 @@ textarea {
         repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--jl-song-step)));
 }
 
-.arr-lane--auto[data-dragging='true'] {
+.auto-body[data-dragging='true'] {
     cursor: grabbing;
+}
+
+.auto-body[data-disabled='true'] {
+    cursor: not-allowed;
 }
 
 .auto-curve {
@@ -2997,13 +3091,13 @@ textarea {
 }
 
 .auto-hint {
-    position: sticky;
-    left: calc(var(--jl-lane-head) + 1rem);
+    position: absolute;
+    left: 1rem;
     top: 50%;
-    display: inline-block;
-    margin: 1.3rem 0 0 1rem;
+    transform: translateY(-50%);
     font-size: 0.74rem;
     color: var(--jl-muted);
+    white-space: nowrap;
     pointer-events: none;
 }
 
@@ -3102,6 +3196,97 @@ textarea {
 .welcome-juice {
     display: flex;
     gap: 0.5rem;
+}
+
+/* The two ways in. One click picks the mode and wakes the audio. */
+.welcome-modes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+}
+
+.modecard {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
+    padding: 1rem 1rem 0.9rem;
+    border-radius: 0.9rem;
+    border: 1px solid var(--jl-line);
+    background: var(--jl-raised);
+    text-align: left;
+    cursor: pointer;
+    transition:
+        transform 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.modecard:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in oklab, var(--jl-brand) 60%, transparent);
+    box-shadow: 0 16px 34px -14px color-mix(in oklab, var(--jl-brand) 65%, transparent);
+}
+
+.modecard:focus-visible {
+    outline: 2px solid var(--jl-brand);
+    outline-offset: 2px;
+}
+
+.modecard[data-current='true'] {
+    border-color: color-mix(in oklab, var(--jl-brand) 60%, transparent);
+}
+
+.modecard-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 0.65rem;
+    background: color-mix(in oklab, var(--jl-brand) 18%, transparent);
+    color: var(--jl-brand);
+}
+
+.modecard[data-mode='pro'] .modecard-icon {
+    background: var(--jl-brand-gradient);
+    color: var(--jl-brand-ink);
+}
+
+.modecard-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.15rem;
+    letter-spacing: -0.01em;
+}
+
+.modecard-text {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: var(--jl-muted);
+}
+
+.modecard-go {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    margin-top: 0.3rem;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--jl-brand);
+}
+
+.welcome-foot {
+    font-size: 0.74rem;
+    color: var(--jl-muted);
+}
+
+@media (max-width: 30rem) {
+    .welcome-modes {
+        grid-template-columns: 1fr;
+    }
 }
 
 .welcome-juice span {

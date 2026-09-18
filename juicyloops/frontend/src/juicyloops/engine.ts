@@ -2,7 +2,7 @@ import { Context, getTransport, setContext, start, type TransportInstance } from
 import type { Automatable, AutomationTarget } from './automation';
 import { DEFAULT_BPM } from './constants';
 import type { MixBus } from './mixBus';
-import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
+import { Sequencer, type PlaybackMode, type SessionState, type StepListener } from './sequencer';
 import type { TrackContainer } from './trackContainer';
 
 /**
@@ -44,8 +44,10 @@ export class Engine {
         this.transport.start();
     }
 
+    /** Stops, and puts every automated value back to what its knob says. */
     stop(): void {
         this.transport.stop();
+        this.sequencer.settleAutomation();
     }
 
     setBpm(bpm: number): void {
@@ -70,8 +72,18 @@ export class Engine {
     }
 
     /** What a song automation lane drives, or undefined when it was deleted. */
-    resolveTarget(target: AutomationTarget): Automatable | undefined {
+    resolveTarget(target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined {
         return this.sequencer.resolveTarget(target);
+    }
+
+    /* ---- history ---- */
+
+    capture(): SessionState {
+        return this.sequencer.capture();
+    }
+
+    restore(state: SessionState): void {
+        this.sequencer.restore(state);
     }
 
     onStep(listener: StepListener): () => void {

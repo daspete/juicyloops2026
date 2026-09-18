@@ -5,6 +5,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { STEP_COUNT } from '@/juicyloops/constants';
+import type { SongAutomationLane as SongAutomationLaneModel } from '@/juicyloops/automation';
 import { SONG_SNAP, SONG_STEPS_PER_BAR, snapStep, type SongClip, type SongLane } from '@/juicyloops/song';
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import { TRACK_META } from '../tracks/trackMeta';
@@ -21,7 +22,7 @@ import SongAutomationLane from './SongAutomationLane.vue';
  * paints that clip again and again along the lane.
  * Automation lanes below the clips draw a value of the master, a container or a track over the same timeline.
  */
-const { bpm, containers, song, currentStep, isPlaying, playFrom, selectContainer } = useJuicyLoops();
+const { bpm, containers, song, currentStep, isPlaying, playFrom, selectContainer, resolveTarget } = useJuicyLoops();
 const confirm = useConfirm();
 const router = useRouter();
 
@@ -103,6 +104,12 @@ const duplicateClip = (id: string) => {
 
 /** A new automation lane starts on the master's level; the lane's own menus change what it drives. */
 const addAutomation = () => song.value.addAutomation({ kind: 'master' }, 'volume');
+
+/** Removing a lane puts the value back where its knob is. */
+const removeAutomation = (lane: SongAutomationLaneModel) => {
+    resolveTarget(lane.target)?.settle(lane.param);
+    song.value.removeAutomation(lane.id);
+};
 
 /** Spreads the lanes over the hue wheel. */
 const automationHue = (index: number) => 200 + index * 47;
@@ -414,7 +421,7 @@ onBeforeUnmount(() => {
     <div class="page">
         <div v-if="!hasTracks" class="hero">
             <div>
-                <h2 class="hero-title">Nothing to <mark>arrange</mark> yet</h2>
+                <h2 class="hero-title">Nothing to arrange yet</h2>
                 <p class="hero-text">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
             </div>
             <RouterLink :to="{ name: 'app.index' }" class="playbtn playbtn--wide">
@@ -624,7 +631,7 @@ onBeforeUnmount(() => {
                             :lane="lane"
                             :total-steps="totalSteps"
                             :hue="automationHue(index)"
-                            @remove="song.removeAutomation(lane.id)"
+                            @remove="removeAutomation(lane)"
                         />
                     </template>
 

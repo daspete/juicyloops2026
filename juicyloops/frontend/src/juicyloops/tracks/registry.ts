@@ -21,4 +21,5 @@ export type AnyTrack = TrackOf<TrackType>;
 
 export const TRACK_TYPES = Object.keys(TRACK_CLASSES) as TrackType[];
 
-export const createTrack = <T extends TrackType>(type: T): TrackOf<T> => new TRACK_CLASSES[type]() as TrackOf<T>;
+/** A new track, with a given id when one is brought back from history. */
+export const createTrack = <T extends TrackType>(type: T, id?: string): TrackOf<T> => new TRACK_CLASSES[type](id) as TrackOf<T>;

@@ -19,6 +19,12 @@ import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type Ef
 
 export type { EffectKey, EffectParamKey } from './definitions';
 
+/** The stored state of a rack: the chain order and every parameter value. */
+export interface EffectsSnapshot {
+    order: EffectKey[];
+    params: Record<EffectKey, Record<string, number>>;
+}
+
 /** Anything with a numeric `value`, i.e. a Tone `Param` or `Signal`. */
 interface ValueHolder {
     value: number;
@@ -196,11 +202,45 @@ export class Effects {
         return address ? (this.params[address.effect][address.param] ?? 0) : 0;
     }
 
-    /** Sets a parameter by its automation address, at `time` when given. */
+    /**
+     * Sets a parameter by its automation address. With a `time` the value is only played, not stored:
+     * automation moves the sound, the knob keeps what the user set, and `settle` brings the sound back to it.
+     */
     setParameter(key: string, value: number, time?: number): void {
         const address = parseParamKey(key);
+        if (!address) {
+            return;
+        }
+        if (time === undefined) {
+            this.apply(address.effect, address.param, value);
+        } else {
+            this.applyLive(address.effect, address.param, value, time);
+        }
+    }
+
+    /** Puts the stored value of a parameter back on its node, after automation moved it. */
+    settle(key: string): void {
+        const address = parseParamKey(key);
         if (address) {
-            this.apply(address.effect, address.param, value, time);
+            this.apply(address.effect, address.param, this.params[address.effect][address.param] ?? 0);
+        }
+    }
+
+    capture(): EffectsSnapshot {
+        return {
+            order: [...this.chain],
+            params: Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, { ...this.params[effect] }])) as EffectsSnapshot['params'],
+        };
+    }
+
+    restore(snapshot: EffectsSnapshot): void {
+        this.setOrder(snapshot.order);
+        for (const effect of EFFECT_KEYS) {
+            for (const [param, value] of Object.entries(snapshot.params[effect] ?? {})) {
+                if (this.params[effect][param] !== value) {
+                    this.apply(effect, param, value);
+                }
+            }
         }
     }
 
@@ -221,12 +261,8 @@ export class Effects {
         this.nodes.clear();
     }
 
-    /**
-     * Stores a value and pushes it to the node. A node is created when the effect becomes audible.
-     * It is only thrown away when the user turns the effect dry: automation sweeping through zero
-     * every bar must not rebuild a reverb every bar.
-     */
-    private apply(effect: EffectKey, param: string, value: number, time?: number): void {
+    /** Stores a value and pushes it to the node. The node comes and goes with the effect being audible. */
+    private apply(effect: EffectKey, param: string, value: number): void {
         this.params[effect][param] = value;
 
         const shouldExist = this.isNeeded(effect);
@@ -234,11 +270,29 @@ export class Effects {
 
         if (shouldExist && !node) {
             this.createNode(effect);
-        } else if (!shouldExist && node && time === undefined) {
+        } else if (!shouldExist && node) {
             this.destroyNode(effect);
         } else if (node) {
-            this.applyParam(node, effect, param, value, true, time);
+            this.applyParam(node, effect, param, value, true);
         }
+    }
+
+    /**
+     * Plays a value at a time without storing it. A node that does not exist yet is created when the value
+     * would make the effect audible; it is never thrown away here, automation sweeping through zero every bar
+     * must not rebuild a reverb every bar.
+     */
+    private applyLive(effect: EffectKey, param: string, value: number, time: number): void {
+        let node = this.nodes.get(effect);
+        if (!node) {
+            const audible = param === 'wet' ? value > 0 : this.isNeeded(effect);
+            if (!audible) {
+                return;
+            }
+            this.createNode(effect);
+            node = this.nodes.get(effect)!;
+        }
+        this.applyParam(node, effect, param, value, true, time);
     }
 
     /** An effect with a mix control is needed once it is not fully dry; the others are always in the chain. */

@@ -41,32 +41,40 @@ describe('parameter ranges', () => {
 });
 
 describe('TrackAutomation', () => {
-    it('keeps one lane per parameter, as long as the pattern', () => {
+    it('keeps one lane per parameter, inside the pattern', () => {
         const automation = new TrackAutomation(8);
         const lane = automation.add('volume', 0.25);
-        expect(lane.values).toEqual(Array(8).fill(0.25));
+        expect(lane.points).toEqual([{ step: 0, value: 0.25 }]);
+        expect(valueAt(lane.points, 5)).toBe(0.25);
         expect(automation.add('volume', 0.9)).toBe(lane);
         expect(automation.lanes).toHaveLength(1);
 
-        lane.values[7] = 1;
+        setPoint(lane, 7, 1);
+        setPoint(lane, 11, 0);
         automation.resize(12);
-        expect(lane.values).toHaveLength(12);
-        expect(lane.values.slice(8)).toEqual([1, 1, 1, 1]);
+        expect(lane.points.map((point) => point.step)).toEqual([0, 7, 11]);
 
+        // Shrinking drops what is past the end; the first dropped point lands on the last step so the curve keeps going there.
         automation.resize(4);
-        expect(lane.values).toEqual([0.25, 0.25, 0.25, 0.25]);
+        expect(lane.points).toEqual([
+            { step: 0, value: 0.25 },
+            { step: 3, value: 1 },
+        ]);
 
         automation.remove(lane.id);
         expect(automation.lanes).toHaveLength(0);
     });
 
     it('copies lanes from another track and fits them to its own length', () => {
-        const source = new TrackAutomation(4);
-        source.add('pan', 0.5).values[3] = 0;
+        const source = new TrackAutomation(16);
+        setPoint(source.add('pan', 0.5), 12, 0);
         const copy = new TrackAutomation(8);
         copy.copyFrom(source);
         expect(copy.lanes[0]!.id).not.toBe(source.lanes[0]!.id);
-        expect(copy.lanes[0]!.values).toEqual([0.5, 0.5, 0.5, 0, 0, 0, 0, 0]);
+        expect(copy.lanes[0]!.points).toEqual([
+            { step: 0, value: 0.5 },
+            { step: 7, value: 0 },
+        ]);
     });
 });
 
