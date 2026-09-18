@@ -1,39 +1,221 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { ALL_NOTES_DESCENDING, nearestNoteLength, noteLengthSteps } from '@/juicyloops/notes';
 import type { SynthTick } from '@/juicyloops/ticks/SynthTick';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
-import { Button, Popover, Slider, VirtualScroller } from 'primevue';
-import { computed, nextTick, ref } from 'vue';
-import TrackPatternSettings from './settings/TrackPatternSettings.vue';
-import SynthPatternSettings from './settings/SynthPatternSettings.vue';
-import SynthSettings from './settings/SynthSettings.vue';
-import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
-import EffectRack from '../effects/EffectRack.vue';
-
-const { tracks, currentTick, removeTrack, duplicateTrack } = useJuicyLoops();
+import { VirtualScroller } from 'primevue';
+import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue';
+import TickGrid, { type StepSpan } from './TickGrid.vue';
+import TrackShell from './TrackShell.vue';
+import { beatsOf } from './steps';
 
 const props = defineProps<{
-    trackId: string;
+    track: SynthTrack;
     trackIndex: number;
 }>();
 
-const track = computed(() => tracks.value.find((t) => t.id === props.trackId) as SynthTrack);
+const { currentTick: playingStep, trackStep, isPlaying } = useJuicyLoops();
+
+/** The playhead inside this track's own pattern; off the grid while stopped, so no pad is lit for nothing. */
+const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -1));
+const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
+
+const beats = computed(() => beatsOf(props.track.length));
+
+const ROW_HEIGHT = 24;
 
 const isPianoRollExpanded = ref(false);
-const isVolumeSettingsExpanded = ref(false);
 
-const scroller = ref();
-const settingsPopover = ref();
-const volumePopover = ref();
+/** One note bar in a piano roll row: where it starts, how many cells it covers, and how much of a cell a short note fills. */
+interface RollNote {
+    head: number;
+    end: number;
+    fill: number;
+}
 
-const availableNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const availableOctaves = Array.from({ length: 11 }, (_, i) => i);
+/** Last cell index a note starting at `index` covers. */
+const noteEnd = (index: number, steps: number) => Math.min(props.track.length - 1, index + Math.max(1, steps) - 1);
 
-const allNotes = availableOctaves.flatMap((octave) => availableNotes.map((note) => `${note}${octave}`));
-allNotes.reverse();
+const rowNotes = (note: string): RollNote[] =>
+    props.track.ticks.flatMap((tick, index) => {
+        if (tick.note !== note || !tick.isActive) {
+            return [];
+        }
+        const steps = noteLengthSteps(tick.duration);
+        return [{ head: index, end: noteEnd(index, steps), fill: Math.min(1, steps) }];
+    });
 
-const updateTick = (tick: SynthTick, note: string) => {
+/* Where a cell sits inside the row, in the same units the grid is laid out in, so note bars line up with the cells under them. */
+const cellLeft = (step: number) => `${Math.floor(step / 4)} * (var(--jl-beat-w) + var(--jl-beat-gap)) + ${step % 4} * (var(--jl-cell-w) + 3px)`;
+
+const noteStyle = (note: RollNote) => ({
+    left: `calc(${cellLeft(note.head)})`,
+    width: note.fill < 1 ? `calc(var(--jl-cell-w) * ${note.fill})` : `calc(${cellLeft(note.end)} - (${cellLeft(note.head)}) + var(--jl-cell-w))`,
+});
+
+/** Decoration of the main grid: which cells are covered by longer notes, and where each note ends (for the end handle). */
+const gridSpans = computed(() => {
+    const spans = new Map<number, StepSpan>();
+    const endHead = new Map<number, number>();
+    props.track.ticks.forEach((tick, index) => {
+        if (!tick.isActive) {
+            return;
+        }
+        const steps = noteLengthSteps(tick.duration);
+        const end = noteEnd(index, steps);
+        endHead.set(end, index);
+        spans.set(index, { ...spans.get(index), fill: Math.min(1, steps), openEnd: end > index });
+        for (let cell = index + 1; cell <= end; cell++) {
+            spans.set(cell, { ...spans.get(cell), tail: true, openEnd: cell < end });
+        }
+    });
+    return { spans, endHead };
+});
+
+/* ---- resizing notes by their handles ---- */
+
+type Resize = { edge: 'start' | 'end'; head: number; anchorY: number };
+let resize: Resize | null = null;
+
+/** The step cell at a point, also when a note bar is drawn over it. */
+const cellUnder = (clientX: number, clientY: number) => {
+    for (const element of document.elementsFromPoint(clientX, clientY)) {
+        const cell = element.closest<HTMLElement>('[data-step]');
+        if (cell) {
+            return cell;
+        }
+    }
+    return null;
+};
+
+const onResizeMove = (event: PointerEvent) => {
+    if (!resize) {
+        return;
+    }
+
+    const cell = cellUnder(event.clientX, resize.anchorY);
+    if (!cell) {
+        return;
+    }
+
+    const step = Number(cell.dataset.step);
+    const tick = props.track.ticks[resize.head]!;
+
+    if (resize.edge === 'end') {
+        if (step <= resize.head) {
+            // Inside the note's own cell: the horizontal position picks a fraction of a step.
+            const rect = cell.getBoundingClientRect();
+            const ratio = (event.clientX - rect.left) / rect.width;
+            tick.duration = ratio < 0.375 ? '64n' : ratio < 0.75 ? '32n' : '16n';
+        } else {
+            tick.duration = nearestNoteLength(step - resize.head + 1);
+        }
+        return;
+    }
+
+    const end = noteEnd(resize.head, noteLengthSteps(tick.duration));
+    const start = Math.min(step, end);
+    const length = nearestNoteLength(Math.max(1, end - start + 1));
+
+    if (start === resize.head) {
+        tick.duration = length;
+        return;
+    }
+
+    // The start moved: the note now lives on another step.
+    const target = props.track.ticks[start]!;
+    target.note = tick.note;
+    target.isActive = true;
+    target.duration = length;
+    tick.isActive = false;
+    resize.head = start;
+};
+
+const stopResize = () => {
+    resize = null;
+    window.removeEventListener('pointermove', onResizeMove);
+    window.removeEventListener('pointerup', stopResize);
+};
+
+const startResize = (event: PointerEvent, edge: 'start' | 'end', head: number) => {
+    if (event.button !== 0) {
+        return;
+    }
+    resize = { edge, head, anchorY: event.clientY };
+    window.addEventListener('pointermove', onResizeMove);
+    window.addEventListener('pointerup', stopResize);
+};
+
+onBeforeUnmount(stopResize);
+
+/* ---- moving notes around the piano roll ---- */
+
+type Move = { head: number; grab: number; moved: boolean };
+let move: Move | null = null;
+
+/** Puts the note at `head` onto another step and pitch. The target step must be free (or the note's own). */
+const relocate = (head: number, step: number, note: string): number => {
+    const ticks = props.track.ticks;
+    const source = ticks[head]!;
+    const target = Math.max(0, Math.min(ticks.length - 1, step));
+    if (target !== head && ticks[target]!.isActive) {
+        return head;
+    }
+    if (target !== head) {
+        const destination = ticks[target]!;
+        destination.duration = source.duration;
+        destination.volume = source.volume;
+        destination.isActive = true;
+        source.isActive = false;
+    }
+    ticks[target]!.note = note;
+    return target;
+};
+
+const onMoveMove = (event: PointerEvent) => {
+    if (!move) {
+        return;
+    }
+    const cell = cellUnder(event.clientX, event.clientY);
+    const row = cell?.closest<HTMLElement>('[data-note]');
+    if (!cell || !row) {
+        return;
+    }
+    const step = Number(cell.dataset.step) - move.grab;
+    const note = row.dataset.note!;
+    if (step === move.head && note === props.track.ticks[move.head]!.note) {
+        return;
+    }
+    move.moved = true;
+    move.head = relocate(move.head, step, note);
+};
+
+const stopMove = () => {
+    if (move && !move.moved) {
+        // A plain click on a note switches it off, like clicking its cell.
+        props.track.ticks[move.head]!.isActive = false;
+    }
+    move = null;
+    window.removeEventListener('pointermove', onMoveMove);
+    window.removeEventListener('pointerup', stopMove);
+};
+
+const startMove = (event: PointerEvent, head: number) => {
+    if (event.button !== 0) {
+        return;
+    }
+    const cell = cellUnder(event.clientX, event.clientY);
+    move = { head, grab: cell ? Number(cell.dataset.step) - head : 0, moved: false };
+    window.addEventListener('pointermove', onMoveMove);
+    window.addEventListener('pointerup', stopMove);
+};
+
+onBeforeUnmount(stopMove);
+const scroller = useTemplateRef<InstanceType<typeof VirtualScroller>>('scroller');
+
+/** In the piano roll, clicking a tick's own note toggles it, clicking another note moves the tick there and activates it. */
+const placeNote = (tick: SynthTick, note: string) => {
     if (tick.note === note) {
         tick.isActive = !tick.isActive;
         return;
@@ -43,123 +225,117 @@ const updateTick = (tick: SynthTick, note: string) => {
     tick.note = note;
 };
 
+const isBlackKey = (note: string) => note.includes('#');
+const isC = (note: string) => note.startsWith('C') && !isBlackKey(note);
+
+/** Scrolls the roll so the pattern's notes are in view (or C5 when nothing is set yet). */
+const scrollToPattern = async () => {
+    await nextTick();
+
+    const activeTick = props.track.ticks.find((tick) => tick.isActive);
+    const note = activeTick?.note ?? props.track.ticks[0]?.note ?? 'C5';
+    const index = ALL_NOTES_DESCENDING.indexOf(note);
+    scroller.value?.scrollToIndex(Math.max(0, index - 5));
+};
+
 const togglePianoRoll = async () => {
     isPianoRollExpanded.value = !isPianoRollExpanded.value;
-
     if (isPianoRollExpanded.value) {
-        await nextTick();
-
-        const activeTick = track.value.ticks.find((tick) => tick.isActive);
-        const activeNoteIndex = activeTick ? allNotes.findIndex((note) => note === activeTick.note) : -1;
-        if (activeNoteIndex !== -1) {
-            scroller.value.scrollToIndex(activeNoteIndex - 4);
-            return;
-        }
-        scroller.value.scrollToIndex(Math.floor(allNotes.length * 0.5));
+        await scrollToPattern();
     }
 };
 
-const showSettings = (event: any) => {
-    settingsPopover.value.toggle(event);
-};
-
-const showVolumeSettings = (event: any) => {
-    volumePopover.value.toggle(event);
+const shiftOctave = async (direction: 1 | -1) => {
+    props.track.shiftOctave(direction);
+    await scrollToPattern();
 };
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-2 track">
-        <div class="flex gap-2 items-start">
-            <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
-                <Icon icon="qlementine-icons:synthesizer-16" class="w-5 h-5" />
-                <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
-            </div>
+    <TrackShell :track="props.track" :track-index="props.trackIndex" has-grid>
+        <template #actions>
+            <button
+                type="button"
+                class="tool"
+                :data-active="isPianoRollExpanded"
+                v-tooltip.bottom="'Pick the pitch of each step'"
+                :aria-pressed="isPianoRollExpanded"
+                @click="togglePianoRoll"
+            >
+                <Icon icon="material-symbols:piano" class="w-4 h-4" />
+                <span>Notes</span>
+            </button>
+        </template>
 
-            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
-                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()" :title="track.isMuted ? 'Unmute' : 'Mute'">
-                        <Icon icon="fad:mute" class="w-5 h-5" />
-                </Button>
-                <Button text size="small" @click="showVolumeSettings" title="Volume">
-                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
-                </Button>
-            </div>
+        <TickGrid :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" :spans="gridSpans.spans" @paint="(tick, _index, active) => (tick.isActive = active)">
+            <template #default="{ tick, index }">
+                <span class="tick-label">{{ tick.note }}</span>
+                <span
+                    v-if="tick.isActive"
+                    class="note-handle note-handle--start"
+                    title="Drag to move the start"
+                    @pointerdown.stop.prevent="startResize($event, 'start', index)"
+                    @click.stop
+                ></span>
+                <span
+                    v-if="gridSpans.endHead.has(index)"
+                    class="note-handle note-handle--end"
+                    title="Drag to change the length"
+                    @pointerdown.stop.prevent="startResize($event, 'end', gridSpans.endHead.get(index)!)"
+                    @click.stop
+                ></span>
+            </template>
+        </TickGrid>
 
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
-                <Button size="small" :text="!isPianoRollExpanded" @click="togglePianoRoll" :title="isPianoRollExpanded ? 'Close Piano roll' : 'Open Piano roll'">
-                    <Icon icon="material-symbols:piano" class="w-5 h-5" />
-                </Button>
-                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded" title="Tick volume settings">
-                    <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="showSettings" title="Track settings">
-                    <Icon icon="ic:baseline-settings" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="duplicateTrack(track.id)" title="Duplicate track">
-                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="removeTrack(track.id)" title="Remove track">
-                    <Icon icon="mdi:trash" class="w-5 h-5" />
-                </Button>
-            </div>
-
-            <div class="flex-1 flex flex-col gap-2">
-                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9">
-                    <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
-                        <div
-                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick text-sm"
-                            :class="{
-                                'tick--active': tick.isActive,
-                                'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
-                            }"
-                            @click="updateTick(tick, tick.note)"
-                        >
-                            {{ tick.note }}
-                        </div>
-                    </div>
-                </div>
-
-                <div class="flex flex-col -mr-4.5" v-if="isPianoRollExpanded">
-                    <VirtualScroller :items="allNotes" :item-size="20" class="h-64" ref="scroller">
-                        <template v-slot:item="{ item: note }">
-                            <div :class="`grid grid-cols-32 gap-1 mb-1 pr-1 group`">
-                                <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex" class="flex flex-col items-center relative">
-                                    <div v-if="tickIndex === 0" class="absolute left-0.5 text-xs mt-0.5 pointer-events-none z-20 text-white">{{ note }}</div>
-                                    <div
-                                        class="w-full h-5 cursor-pointer rounded shadow border border-transparent bg-surface-800 group-hover:bg-surface-700 pianotick"
-                                        :class="{
-                                            'pianotick--active': tick.note === note && tick.isActive,
-                                            'pianotick--inactive': tick.note !== note || !tick.isActive,
-                                            'pianotick--current': currentTick === tickIndex,
-                                        }"
-                                        @click="updateTick(tick, note)"
-                                    ></div>
+        <template #expanded>
+            <div v-if="isPianoRollExpanded" class="pianoroll flex flex-col gap-1.5">
+                <VirtualScroller :items="ALL_NOTES_DESCENDING" :item-size="ROW_HEIGHT" class="h-72 -mr-1.5" ref="scroller">
+                    <template v-slot:item="{ item: note }">
+                        <div class="pianorow" :class="{ 'pianorow--black': isBlackKey(note), 'pianorow--c': isC(note) }" :data-note="note">
+                            <div class="pianokeys"><div class="pianokey">{{ note }}</div></div>
+                            <div class="pianolane">
+                                <div class="steps">
+                                    <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
+                                        <div
+                                            v-for="tickIndex in beat"
+                                            :key="tickIndex"
+                                            class="pianotick"
+                                            :class="{ 'pianotick--current': currentTick === tickIndex }"
+                                            :data-step="tickIndex"
+                                            :title="`Step ${tickIndex + 1}: ${note}`"
+                                            @click="placeNote(props.track.ticks[tickIndex]!, note)"
+                                        ></div>
+                                    </div>
+                                </div>
+                                <div
+                                    v-for="bar in rowNotes(note)"
+                                    :key="bar.head"
+                                    class="pianonote"
+                                    :class="{ 'pianonote--current': currentTick >= bar.head && currentTick <= bar.end }"
+                                    :style="noteStyle(bar)"
+                                    :title="`${note}, step ${bar.head + 1}. Drag to move, drag the ends to change the length.`"
+                                    @pointerdown.stop.prevent="startMove($event, bar.head)"
+                                >
+                                    <span class="note-handle note-handle--start" title="Drag to move the start" @pointerdown.stop.prevent="startResize($event, 'start', bar.head)"></span>
+                                    <span class="note-handle note-handle--end" title="Drag to change the length" @pointerdown.stop.prevent="startResize($event, 'end', bar.head)"></span>
                                 </div>
                             </div>
-                        </template>
-                    </VirtualScroller>
+                        </div>
+                    </template>
+                </VirtualScroller>
+                <div class="lane-foot">
+                    <button type="button" class="chip" @click="shiftOctave(-1)">
+                        <Icon icon="mdi:arrow-down" class="w-4 h-4" />
+                        <span>Octave down</span>
+                    </button>
+                    <button type="button" class="chip" @click="shiftOctave(1)">
+                        <Icon icon="mdi:arrow-up" class="w-4 h-4" />
+                        <span>Octave up</span>
+                    </button>
+                    <span class="lane-hint">Click a cell to place a note. Drag a note to move it, drag its ends to change its length.</span>
                 </div>
-
-                <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />
             </div>
-        </div>
-    </div>
+        </template>
 
-    <Popover ref="settingsPopover">
-        <div class="flex items-center gap-1 justify-center">
-            <SynthSettings :track="track" />
-            <TrackPatternSettings :track="track" />
-            <SynthPatternSettings :track="track" />
-        </div>
-        <div class="mt-2 max-w-164">
-            <EffectRack :track="track" />
-        </div>
-    </Popover>
-
-    <Popover ref="volumePopover">
-        <div>
-            <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
-        </div>
-    </Popover>
+    </TrackShell>
 </template>

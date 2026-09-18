@@ -11,215 +11,348 @@ import {
     Phaser,
     Reverb,
     Tremolo,
-    Unit,
     Vibrato,
     type ToneAudioNode,
 } from 'tone';
-import type { BaseTrack } from '../tracks/BaseTrack';
+import { atTime, type AutomationParam } from '../automation';
+import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
 
+export type { EffectKey, EffectParamKey } from './definitions';
+
+/** The stored state of a rack: the chain order and every parameter value. */
+export interface EffectsSnapshot {
+    order: EffectKey[];
+    params: Record<EffectKey, Record<string, number>>;
+}
+
+/** Anything with a numeric `value`, i.e. a Tone `Param` or `Signal`. */
+interface ValueHolder {
+    value: number;
+    rampTo?: (value: number, rampTime: number, startTime?: number) => unknown;
+}
+
+const isValueHolder = (target: unknown): target is ValueHolder => typeof target === 'object' && target !== null && 'value' in target;
+
+/** How quickly an automated value glides to the next one, so stepping through a lane does not click. */
+const AUTOMATION_RAMP = 0.02;
+
+/**
+ * How to build each effect. Parameters are applied right after construction, so the factories only
+ * need to produce a node; LFO driven effects are started here because they are silent otherwise.
+ */
+const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
+    chorus: () => new Chorus().start(),
+    phaser: () => new Phaser(),
+    distortion: () => new Distortion(),
+    bitCrusher: () => new BitCrusher(),
+    autoFilter: () => new AutoFilter().start(),
+    tremolo: () => new Tremolo().start(),
+    vibrato: () => new Vibrato(),
+    delay: () => new FeedbackDelay(),
+    reverb: () => new Reverb(),
+    compressor: () => new Compressor(),
+    equalizer: () => new EQ3(),
+    limiter: () => new Limiter(),
+};
+
+/** Signal flow order a fresh rack starts with. */
+export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
+    'chorus',
+    'phaser',
+    'distortion',
+    'bitCrusher',
+    'autoFilter',
+    'tremolo',
+    'vibrato',
+    'delay',
+    'reverb',
+    'compressor',
+    'equalizer',
+    'limiter',
+];
+
+const PARAM_PREFIX = 'fx.';
+
+/** The automation address of an effect parameter: `fx.<effect>.<param>`. */
+export const effectParamKey = (effect: EffectKey, param: string): string => `${PARAM_PREFIX}${effect}.${param}`;
+
+const parseParamKey = (key: string): { effect: EffectKey; param: string } | null => {
+    if (!key.startsWith(PARAM_PREFIX)) {
+        return null;
+    }
+    const [effect, param] = key.slice(PARAM_PREFIX.length).split('.');
+    return effect && param && EFFECT_KEYS.includes(effect as EffectKey) ? { effect: effect as EffectKey, param } : null;
+};
+
+/** Every effect parameter that may be automated, in rack order, as automation sees it. Same for every rack. */
+export const EFFECT_PARAMS: readonly AutomationParam[] = DEFAULT_EFFECT_ORDER.flatMap((effect) =>
+    (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[])
+        .filter((param) => param.automatable !== false)
+        .map((param) => ({
+            key: effectParamKey(effect, param.key),
+            label: param.label,
+            group: EFFECT_DEFINITIONS[effect].label,
+            min: param.min,
+            max: param.max,
+            step: param.step,
+            curve: param.curve,
+            format: param.format,
+        })),
+);
+
+/**
+ * An effect chain. Every track has one, so does every container bus and the master bus.
+ *
+ * Parameter values live here as plain numbers; the Tone nodes are only created while an effect is
+ * audible (`wet > 0`) and are thrown away again when it is turned fully dry. A convolution reverb,
+ * a bit crusher worklet and a handful of LFOs per track are expensive even when they have nothing
+ * to do, so a fresh rack costs almost nothing and a dozen tracks stay in budget.
+ *
+ * The dynamics stages (compressor, equalizer, limiter) have no mix control and are cheap native
+ * nodes, so they are always part of the chain and the signal sounds the same as before.
+ *
+ * Parameters are addressed by the keys declared in `EFFECT_DEFINITIONS`, so the UI can stay generic.
+ * The order of the chain can be changed at any time; the nodes are re-wired on the spot.
+ */
 export class Effects {
-    track: BaseTrack;
+    private readonly nodes = new Map<EffectKey, ToneAudioNode>();
 
-    chorus: Chorus;
-    phaser: Phaser;
-    distortion: Distortion;
-    bitCrusher: BitCrusher;
-    autoFilter: AutoFilter;
-    tremolo: Tremolo;
-    vibrato: Vibrato;
-    delay: FeedbackDelay;
-    reverb: Reverb;
-    compressor: Compressor;
-    equalizer: EQ3;
-    limiter: Limiter;
+    /** The current value of every parameter, whether or not the effect's node exists. */
+    private readonly params = Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect)])) as Record<EffectKey, Record<string, number>>;
 
-    constructor(track: BaseTrack) {
-        this.track = track;
+    /** Current signal flow order, first entry is closest to the sound source. */
+    private chain: EffectKey[] = [...DEFAULT_EFFECT_ORDER];
 
-        this.chorus = new Chorus().start();
-        this.phaser = new Phaser();
-        this.distortion = new Distortion();
-        this.bitCrusher = new BitCrusher(8);
-        this.autoFilter = new AutoFilter().start();
-        this.tremolo = new Tremolo().start();
-        this.vibrato = new Vibrato();
-        this.delay = new FeedbackDelay();
-        this.reverb = new Reverb();
-        this.compressor = new Compressor();
-        this.equalizer = new EQ3();
-        this.limiter = new Limiter(-1);
+    private source: ToneAudioNode | null = null;
+    private destination: ToneAudioNode | null = null;
 
-        this.setChorus({ wet: 0 });
-        this.setPhaser({ wet: 0 });
-        this.setDistortion({ wet: 0 });
-        this.setBitCrusher({ wet: 0 });
-        this.setAutoFilter({ wet: 0 });
-        this.setTremolo({ wet: 0 });
-        this.setVibrato({ wet: 0 });
-        this.setDelay({ wet: 0 });
-        this.setReverb({ wet: 0 });
-        this.setCompressor({ threshold: -24, ratio: 12, attack: 0.003, release: 0.25 });
-        this.setEqualizer({ low: 0, mid: 0, high: 0 });
-        this.setLimiter(-1);
+    constructor() {
+        // Only the always-on dynamics stages exist from the start.
+        for (const effect of EFFECT_KEYS) {
+            if (this.isNeeded(effect)) {
+                this.createNode(effect);
+            }
+        }
     }
 
-    connect(node: ToneAudioNode) {
-        this.track.audioController.disconnect();
-        node.disconnect();
-
-        connectSeries(
-            node,
-            this.chorus,
-            this.phaser,
-            this.distortion,
-            this.bitCrusher,
-            this.autoFilter,
-            this.tremolo,
-            this.vibrato,
-            this.delay,
-            this.reverb,
-            this.compressor,
-            this.equalizer,
-            this.limiter,
-            this.track.audioController,
-        );
+    get order(): readonly EffectKey[] {
+        return this.chain;
     }
 
-    setChorus(p: Partial<ChorusParams>): void {
-        if (p.frequency !== undefined) this.chorus.frequency.value = p.frequency;
-        if (p.delayTime !== undefined) this.chorus.delayTime = p.delayTime;
-        if (p.depth !== undefined) this.chorus.depth = p.depth;
-        if (p.wet !== undefined) this.chorus.wet.value = p.wet;
+    /** Whether the effect currently has a node in the chain. */
+    isActive(effect: EffectKey): boolean {
+        return this.nodes.has(effect);
     }
 
-    setPhaser(p: Partial<PhaserParams>): void {
-        if (p.frequency !== undefined) this.phaser.frequency.value = p.frequency;
-        if (p.octaves !== undefined) this.phaser.octaves = p.octaves;
-        if (p.baseFrequency !== undefined) this.phaser.baseFrequency = p.baseFrequency;
-        if (p.wet !== undefined) this.phaser.wet.value = p.wet;
+    /** Routes `source -> effects -> destination`. Existing connections of both ends are dropped first. */
+    connect(source: ToneAudioNode, destination: ToneAudioNode): void {
+        destination.disconnect();
+        this.source = source;
+        this.destination = destination;
+        this.rewire();
     }
 
-    setDistortion(p: Partial<DistortionParams>): void {
-        if (p.distortion !== undefined) this.distortion.distortion = p.distortion;
-        if (p.wet !== undefined) this.distortion.wet.value = p.wet;
+    /** Replaces the chain order. Keys that are missing keep their relative position at the end. */
+    setOrder(order: readonly EffectKey[]): void {
+        const unique = order.filter((key, index) => EFFECT_KEYS.includes(key) && order.indexOf(key) === index);
+        this.chain = [...unique, ...this.chain.filter((key) => !unique.includes(key))];
+        this.rewire();
     }
 
-    setBitCrusher(p: Partial<BitCrusherParams>): void {
-        if (p.bits !== undefined) this.bitCrusher.bits.value = p.bits;
-        if (p.wet !== undefined) this.bitCrusher.wet.value = p.wet;
+    /** Moves one effect one position towards the source (`-1`) or towards the output (`1`). */
+    move(effect: EffectKey, direction: 1 | -1): void {
+        const from = this.chain.indexOf(effect);
+        const to = from + direction;
+        if (from === -1 || to < 0 || to >= this.chain.length) {
+            return;
+        }
+
+        const next = [...this.chain];
+        [next[from], next[to]] = [next[to]!, next[from]!];
+        this.setOrder(next);
     }
 
-    setAutoFilter(p: Partial<AutoFilterParams>): void {
-        if (p.frequency !== undefined) this.autoFilter.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.autoFilter.depth.value = p.depth;
-        if (p.wet !== undefined) this.autoFilter.wet.value = p.wet;
+    /** Puts every parameter of one effect back to its initial value. */
+    reset(effect: EffectKey): void {
+        this.setParams(effect, initialParams(effect) as Partial<Record<EffectParamKey<typeof effect>, number>>);
     }
 
-    setTremolo(p: Partial<TremoloParams>): void {
-        if (p.frequency !== undefined) this.tremolo.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.tremolo.depth.value = p.depth;
-        if (p.wet !== undefined) this.tremolo.wet.value = p.wet;
+    getParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>): number {
+        return this.params[effect][param]!;
     }
 
-    setVibrato(p: Partial<VibratoParams>): void {
-        if (p.frequency !== undefined) this.vibrato.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.vibrato.depth.value = p.depth;
-        if (p.wet !== undefined) this.vibrato.wet.value = p.wet;
+    setParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>, value: number): void {
+        this.apply(effect, param, value);
     }
 
-    setDelay(p: Partial<DelayParams>): void {
-        if (p.delayTime !== undefined) this.delay.delayTime.value = p.delayTime;
-        if (p.feedback !== undefined) this.delay.feedback.value = p.feedback;
-        if (p.wet !== undefined) this.delay.wet.value = p.wet;
+    /** Convenience for setting several parameters of one effect at once. */
+    setParams<K extends EffectKey>(effect: K, params: Partial<Record<EffectParamKey<K>, number>>): void {
+        for (const [key, value] of Object.entries(params) as [EffectParamKey<K>, number | undefined][]) {
+            if (value !== undefined) {
+                this.setParam(effect, key, value);
+            }
+        }
     }
 
-    setReverb(p: Partial<ReverbParams>): void {
-        if (p.decay !== undefined) this.reverb.decay = p.decay;
-        if (p.preDelay !== undefined) this.reverb.preDelay = p.preDelay;
-        if (p.wet !== undefined) this.reverb.wet.value = p.wet;
+    /* ---- automation ---- */
+
+    /** Reads a parameter by its automation address (`fx.<effect>.<param>`). */
+    getParameter(key: string): number {
+        const address = parseParamKey(key);
+        return address ? (this.params[address.effect][address.param] ?? 0) : 0;
     }
 
-    setCompressor(p: Partial<CompressorParams>): void {
-        if (p.threshold !== undefined) this.compressor.threshold.value = p.threshold;
-        if (p.ratio !== undefined) this.compressor.ratio.value = p.ratio;
-        if (p.attack !== undefined) this.compressor.attack.value = p.attack;
-        if (p.release !== undefined) this.compressor.release.value = p.release;
+    /**
+     * Sets a parameter by its automation address. With a `time` the value is only played, not stored:
+     * automation moves the sound, the knob keeps what the user set, and `settle` brings the sound back to it.
+     */
+    setParameter(key: string, value: number, time?: number): void {
+        const address = parseParamKey(key);
+        if (!address) {
+            return;
+        }
+        if (time === undefined) {
+            this.apply(address.effect, address.param, value);
+        } else {
+            this.applyLive(address.effect, address.param, value, time);
+        }
     }
 
-    setEqualizer(p: Partial<EqualizerParams>): void {
-        if (p.low !== undefined) this.equalizer.low.value = p.low;
-        if (p.mid !== undefined) this.equalizer.mid.value = p.mid;
-        if (p.high !== undefined) this.equalizer.high.value = p.high;
+    /** Puts the stored value of a parameter back on its node, after automation moved it. */
+    settle(key: string): void {
+        const address = parseParamKey(key);
+        if (address) {
+            this.apply(address.effect, address.param, this.params[address.effect][address.param] ?? 0);
+        }
     }
 
-    setLimiter(db: number): void {
-        this.limiter.threshold.rampTo(db, 0.05);
+    capture(): EffectsSnapshot {
+        return {
+            order: [...this.chain],
+            params: Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, { ...this.params[effect] }])) as EffectsSnapshot['params'],
+        };
     }
-}
 
-export interface ChorusParams {
-    frequency: number;
-    delayTime: number;
-    depth: number;
-    wet: number;
-}
+    restore(snapshot: EffectsSnapshot): void {
+        this.setOrder(snapshot.order);
+        for (const effect of EFFECT_KEYS) {
+            for (const [param, value] of Object.entries(snapshot.params[effect] ?? {})) {
+                if (this.params[effect][param] !== value) {
+                    this.apply(effect, param, value);
+                }
+            }
+        }
+    }
 
-export interface PhaserParams {
-    frequency: number;
-    octaves: number;
-    baseFrequency: number;
-    wet: number;
-}
+    /** Copies the chain order and every parameter from another effect rack. */
+    copyFrom(other: Effects): void {
+        this.setOrder(other.order);
+        for (const effect of EFFECT_KEYS) {
+            for (const param of EFFECT_DEFINITIONS[effect].params) {
+                this.setParam(effect, param.key as EffectParamKey<typeof effect>, other.getParam(effect, param.key as EffectParamKey<typeof effect>));
+            }
+        }
+    }
 
-export interface DistortionParams {
-    distortion: number;
-    wet: number;
-}
+    dispose(): void {
+        for (const node of this.nodes.values()) {
+            node.dispose();
+        }
+        this.nodes.clear();
+    }
 
-export interface BitCrusherParams {
-    bits: number;
-    wet: number;
-}
+    /** Stores a value and pushes it to the node. The node comes and goes with the effect being audible. */
+    private apply(effect: EffectKey, param: string, value: number): void {
+        this.params[effect][param] = value;
 
-export interface AutoFilterParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
+        const shouldExist = this.isNeeded(effect);
+        const node = this.nodes.get(effect);
 
-export interface TremoloParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
+        if (shouldExist && !node) {
+            this.createNode(effect);
+        } else if (!shouldExist && node) {
+            this.destroyNode(effect);
+        } else if (node) {
+            this.applyParam(node, effect, param, value, true);
+        }
+    }
 
-export interface VibratoParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
+    /**
+     * Plays a value at a time without storing it. A node that does not exist yet is created when the value
+     * would make the effect audible; it is never thrown away here, automation sweeping through zero every bar
+     * must not rebuild a reverb every bar.
+     */
+    private applyLive(effect: EffectKey, param: string, value: number, time: number): void {
+        let node = this.nodes.get(effect);
+        if (!node) {
+            const audible = param === 'wet' ? value > 0 : this.isNeeded(effect);
+            if (!audible) {
+                return;
+            }
+            this.createNode(effect);
+            node = this.nodes.get(effect)!;
+        }
+        this.applyParam(node, effect, param, value, true, time);
+    }
 
-export interface DelayParams {
-    delayTime: Unit.Time;
-    feedback: number;
-    wet: number;
-}
+    /** An effect with a mix control is needed once it is not fully dry; the others are always in the chain. */
+    private isNeeded(effect: EffectKey): boolean {
+        const wet = this.params[effect].wet;
+        return wet === undefined || wet > 0;
+    }
 
-export interface ReverbParams {
-    decay: Unit.Time;
-    preDelay: number;
-    wet: number;
-}
+    private createNode(effect: EffectKey): void {
+        const node = FACTORIES[effect]();
+        for (const [param, value] of Object.entries(this.params[effect])) {
+            this.applyParam(node, effect, param, value, false);
+        }
+        this.nodes.set(effect, node);
+        this.rewire();
+    }
 
-export interface CompressorParams {
-    threshold: number;
-    ratio: number;
-    attack: number;
-    release: number;
-}
+    private destroyNode(effect: EffectKey): void {
+        const node = this.nodes.get(effect);
+        if (!node) {
+            return;
+        }
 
-export interface EqualizerParams {
-    low: number;
-    mid: number;
-    high: number;
+        this.nodes.delete(effect);
+        this.rewire();
+        node.dispose();
+    }
+
+    private applyParam(node: ToneAudioNode, effect: EffectKey, param: string, value: number, ramp = true, time?: number): void {
+        const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
+        const target = (node as unknown as Record<string, unknown>)[param];
+
+        if (isValueHolder(target)) {
+            if (time !== undefined && target.rampTo) {
+                target.rampTo(value, definition?.ramp ?? AUTOMATION_RAMP, time);
+            } else if (ramp && definition?.ramp && target.rampTo) {
+                target.rampTo(value, definition.ramp);
+            } else {
+                target.value = value;
+            }
+            return;
+        }
+
+        atTime(time, () => {
+            (node as unknown as Record<string, number>)[param] = value;
+        });
+    }
+
+    /** Drops the outgoing connections of the source and every node and wires them up again in chain order. */
+    private rewire(): void {
+        if (!this.source || !this.destination) {
+            return;
+        }
+
+        this.source.disconnect();
+        for (const node of this.nodes.values()) {
+            node.disconnect();
+        }
+
+        const active = this.chain.filter((key) => this.nodes.has(key)).map((key) => this.nodes.get(key)!);
+        connectSeries(this.source, ...active, this.destination);
+    }
 }

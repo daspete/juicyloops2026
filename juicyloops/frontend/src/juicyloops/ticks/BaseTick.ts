@@ -1,8 +1,26 @@
-export class BaseTick {
-    isActive: boolean = false;
-    volume: number = 1;
+export interface TickSnapshot {
+    isActive: boolean;
+    volume: number;
+}
 
-    serialize() {
+export class BaseTick {
+    isActive = false;
+    /** Velocity in the range 0..1. */
+    volume = 1;
+
+    /** Creates a new tick of the same class with the same values. */
+    clone(): this {
+        const copy = new (this.constructor as new () => this)();
+        Object.assign(copy, this);
+        return copy;
+    }
+
+    /** Takes the values of a snapshot (of the same tick class). */
+    restore(snapshot: TickSnapshot): void {
+        Object.assign(this, snapshot);
+    }
+
+    serialize(): TickSnapshot {
         return {
             isActive: this.isActive,
             volume: this.volume,

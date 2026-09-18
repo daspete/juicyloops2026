@@ -1,53 +1,63 @@
 <script setup lang="ts">
-import { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
-import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
-import { onMounted, ref } from 'vue';
+import type { SampleTrack } from '@/juicyloops/tracks/SampleTrack';
+import { onMounted, onUnmounted, useTemplateRef } from 'vue';
 import WaveSurfer from 'wavesurfer.js';
 import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions.js';
 
+/** Shows the loaded sample and lets the user drag/resize the region that is played. */
 const props = defineProps<{
-    track: SamplerTrack | MicrophoneTrack;
+    track: SampleTrack;
 }>();
 
-const waveSurfer = ref<WaveSurfer | null>(null);
+const container = useTemplateRef<HTMLDivElement>('container');
 
-onMounted(async () => {
-    const regionsPlugin = RegionsPlugin.create();
+let waveSurfer: WaveSurfer | null = null;
 
-    waveSurfer.value = WaveSurfer.create({
-        container: `#waveform-${props.track.id}`,
-        plugins: [regionsPlugin],
-        height: 100,
+onMounted(() => {
+    if (!container.value || !props.track.sampleBlob) {
+        return;
+    }
+
+    const style = getComputedStyle(container.value);
+    const accent = style.getPropertyValue('--jl-accent').trim() || '#ff8a2a';
+    const wave = style.getPropertyValue('--jl-bar').trim() || '#8b84b0';
+    const regions = RegionsPlugin.create();
+
+    waveSurfer = WaveSurfer.create({
+        container: container.value,
+        plugins: [regions],
+        height: 88,
+        waveColor: wave,
+        progressColor: wave,
+        cursorWidth: 0,
+        barWidth: 2,
+        barGap: 1,
+        barRadius: 2,
     });
 
-    if (props.track instanceof SamplerTrack) {
-        waveSurfer.value.loadBlob(props.track.file!);
-    }
-
-    if (props.track instanceof MicrophoneTrack && props.track.hasRecordedAudio) {
-        waveSurfer.value.loadBlob(props.track.recordedAudio!);
-    }
-
-    waveSurfer.value.on('ready', () => {
-        if (!waveSurfer.value) return;
-
-        regionsPlugin.addRegion({
+    waveSurfer.on('ready', () => {
+        regions.addRegion({
             start: props.track.sampleStartTime,
             end: props.track.sampleStartTime + props.track.sampleDuration,
-            color: 'rgba(255, 127, 0, 0.3)',
+            color: `color-mix(in oklab, ${accent} 24%, transparent)`,
             drag: true,
             resize: true,
         });
 
-        regionsPlugin.on('region-updated', (region) => {
+        regions.on('region-updated', (region) => {
             props.track.setSampleTimes(region.start, region.end - region.start);
         });
     });
+
+    waveSurfer.loadBlob(props.track.sampleBlob);
+});
+
+onUnmounted(() => {
+    waveSurfer?.destroy();
+    waveSurfer = null;
 });
 </script>
 
 <template>
-    <div v-if="props.track.id">
-        <div :id="`waveform-${props.track.id}`" :class="{'waveform--reversed': props.track.isReversed}"></div>
-    </div>
+    <div ref="container" class="rounded-lg bg-(--jl-cell) px-1" :class="{ 'waveform--reversed': props.track.isReversed }"></div>
 </template>

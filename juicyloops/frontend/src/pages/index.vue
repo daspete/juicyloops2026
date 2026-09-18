@@ -1,10 +1,7 @@
 <script setup lang="ts">
-import JuicyLoops from '@/components/JuicyLoops.vue';
-
+import TrackEditor from '@/components/tracks/TrackEditor.vue';
 </script>
 
 <template>
-    <div class="w-screen h-screen ">
-        <JuicyLoops />
-    </div>
+    <TrackEditor />
 </template>

@@ -8,22 +8,49 @@ import ToastService from 'primevue/toastservice';
 import Aura from '@primeuix/themes/aura';
 import { definePreset } from '@primeuix/themes';
 
-import { FocusTrap, Ripple } from 'primevue';
+import { FocusTrap, Ripple, Tooltip } from 'primevue';
 
-const ManabloxTheme = definePreset(Aura, {
+/** Ink-violet surfaces so the coloured steps sit on a stage, not a spreadsheet. Matches --jl-* in globals.css. */
+const SURFACE = {
+    0: '#ffffff',
+    50: '#f7f6fc',
+    100: '#e8e6f2',
+    200: '#dcd9ec',
+    300: '#b8b1d9',
+    400: '#8b84b0',
+    500: '#6b6591',
+    600: '#453d6e',
+    700: '#2d284a',
+    800: '#1c1830',
+    900: '#14111f',
+    950: '#0a0913',
+};
+
+const JuicyTheme = definePreset(Aura, {
     semantic: {
         primary: {
-            50: '#fff1ed',
-            100: '#fee6e0',
-            200: '#fec8ba',
-            300: '#fead95',
-            400: '#fd9167',
-            500: '#f97316',
-            600: '#c65a0f',
-            700: '#944108',
-            800: '#652a04',
-            900: '#3c1601',
-            950: '#260b01',
+            50: '#f5f3ff',
+            100: '#ede9fe',
+            200: '#ddd6fe',
+            300: '#c4b5fd',
+            400: '#a78bfa',
+            500: '#8b5cf6',
+            600: '#7c3aed',
+            700: '#6d28d9',
+            800: '#5b21b6',
+            900: '#4c1d95',
+            950: '#2e1065',
+        },
+        colorScheme: {
+            dark: {
+                surface: SURFACE,
+                primary: {
+                    color: '{primary.500}',
+                    contrastColor: '#14092b',
+                    hoverColor: '{primary.400}',
+                    activeColor: '{primary.600}',
+                },
+            },
         },
     },
     components: {},
@@ -33,7 +60,7 @@ export const theme = (app: App) => {
     app.use(PrimeVue, {
         ripple: true,
         theme: {
-            preset: ManabloxTheme,
+            preset: JuicyTheme,
             options: {
                 darkModeSelector: '.dark',
                 cssLayer: {
@@ -49,4 +76,5 @@ export const theme = (app: App) => {
 
     app.directive('ripple', Ripple);
     app.directive('focustrap', FocusTrap);
+    app.directive('tooltip', Tooltip);
 };

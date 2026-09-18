@@ -1,24 +1,27 @@
 <script setup lang="ts">
-import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
-import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
+import type { SampleTrack } from '@/juicyloops/tracks/SampleTrack';
 import { Icon } from '@iconify/vue';
-import { ToggleSwitch } from 'primevue';
-import { ref } from 'vue';
 
 const props = defineProps<{
-    track: SamplerTrack | MicrophoneTrack;
+    track: SampleTrack;
 }>();
-
-const isReverse = ref(props.track.isReversed);
 </script>
 
 <template>
-    <div v-if="props.track" class="flex items-center gap-1">
-        <div class="flex items-stretch gap-1 rounded bg-surface-800 h-9">
-            <div class="flex gap-2 items-center px-2" title="Reverse sample">
+    <div class="setting">
+        <div class="setting-label">Direction</div>
+        <div class="setting-row">
+            <button
+                type="button"
+                class="iconbtn"
+                :data-active="props.track.isReversed"
+                :aria-pressed="props.track.isReversed"
+                v-tooltip.bottom="'Play the sample backwards'"
+                @click="props.track.toggleReverse()"
+            >
                 <Icon icon="jam:refresh-reverse" class="w-5 h-5" />
-                <ToggleSwitch v-model="isReverse" @change="props.track.toggleReverse()" />
-            </div>
+                <span>Reverse</span>
+            </button>
         </div>
     </div>
 </template>

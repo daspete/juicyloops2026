@@ -1,19 +1,40 @@
 <!doctype html>
-<html lang="de" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Juicyloops</title>
+    <meta name="theme-color" content="#14111f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f6fc" media="(prefers-color-scheme: light)" />
+    <title>Juicy Loops</title>
     <meta property="og:title" content="Juicy Loops" />
     <meta property="og:type" content="website" />
     <meta property="og:image" content="https://juicyloops.daspete.at/juicyloopsshare.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta property="og:url" content="https://juicyloops.daspete.at/" />
     <meta property="og:locale" content="en" />
     <meta property="og:description" content="Simple Loopstation toy for creating and sharing loops" />
     <meta property="og:site_name" content="Juicy Loops" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="description" content="Simple Loopstation toy for creating and sharing loops" />
+    <script>
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('juicyloops:theme'); } catch (e) {}
+        var light = stored ? stored === 'light' : window.matchMedia('(prefers-color-scheme: light)').matches;
+        if (!light) document.documentElement.classList.add('dark');
+      })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
 
   <body>
