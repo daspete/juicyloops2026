@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import type { EffectDefinition, EffectKey } from '@/juicyloops/effects/definitions';
-import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
+import type { Effects } from '@/juicyloops/effects/effects';
 import { Icon } from '@iconify/vue';
 import EffectKnob from './EffectKnob.vue';
 
 /** The knobs of one effect, with its place in the chain and the buttons to move or reset it. */
 const props = defineProps<{
-    track: BaseTrack;
+    effects: Effects;
     effect: EffectKey;
     definition: EffectDefinition;
     position: number;
@@ -28,10 +28,24 @@ const emit = defineEmits<{
             <span class="font-semibold">{{ props.definition.label }}</span>
             <span class="font-mono text-xs text-(--jl-muted)">{{ props.position }} of {{ props.count }}</span>
             <div class="flex-1"></div>
-            <button type="button" class="iconbtn" :disabled="props.position === 1" aria-label="Move earlier in the chain" v-tooltip.bottom="'Move earlier in the chain'" @click="emit('move', -1)">
+            <button
+                type="button"
+                class="iconbtn"
+                :disabled="props.position === 1"
+                aria-label="Move earlier in the chain"
+                v-tooltip.bottom="'Move earlier in the chain'"
+                @click="emit('move', -1)"
+            >
                 <Icon icon="mdi:arrow-left" class="w-4 h-4" />
             </button>
-            <button type="button" class="iconbtn" :disabled="props.position === props.count" aria-label="Move later in the chain" v-tooltip.bottom="'Move later in the chain'" @click="emit('move', 1)">
+            <button
+                type="button"
+                class="iconbtn"
+                :disabled="props.position === props.count"
+                aria-label="Move later in the chain"
+                v-tooltip.bottom="'Move later in the chain'"
+                @click="emit('move', 1)"
+            >
                 <Icon icon="mdi:arrow-right" class="w-4 h-4" />
             </button>
             <span class="w-px h-4 bg-(--jl-line) mx-1"></span>
@@ -44,7 +58,7 @@ const emit = defineEmits<{
             <EffectKnob
                 v-for="param in props.definition.params"
                 :key="`${props.effect}-${param.key}`"
-                :track="props.track"
+                :effects="props.effects"
                 :effect="props.effect"
                 :param="param"
                 @change="emit('change')"

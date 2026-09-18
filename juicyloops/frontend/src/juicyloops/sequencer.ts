@@ -1,5 +1,7 @@
 import { getDraw, getTransport } from 'tone';
+import { markRaw } from 'vue';
 import { STEP_SUBDIVISION } from './constants';
+import { MixBus } from './mixBus';
 import { Song } from './song';
 import { TrackContainer } from './trackContainer';
 
@@ -15,10 +17,13 @@ export type PlaybackMode = 'loop' | 'song';
  */
 export type StepListener = (step: number) => void;
 
-/** Owns the containers and the song, and drives them from a repeating transport event. */
+/** Owns the containers, the song and the master bus, and drives playback from a repeating transport event. */
 export class Sequencer {
     readonly containers: TrackContainer[] = [];
     readonly song = new Song();
+
+    /** The master channel: every container feeds it, it feeds the speakers. */
+    readonly master = markRaw(new MixBus());
 
     mode: PlaybackMode = 'loop';
 
@@ -29,6 +34,7 @@ export class Sequencer {
     private readonly stepListeners = new Set<StepListener>();
 
     constructor() {
+        this.master.toDestination();
         this.currentContainer = this.addContainer();
     }
 
@@ -61,6 +67,7 @@ export class Sequencer {
 
     addContainer(name = `Container ${this.containers.length + 1}`): TrackContainer {
         const container = new TrackContainer(name);
+        container.connectTo(this.master.input);
         this.containers.push(container);
         return container;
     }
@@ -100,6 +107,7 @@ export class Sequencer {
         }
 
         const copy = new TrackContainer(`${source.name} copy`);
+        copy.connectTo(this.master.input);
         await copy.copyFrom(source);
         this.containers.splice(this.containers.indexOf(source) + 1, 0, copy);
         return copy;

@@ -15,7 +15,7 @@ export interface TrackSnapshot {
 }
 
 /**
- * Common behaviour of every track: a row of ticks, an effect chain and a volume/pan stage.
+ * Common behaviour of every track: a row of ticks, an effect chain and a volume/pan stage that feeds the container's bus.
  *
  * Every track has its own length. The sequencer hands every track the same running step,
  * and the track wraps it around its own pattern, so a 16-step track repeats twice per section
@@ -70,10 +70,15 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
     /** Called by the sequencer for every step. `step` keeps counting past the pattern; `time` is the audio-context time to schedule at. */
     abstract play(step: number, time: number): void;
 
-    /** Wires `source -> effects -> output -> speakers`. Subclasses call this once with their sound source. */
+    /** Wires `source -> effects -> output`. Subclasses call this once with their sound source; `connectTo` decides where the output goes. */
     protected connectSource(source: ToneAudioNode): void {
         this.effects.connect(source, this.output);
-        this.output.toDestination();
+    }
+
+    /** Sends the track into a node (its container's bus), replacing where it went before. */
+    connectTo(destination: ToneAudioNode): void {
+        this.output.disconnect();
+        this.output.connect(destination);
     }
 
     /** Returns the tick for a step if it should sound, otherwise null. */

@@ -3,14 +3,18 @@ import { Icon } from '@iconify/vue';
 import { useConfirm } from 'primevue';
 import { nextTick, ref } from 'vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import BusRack from '../effects/BusRack.vue';
 import { TRACK_META } from '../tracks/trackMeta';
 
 /**
  * The row of container tabs above the track editor. One container is current: its tracks are what you see and hear.
- * Double-click a tab (or use the pencil) to rename it.
+ * Double-click a tab (or use the pencil) to rename it. The Effects button opens the container's channel strip:
+ * level, pan and an effect rack that every track of the container runs through.
  */
 const { containers, currentContainer, selectContainer, addContainer, removeContainer, duplicateContainer, renameContainer, song } = useJuicyLoops();
 const confirm = useConfirm();
+
+const isRackOpen = ref(false);
 
 const editingId = ref<string | null>(null);
 const draft = ref('');
@@ -51,70 +55,105 @@ const confirmRemove = (event: MouseEvent) => {
 </script>
 
 <template>
-    <div class="flex items-center gap-2 px-2 min-h-9">
-        <span class="eyebrow mr-1">Containers</span>
+    <div class="flex flex-col gap-2">
+        <div class="flex items-center gap-2 px-2 min-h-9">
+            <span class="eyebrow mr-1">Containers</span>
 
-        <div class="flex items-center gap-1.5 flex-wrap">
-            <div
-                v-for="container in containers"
-                :key="container.id"
-                class="ctab"
-                :data-active="container.id === currentContainer.id"
-                role="button"
-                tabindex="0"
-                :aria-pressed="container.id === currentContainer.id"
-                @click="selectContainer(container.id)"
-                @keydown.enter.self="selectContainer(container.id)"
-                @keydown.space.self.prevent="selectContainer(container.id)"
-                @dblclick="startRename(container.id, container.name)"
-            >
-                <input
-                    v-if="editingId === container.id"
-                    ref="input"
-                    v-model="draft"
-                    class="ctab-input"
-                    aria-label="Container name"
-                    @keydown.enter="commitRename"
-                    @keydown.esc="cancelRename"
-                    @blur="commitRename"
-                    @click.stop
-                />
-                <span v-else class="font-semibold">{{ container.name }}</span>
-                <span class="flex items-center gap-0.5" aria-hidden="true">
-                    <span v-for="track in container.tracks.slice(0, 6)" :key="track.id" class="ctab-dot" :style="{ background: TRACK_META[track.type].accent }"></span>
-                </span>
-                <span class="font-mono text-xs text-(--jl-muted)">{{ container.tracks.length }}</span>
+            <div class="flex items-center gap-1.5 flex-wrap">
+                <div
+                    v-for="container in containers"
+                    :key="container.id"
+                    class="ctab"
+                    :data-active="container.id === currentContainer.id"
+                    role="button"
+                    tabindex="0"
+                    :aria-pressed="container.id === currentContainer.id"
+                    @click="selectContainer(container.id)"
+                    @keydown.enter.self="selectContainer(container.id)"
+                    @keydown.space.self.prevent="selectContainer(container.id)"
+                    @dblclick="startRename(container.id, container.name)"
+                >
+                    <input
+                        v-if="editingId === container.id"
+                        ref="input"
+                        v-model="draft"
+                        class="ctab-input"
+                        aria-label="Container name"
+                        @keydown.enter="commitRename"
+                        @keydown.esc="cancelRename"
+                        @blur="commitRename"
+                        @click.stop
+                    />
+                    <span v-else class="font-semibold">{{ container.name }}</span>
+                    <span class="flex items-center gap-0.5" aria-hidden="true">
+                        <span
+                            v-for="track in container.tracks.slice(0, 6)"
+                            :key="track.id"
+                            class="ctab-dot"
+                            :style="{ background: TRACK_META[track.type].accent }"
+                        ></span>
+                    </span>
+                    <span class="font-mono text-xs text-(--jl-muted)">{{ container.tracks.length }}</span>
+                </div>
+
+                <button type="button" class="chip" @click="addContainer()">
+                    <Icon icon="mdi:plus" class="w-4 h-4" />
+                    <span>New</span>
+                </button>
             </div>
 
-            <button type="button" class="chip" @click="addContainer()">
-                <Icon icon="mdi:plus" class="w-4 h-4" />
-                <span>New</span>
+            <div class="flex-1"></div>
+
+            <button
+                type="button"
+                class="chip"
+                :data-active="isRackOpen"
+                :aria-pressed="isRackOpen"
+                v-tooltip.bottom="'Level, pan and effects for the whole container'"
+                @click="isRackOpen = !isRackOpen"
+            >
+                <Icon icon="mdi:auto-fix" class="w-4 h-4" />
+                <span>Effects</span>
+            </button>
+            <span class="w-px h-4 bg-(--jl-line)"></span>
+
+            <button
+                type="button"
+                class="iconbtn"
+                aria-label="Rename container"
+                v-tooltip.bottom="'Rename'"
+                @click="startRename(currentContainer.id, currentContainer.name)"
+            >
+                <Icon icon="mdi:pencil-outline" class="w-4 h-4" />
+            </button>
+            <button
+                type="button"
+                class="iconbtn"
+                aria-label="Duplicate container"
+                v-tooltip.bottom="'Duplicate with all tracks'"
+                @click="duplicateContainer(currentContainer.id)"
+            >
+                <Icon icon="mdi:content-copy" class="w-4 h-4" />
+            </button>
+            <button
+                type="button"
+                class="iconbtn iconbtn--danger"
+                aria-label="Remove container"
+                v-tooltip.bottom="containers.length === 1 ? 'The last container stays' : 'Remove container'"
+                :disabled="containers.length === 1"
+                @click="confirmRemove"
+            >
+                <Icon icon="mdi:trash-can-outline" class="w-4 h-4" />
             </button>
         </div>
 
-        <div class="flex-1"></div>
-
-        <button
-            type="button"
-            class="iconbtn"
-            aria-label="Rename container"
-            v-tooltip.bottom="'Rename'"
-            @click="startRename(currentContainer.id, currentContainer.name)"
-        >
-            <Icon icon="mdi:pencil-outline" class="w-4 h-4" />
-        </button>
-        <button type="button" class="iconbtn" aria-label="Duplicate container" v-tooltip.bottom="'Duplicate with all tracks'" @click="duplicateContainer(currentContainer.id)">
-            <Icon icon="mdi:content-copy" class="w-4 h-4" />
-        </button>
-        <button
-            type="button"
-            class="iconbtn iconbtn--danger"
-            aria-label="Remove container"
-            v-tooltip.bottom="containers.length === 1 ? 'The last container stays' : 'Remove container'"
-            :disabled="containers.length === 1"
-            @click="confirmRemove"
-        >
-            <Icon icon="mdi:trash-can-outline" class="w-4 h-4" />
-        </button>
+        <div v-if="isRackOpen" class="buspanel mx-2">
+            <div class="buspanel-head">
+                <Icon icon="mdi:tune-vertical" class="w-4 h-4 text-(--jl-accent)" />
+                <span class="font-semibold">{{ currentContainer.name }}</span>
+                <span class="text-xs text-(--jl-muted)">Container channel: every track in here runs through this rack before the master.</span>
+            </div>
+            <BusRack :key="currentContainer.id" :bus="currentContainer.bus" />
+        </div>
     </div>
 </template>

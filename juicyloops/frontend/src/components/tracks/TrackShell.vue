@@ -173,7 +173,7 @@ const confirmRemove = (event: MouseEvent) => {
                             <TrackPatternSettings :track="props.track" />
                         </div>
                         <div v-show="tweakTab === 'effects'" role="tabpanel">
-                            <EffectRack :track="props.track" />
+                            <EffectRack :effects="props.track.effects" />
                         </div>
                     </div>
                 </div>

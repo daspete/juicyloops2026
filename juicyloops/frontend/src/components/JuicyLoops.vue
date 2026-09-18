@@ -8,6 +8,7 @@ import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useTheme } from '@/composables/useTheme';
 import { positionLabel } from './tracks/steps';
 import { STEP_COUNT } from '@/juicyloops/constants';
+import BusRack from './effects/BusRack.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 import { TRACK_META } from './tracks/trackMeta';
@@ -31,6 +32,8 @@ const VIEWS = [
 
 const isInitialized = ref(false);
 const isDiscussionsOpen = ref(false);
+/** The master channel strip: the rack everything passes through last, with the final level. */
+const isMasterOpen = ref(false);
 
 const initializeEngine = async () => {
     await engine.initialize();
@@ -211,6 +214,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
             <div class="console-right">
                 <button
                     type="button"
+                    class="chip"
+                    :data-active="isMasterOpen"
+                    :aria-pressed="isMasterOpen"
+                    v-tooltip.bottom="'Master channel: level and effects for the whole song'"
+                    @click="isMasterOpen = !isMasterOpen"
+                >
+                    <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
+                    <span>Master</span>
+                </button>
+                <button
+                    type="button"
                     class="iconbtn"
                     :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
                     v-tooltip.bottom="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
@@ -266,6 +280,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
             </button>
         </div>
     </div>
+
+    <Drawer v-model:visible="isMasterOpen" header="Master channel" position="bottom" class="drawer--master">
+        <p class="text-sm text-(--jl-muted) mb-3">Everything you hear passes through here last: all containers, then this rack, then the speakers.</p>
+        <BusRack :bus="engine.master" />
+    </Drawer>
 
     <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
         <GiscusLoader />

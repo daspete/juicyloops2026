@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { EffectParamDefinition, EffectKey, EffectParamKey } from '@/juicyloops/effects/definitions';
-import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
+import type { Effects } from '@/juicyloops/effects/effects';
 import { ref, watch } from 'vue';
 import JuicyKnob from '../ui/JuicyKnob.vue';
 
 const props = defineProps<{
-    track: BaseTrack;
+    effects: Effects;
     effect: EffectKey;
     param: EffectParamDefinition;
 }>();
@@ -20,10 +20,10 @@ const paramKey = props.param.key as EffectParamKey<typeof props.effect>;
  * Tone parameters are not reactive, so the knob keeps its own value:
  * read once when mounted and written through to the audio node on every change.
  */
-const value = ref(props.track.effects.getParam(props.effect, paramKey));
+const value = ref(props.effects.getParam(props.effect, paramKey));
 
 watch(value, (next) => {
-    props.track.effects.setParam(props.effect, paramKey, next);
+    props.effects.setParam(props.effect, paramKey, next);
     emit('change');
 });
 </script>

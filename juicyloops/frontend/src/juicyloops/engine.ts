@@ -1,5 +1,6 @@
 import { Context, getTransport, setContext, start, type TransportInstance } from 'tone';
 import { DEFAULT_BPM } from './constants';
+import type { MixBus } from './mixBus';
 import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
 import type { TrackContainer } from './trackContainer';
 
@@ -52,6 +53,11 @@ export class Engine {
 
     get song() {
         return this.sequencer.song;
+    }
+
+    /** The master channel with its effect rack and level. */
+    get master(): MixBus {
+        return this.sequencer.master;
     }
 
     setMode(mode: PlaybackMode): void {

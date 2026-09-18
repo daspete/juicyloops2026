@@ -45,7 +45,7 @@ const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
     limiter: () => new Limiter(),
 };
 
-/** Signal flow order a fresh track starts with. */
+/** Signal flow order a fresh rack starts with. */
 export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
     'chorus',
     'phaser',
@@ -62,15 +62,15 @@ export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
 ];
 
 /**
- * The per-track effect chain.
+ * An effect chain. Every track has one, so does every container bus and the master bus.
  *
  * Parameter values live here as plain numbers; the Tone nodes are only created while an effect is
  * audible (`wet > 0`) and are thrown away again when it is turned fully dry. A convolution reverb,
  * a bit crusher worklet and a handful of LFOs per track are expensive even when they have nothing
- * to do, so a fresh track costs almost nothing and a dozen tracks stay in budget.
+ * to do, so a fresh rack costs almost nothing and a dozen tracks stay in budget.
  *
  * The dynamics stages (compressor, equalizer, limiter) have no mix control and are cheap native
- * nodes, so they are always part of the chain and the track sounds the same as before.
+ * nodes, so they are always part of the chain and the signal sounds the same as before.
  *
  * Parameters are addressed by the keys declared in `EFFECT_DEFINITIONS`, so the UI can stay generic.
  * The order of the chain can be changed at any time; the nodes are re-wired on the spot.

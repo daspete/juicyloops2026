@@ -1,26 +1,26 @@
 <script setup lang="ts">
 import { EFFECT_DEFINITIONS, type EffectKey, type EffectParamKey } from '@/juicyloops/effects/definitions';
-import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
+import type { Effects } from '@/juicyloops/effects/effects';
 import { Icon } from '@iconify/vue';
 import { computed, ref } from 'vue';
 import EffectPanel from './EffectPanel.vue';
 
 /**
- * The effect chain of one track, shown in signal order from the sound source to the output.
+ * One effect chain (of a track, a container bus or the master), shown in signal order from the input to the output.
  * Chips can be dragged to reorder the chain, the chosen effect's knobs sit below.
  * A lit dot on a chip means that effect is doing something to the sound.
  */
 const props = defineProps<{
-    track: BaseTrack;
+    effects: Effects;
 }>();
 
 /* The Effects instance is not reactive (it owns Tone nodes), so the rack keeps reactive mirrors of what it shows. */
-const order = ref<EffectKey[]>([...props.track.effects.order]);
+const order = ref<EffectKey[]>([...props.effects.order]);
 const selected = ref<EffectKey>(order.value.includes('reverb') ? 'reverb' : order.value[0]!);
 /** Bumped after a reset so the knobs re-read their values. */
 const version = ref(0);
 
-const read = (effect: EffectKey, param: string) => props.track.effects.getParam(effect, param as EffectParamKey<typeof effect>);
+const read = (effect: EffectKey, param: string) => props.effects.getParam(effect, param as EffectParamKey<typeof effect>);
 
 /** Effects that are always in the chain (dynamics/EQ) count as "on" once they deviate from neutral. */
 const isOn = (effect: EffectKey): boolean => {
@@ -39,15 +39,15 @@ const refresh = () => (active.value = new Set(order.value.filter(isOn)));
 
 const selectedIndex = computed(() => order.value.indexOf(selected.value));
 
-const syncOrder = () => (order.value = [...props.track.effects.order]);
+const syncOrder = () => (order.value = [...props.effects.order]);
 
 const move = (direction: 1 | -1) => {
-    props.track.effects.move(selected.value, direction);
+    props.effects.move(selected.value, direction);
     syncOrder();
 };
 
 const reset = () => {
-    props.track.effects.reset(selected.value);
+    props.effects.reset(selected.value);
     version.value++;
     refresh();
 };
@@ -75,7 +75,7 @@ const onDrop = (target: EffectKey) => {
 
     const next = order.value.filter((key) => key !== source);
     next.splice(next.indexOf(target), 0, source);
-    props.track.effects.setOrder(next);
+    props.effects.setOrder(next);
     syncOrder();
 };
 
@@ -117,7 +117,7 @@ const onDragEnd = () => {
 
         <EffectPanel
             :key="`${selected}-${version}`"
-            :track="props.track"
+            :effects="props.effects"
             :effect="selected"
             :definition="EFFECT_DEFINITIONS[selected]"
             :position="selectedIndex + 1"
