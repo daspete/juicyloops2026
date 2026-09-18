@@ -121,11 +121,6 @@ textarea {
     user-select: text;
 }
 
-/* The logo is white artwork; flip it in light mode. */
-html:not(.dark) .logo {
-    filter: invert(1) hue-rotate(180deg);
-}
-
 /* ---------- generic controls ---------- */
 
 .iconbtn {

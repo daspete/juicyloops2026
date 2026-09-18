@@ -14,6 +14,7 @@ import JuicySamplerTrack from './tracks/JuicySamplerTrack.vue';
 import JuicyMicrophoneTrack from './tracks/JuicyMicrophoneTrack.vue';
 import StepRuler from './tracks/StepRuler.vue';
 import GiscusLoader from './GiscusLoader.vue';
+import JuicyLogo from './JuicyLogo.vue';
 
 const { engine, bpm, setBpm, tapTempo, currentTick, isPlaying, togglePlay, tracks, addTrack } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
@@ -120,8 +121,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
 <template>
     <div class="flex flex-col w-full h-full">
         <header class="flex items-center gap-4 px-4 h-16 shrink-0 overflow-x-auto">
-            <div class="w-40 shrink-0">
-                <img src="/juicyloopslogo.svg" alt="Juicy Loops" class="logo" />
+            <div class="h-8 shrink-0">
+                <JuicyLogo />
             </div>
 
             <div class="flex-1 flex items-center justify-center gap-5">
@@ -265,8 +266,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
 
     <div v-if="!isInitialized" class="fixed inset-0 z-50 flex items-center justify-center bg-(--jl-bg)/80 backdrop-blur-sm p-4">
         <div class="w-full max-w-md rounded-2xl border border-(--jl-line) bg-(--jl-surface) p-8 flex flex-col gap-5 shadow-2xl">
-            <div class="w-44">
-                <img src="/juicyloopslogo.svg" alt="Juicy Loops" class="logo" />
+            <div class="h-10">
+                <JuicyLogo />
             </div>
             <h1 class="font-display font-extrabold text-4xl leading-none tracking-tight">Make a loop<br />in a minute.</h1>
             <p class="text-(--jl-muted) leading-relaxed">
