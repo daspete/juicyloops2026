@@ -4,24 +4,70 @@
     --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 }
 
+/*
+ * Every colour in the app comes from these tokens. `html.dark` (the PrimeVue dark selector)
+ * flips the set, so light and dark mode are one stylesheet.
+ */
 :root {
     /* The "juice": one colour per track type. Rows set --jl-accent to their own. */
+    --jl-synth: #f26d0c;
+    --jl-sampler: #6fae14;
+    --jl-mic: #e8306f;
+    --jl-accent: var(--jl-synth);
+    --jl-accent-ink: #14100c;
+
+    --jl-bg: #f6f1ea;
+    --jl-glow: rgba(249, 115, 22, 0.16);
+    --jl-surface: #ffffff;
+    --jl-surface-2: #fbf8f3;
+    --jl-cell: #ebe4dc;
+    --jl-cell-hover: #ddd4ca;
+    --jl-cell-downbeat: #e3dbd1;
+    --jl-line: #e2d9ce;
+    --jl-line-strong: #c9bdaf;
+    --jl-bar: #b9ada2;
+    --jl-text: #1c1714;
+    --jl-muted: #7a6d63;
+    --jl-overlay: rgba(255, 253, 250, 0.88);
+    --jl-key-white: #ffffff;
+    --jl-key-white-ink: #1c1714;
+    --jl-key-black: #3a312b;
+    --jl-key-black-ink: #f3ece4;
+    --jl-shadow: 0 10px 30px -18px rgba(60, 40, 20, 0.35);
+
+    /* Width of the control column on the left of every track row. The step ruler uses it too. */
+    --jl-track-head: 20rem;
+    /* Width of the note-name column in the piano roll. */
+    --jl-key-width: 3rem;
+
+    color-scheme: light;
+}
+
+html.dark {
     --jl-synth: #ff8a2a;
     --jl-sampler: #a8e63d;
     --jl-mic: #ff4f8b;
-    --jl-accent: var(--jl-synth);
-    --jl-accent-ink: #14100c;
+
     --jl-bg: #0f0c0a;
-    --jl-text: #f3ece4;
-    --jl-muted: #9a8d82;
-    --jl-line: #2a2320;
+    --jl-glow: rgba(249, 115, 22, 0.14);
+    --jl-surface: #171310;
+    --jl-surface-2: #120f0d;
     --jl-cell: #211b17;
     --jl-cell-hover: #2e2621;
     --jl-cell-downbeat: #27201b;
-    /* Width of the control column on the left of every track row. The step ruler uses it too. */
-    --jl-track-head: 19.5rem;
-    /* Width of the note-name column in the piano roll. */
-    --jl-key-width: 3rem;
+    --jl-line: #2a2320;
+    --jl-line-strong: #4a3f38;
+    --jl-bar: #4c423b;
+    --jl-text: #f3ece4;
+    --jl-muted: #9a8d82;
+    --jl-overlay: rgba(15, 12, 10, 0.85);
+    --jl-key-white: #efe9e3;
+    --jl-key-white-ink: #1a1512;
+    --jl-key-black: #1a1512;
+    --jl-key-black-ink: #bdb0a5;
+    --jl-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+
+    color-scheme: dark;
 }
 
 html {
@@ -31,8 +77,13 @@ html {
 body {
     font-family: var(--font-sans);
     color: var(--jl-text);
-    background: radial-gradient(60rem 30rem at 50% -10rem, rgba(249, 115, 22, 0.14), transparent 70%), var(--jl-bg);
+    background:
+        radial-gradient(60rem 30rem at 50% -10rem, var(--jl-glow), transparent 70%),
+        var(--jl-bg);
     -webkit-font-smoothing: antialiased;
+    transition:
+        background-color 0.25s ease,
+        color 0.25s ease;
 }
 
 .fade-enter-active,
@@ -48,7 +99,7 @@ body {
 * {
     user-select: none;
     scrollbar-width: thin;
-    scrollbar-color: var(--jl-line) transparent;
+    scrollbar-color: var(--jl-line-strong) transparent;
 }
 
 *::-webkit-scrollbar {
@@ -61,7 +112,7 @@ body {
 }
 
 *::-webkit-scrollbar-thumb {
-    background: var(--jl-line);
+    background: var(--jl-line-strong);
     border-radius: 999px;
 }
 
@@ -70,18 +121,23 @@ textarea {
     user-select: text;
 }
 
+/* The logo is white artwork; flip it in light mode. */
+html:not(.dark) .logo {
+    filter: invert(1) hue-rotate(180deg);
+}
+
 /* ---------- generic controls ---------- */
 
 .iconbtn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
+    gap: 0.3rem;
     height: 1.75rem;
     min-width: 1.75rem;
-    padding: 0 0.45rem;
+    padding: 0 0.4rem;
     border-radius: 0.5rem;
-    color: #b9ada2;
+    color: var(--jl-muted);
     font-size: 0.8rem;
     font-weight: 600;
     line-height: 1;
@@ -114,7 +170,7 @@ textarea {
 
 .iconbtn--danger:hover {
     background: rgba(255, 82, 82, 0.14);
-    color: #ff7b7b;
+    color: #e03c3c;
 }
 
 :is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn):focus-visible {
@@ -130,9 +186,10 @@ textarea {
     padding: 0 0.7rem;
     border-radius: 999px;
     border: 1px solid var(--jl-line);
+    background: var(--jl-surface);
     font-size: 0.8rem;
     font-weight: 600;
-    color: #b9ada2;
+    color: var(--jl-muted);
     cursor: pointer;
     transition:
         background-color 0.12s ease,
@@ -142,7 +199,7 @@ textarea {
 
 .chip:hover {
     color: var(--jl-text);
-    border-color: #4a3f38;
+    border-color: var(--jl-line-strong);
 }
 
 .chip[data-active='true'] {
@@ -151,11 +208,27 @@ textarea {
     color: var(--jl-accent);
 }
 
+.chip--draggable {
+    cursor: grab;
+}
+
+.chip--draggable:active {
+    cursor: grabbing;
+}
+
+.chip[data-dragging='true'] {
+    opacity: 0.4;
+}
+
+.chip[data-drop='true'] {
+    box-shadow: -3px 0 0 0 var(--jl-accent);
+}
+
 .chip-dot {
     width: 0.4rem;
     height: 0.4rem;
     border-radius: 999px;
-    background: var(--jl-line);
+    background: var(--jl-line-strong);
 }
 
 .chip-dot[data-on='true'] {
@@ -188,6 +261,17 @@ textarea {
 
 /* ---------- transport ---------- */
 
+.transport {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+    border-radius: 999px;
+    border: 1px solid var(--jl-line);
+    background: var(--jl-surface);
+    box-shadow: var(--jl-shadow);
+}
+
 .playbtn {
     display: inline-flex;
     align-items: center;
@@ -198,7 +282,7 @@ textarea {
     background: var(--jl-synth);
     color: var(--jl-accent-ink);
     cursor: pointer;
-    box-shadow: 0 0 0 0 rgba(255, 138, 42, 0.5);
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--jl-synth) 50%, transparent);
     transition:
         transform 0.12s ease,
         box-shadow 0.2s ease,
@@ -211,6 +295,7 @@ textarea {
 
 .playbtn[data-playing='true'] {
     background: var(--jl-text);
+    color: var(--jl-bg);
     animation: playpulse 1.2s ease-out infinite;
 }
 
@@ -224,11 +309,10 @@ textarea {
 
 @keyframes playpulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(255, 138, 42, 0.55);
+        box-shadow: 0 0 0 0 color-mix(in oklab, var(--jl-synth) 55%, transparent);
     }
-
     100% {
-        box-shadow: 0 0 0 14px rgba(255, 138, 42, 0);
+        box-shadow: 0 0 0 14px transparent;
     }
 }
 
@@ -254,8 +338,34 @@ textarea {
     margin: 0;
 }
 
-.bpm-input:focus-visible {
+.bpm-input {
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.bpm-input:focus {
+    cursor: text;
+}
+
+.bpm-input:focus-visible,
+.bpm-input--dragging {
     color: var(--jl-synth);
+}
+
+.loopbar {
+    height: 3px;
+    background: var(--jl-line);
+}
+
+.loopbar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--jl-synth), var(--jl-mic));
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-synth) 60%, transparent);
+    transition: width 0.08s linear;
+}
+
+.loopbar-fill[data-playing='false'] {
+    opacity: 0.35;
 }
 
 /* ---------- step grid ---------- */
@@ -288,7 +398,7 @@ textarea {
     font-size: 0.72rem;
     font-weight: 500;
     cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
     transition:
         background-color 0.08s ease,
         color 0.08s ease,
@@ -315,24 +425,44 @@ textarea {
         0 0 10px color-mix(in oklab, var(--jl-accent) 45%, transparent);
 }
 
+/* A note shorter than one step fills only part of its cell. */
+.tick--active.tick--partial,
+.tick--active.tick--partial:hover {
+    background: linear-gradient(90deg, var(--jl-accent) calc(var(--fill) * 100%), var(--jl-cell-hover) calc(var(--fill) * 100%));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+/* Cells covered by a longer note from an earlier step. */
+.tick--tail,
+.tick--tail:hover {
+    background: color-mix(in oklab, var(--jl-accent) 40%, var(--jl-cell));
+    color: color-mix(in oklab, var(--jl-accent-ink) 70%, var(--jl-accent));
+    border-radius: 0 0.45rem 0.45rem 0;
+}
+
+.tick--open-end {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+}
+
 .tick--current::after {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: inherit;
     background: rgba(255, 255, 255, 0.18);
-    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-text) 55%, transparent);
     pointer-events: none;
 }
 
 .tick--current.tick--active {
     transform: scale(1.07);
-    filter: brightness(1.2);
+    filter: brightness(1.15);
     z-index: 1;
 }
 
 .track--muted .tick--active {
-    filter: saturate(0.2) brightness(0.7);
+    filter: saturate(0.2) brightness(0.9);
 }
 
 /* ---------- beat ruler ---------- */
@@ -357,13 +487,13 @@ textarea {
     width: 3px;
     height: 3px;
     border-radius: 999px;
-    background: var(--jl-line);
+    background: var(--jl-line-strong);
 }
 
 .ruler-cell--current {
     background: var(--jl-synth);
     color: var(--jl-accent-ink);
-    box-shadow: 0 0 10px rgba(255, 138, 42, 0.55);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-synth) 55%, transparent);
 }
 
 .ruler-cell--current::before {
@@ -381,46 +511,49 @@ textarea {
     cursor: ns-resize;
 }
 
-.velocity-cell--active .velocity-bar {
-    background: linear-gradient(to top, var(--jl-accent), color-mix(in oklab, var(--jl-accent) 55%, white));
-}
-
 .velocity-bar {
     position: absolute;
     left: 0;
     right: 0;
     bottom: 0;
-    background: #4c423b;
+    background: var(--jl-bar);
     border-radius: 2px 2px 0 0;
     transition: height 0.06s ease;
 }
 
-/* ---------- length lane ---------- */
-
-.length-cell .velocity-bar {
-    opacity: 0.55;
+.velocity-cell--active .velocity-bar {
+    background: linear-gradient(to top, var(--jl-accent), color-mix(in oklab, var(--jl-accent) 55%, white));
 }
 
-.length-cell.velocity-cell--active .velocity-bar {
+/* ---------- note handles (grid and piano roll) ---------- */
+
+.note-handle {
+    position: absolute;
+    top: 3px;
+    bottom: 3px;
+    width: 6px;
+    border-radius: 2px;
+    background: rgba(20, 16, 12, 0.5);
+    cursor: ew-resize;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.note-handle--start {
+    left: 2px;
+}
+
+.note-handle--end {
+    right: 2px;
+}
+
+.pianorow:hover .note-handle,
+.steps:hover .note-handle {
     opacity: 1;
 }
 
-.length-cell:not(.velocity-cell--active) .length-label {
-    opacity: 0.35;
-}
-
-.length-label {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0.25rem;
-    text-align: center;
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    font-weight: 700;
-    color: var(--jl-text);
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-    pointer-events: none;
+.note-handle:hover {
+    background: rgba(20, 16, 12, 0.85);
 }
 
 /* ---------- piano roll ---------- */
@@ -448,14 +581,15 @@ textarea {
     font-family: var(--font-mono);
     font-size: 0.68rem;
     font-weight: 700;
-    background: #efe9e3;
-    color: #1a1512;
+    background: var(--jl-key-white);
+    color: var(--jl-key-white-ink);
+    border: 1px solid var(--jl-line);
 }
 
 .pianorow--black .pianokey {
-    background: #1a1512;
-    color: #bdb0a5;
-    border: 1px solid #2e2621;
+    background: var(--jl-key-black);
+    color: var(--jl-key-black-ink);
+    border-color: transparent;
 }
 
 .pianorow--c .pianokey {
@@ -476,7 +610,7 @@ textarea {
 }
 
 .pianorow--black .pianotick {
-    background: #1a1512;
+    background: color-mix(in oklab, var(--jl-cell) 70%, var(--jl-bg));
 }
 
 .pianorow:hover .pianotick {
@@ -496,21 +630,24 @@ textarea {
     box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 45%, transparent);
 }
 
-/* Notes shorter than a step only fill part of their cell. */
 .pianorow .pianotick--active[style*='--fill'] {
     background: linear-gradient(90deg, var(--jl-accent) calc(var(--fill) * 100%), var(--jl-cell) calc(var(--fill) * 100%));
 }
 
-/* The tail of a note that is longer than one step. */
 .pianorow .pianotick--tail,
 .pianorow--black .pianotick--tail,
 .pianorow:hover .pianotick--tail {
-    background: color-mix(in oklab, var(--jl-accent) 45%, var(--jl-cell));
-    border-radius: 0;
+    background: color-mix(in oklab, var(--jl-accent) 55%, var(--jl-cell));
+    border-radius: 0 0.3rem 0.3rem 0;
+}
+
+.pianorow .pianotick--open-end {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
 }
 
 .pianorow .pianotick--current:not(.pianotick--active) {
-    background: color-mix(in oklab, var(--jl-cell-hover) 70%, white 8%);
+    background: color-mix(in oklab, var(--jl-cell-hover) 70%, var(--jl-text) 8%);
 }
 
 .pianorow .pianotick--current.pianotick--active {
@@ -519,6 +656,33 @@ textarea {
 }
 
 /* ---------- track row ---------- */
+
+.track {
+    position: relative;
+    border-radius: 0.9rem;
+    background: var(--jl-surface);
+    border: 1px solid var(--jl-line);
+    box-shadow: var(--jl-shadow);
+    transition:
+        opacity 0.2s ease,
+        background-color 0.25s ease;
+}
+
+.track::before {
+    content: '';
+    position: absolute;
+    left: -1px;
+    top: 0.9rem;
+    bottom: 0.9rem;
+    width: 3px;
+    border-radius: 999px;
+    background: var(--jl-accent);
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-accent) 60%, transparent);
+}
+
+.track--muted {
+    opacity: 0.6;
+}
 
 .track-head {
     width: var(--jl-track-head);
@@ -538,6 +702,14 @@ textarea {
     background: var(--jl-accent);
 }
 
+.track-dot {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: var(--jl-accent);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 70%, transparent);
+}
+
 .grid-hint {
     position: absolute;
     inset: 0;
@@ -550,7 +722,7 @@ textarea {
 .grid-hint span {
     padding: 0.35rem 0.8rem;
     border-radius: 999px;
-    background: rgba(15, 12, 10, 0.85);
+    background: var(--jl-overlay);
     border: 1px dashed color-mix(in oklab, var(--jl-accent) 60%, transparent);
     color: var(--jl-text);
     font-size: 0.8rem;
@@ -564,55 +736,6 @@ textarea {
     }
 }
 
-.loopbar {
-    height: 3px;
-    background: var(--jl-line);
-}
-
-.loopbar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, var(--jl-synth), var(--jl-mic));
-    box-shadow: 0 0 10px rgba(255, 138, 42, 0.6);
-    transition: width 0.08s linear;
-}
-
-.loopbar-fill[data-playing='false'] {
-    opacity: 0.35;
-}
-
-
-.track {
-    position: relative;
-    border-radius: 0.8rem;
-    background: #171310;
-    border: 1px solid #221c18;
-    transition: opacity 0.2s ease;
-}
-
-.track::before {
-    content: '';
-    position: absolute;
-    left: -1px;
-    top: 0.9rem;
-    bottom: 0.9rem;
-    width: 3px;
-    border-radius: 999px;
-    background: var(--jl-accent);
-    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-accent) 60%, transparent);
-}
-
-.track--muted {
-    opacity: 0.6;
-}
-
-.track-dot {
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 999px;
-    background: var(--jl-accent);
-    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 70%, transparent);
-}
-
 .addcard {
     display: flex;
     flex-direction: column;
@@ -622,7 +745,8 @@ textarea {
     padding: 1.1rem 1.2rem;
     border-radius: 1rem;
     border: 1px solid var(--jl-line);
-    background: #171310;
+    background: var(--jl-surface);
+    box-shadow: var(--jl-shadow);
     text-align: left;
     cursor: pointer;
     transition:
@@ -638,7 +762,7 @@ textarea {
 }
 
 .dropzone {
-    border: 1px dashed #3a312b;
+    border: 1px dashed var(--jl-line-strong);
     border-radius: 0.6rem;
     color: var(--jl-muted);
     transition:
@@ -660,7 +784,7 @@ textarea {
     padding: 0 1rem 0 0.8rem;
     border-radius: 999px;
     background: var(--jl-mic);
-    color: var(--jl-accent-ink);
+    color: white;
     font-weight: 700;
     cursor: pointer;
     transition: transform 0.12s ease;
@@ -671,8 +795,7 @@ textarea {
 }
 
 .recbtn[data-recording='true'] {
-    background: #ff3b3b;
-    color: white;
+    background: #e62e2e;
 }
 
 .recbtn[data-recording='true'] .rec-dot {
@@ -696,84 +819,6 @@ textarea {
     transform: scaleX(-1);
 }
 
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation: none !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-
-/* ---------- knob ---------- */
-
-.knob {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    user-select: none;
-}
-
-.knob-dial {
-    position: relative;
-    border-radius: 999px;
-    cursor: ns-resize;
-    touch-action: none;
-    outline: none;
-}
-
-.knob-dial:focus-visible {
-    box-shadow: 0 0 0 2px var(--jl-bg), 0 0 0 4px var(--jl-accent);
-}
-
-.knob-track {
-    fill: none;
-    stroke: var(--jl-cell-hover);
-    stroke-linecap: round;
-}
-
-.knob-value {
-    fill: none;
-    stroke: var(--jl-accent);
-    stroke-linecap: round;
-    filter: drop-shadow(0 0 4px color-mix(in oklab, var(--jl-accent) 60%, transparent));
-    transition: stroke-dasharray 0.05s linear;
-}
-
-.knob-pointer {
-    fill: var(--jl-text);
-}
-
-.knob-readout {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    font-weight: 700;
-    color: var(--jl-text);
-    pointer-events: none;
-    transition: transform 0.12s ease, color 0.12s ease;
-}
-
-.knob--dragging .knob-readout,
-.knob-dial:hover .knob-readout {
-    color: var(--jl-accent);
-}
-
-.knob--dragging .knob-readout {
-    transform: scale(1.15);
-}
-
-.knob-label {
-    font-size: 0.72rem;
-    color: var(--jl-muted);
-    white-space: nowrap;
-}
-
 /* ---------- tweak panel ---------- */
 
 .tweak {
@@ -794,7 +839,7 @@ textarea {
     min-width: 0;
     border-radius: 0.75rem;
     border: 1px solid var(--jl-line);
-    background: #120f0d;
+    background: var(--jl-surface-2);
 }
 
 .tweak > .panel {
@@ -830,18 +875,84 @@ textarea {
     padding: 0.75rem;
 }
 
-.chip--draggable {
-    cursor: grab;
+/* ---------- knob ---------- */
+
+.knob {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    user-select: none;
 }
 
-.chip--draggable:active {
-    cursor: grabbing;
+.knob-dial {
+    position: relative;
+    border-radius: 999px;
+    cursor: ns-resize;
+    touch-action: none;
+    outline: none;
 }
 
-.chip[data-dragging='true'] {
-    opacity: 0.4;
+.knob-dial:focus-visible {
+    box-shadow:
+        0 0 0 2px var(--jl-bg),
+        0 0 0 4px var(--jl-accent);
 }
 
-.chip[data-drop='true'] {
-    box-shadow: -3px 0 0 0 var(--jl-accent);
+.knob-track {
+    fill: none;
+    stroke: var(--jl-cell-hover);
+    stroke-linecap: round;
+}
+
+.knob-value {
+    fill: none;
+    stroke: var(--jl-accent);
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 4px color-mix(in oklab, var(--jl-accent) 60%, transparent));
+    transition: stroke-dasharray 0.05s linear;
+}
+
+.knob-pointer {
+    fill: var(--jl-text);
+}
+
+.knob-readout {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--jl-text);
+    pointer-events: none;
+    transition:
+        transform 0.12s ease,
+        color 0.12s ease;
+}
+
+.knob--dragging .knob-readout,
+.knob-dial:hover .knob-readout {
+    color: var(--jl-accent);
+}
+
+.knob--dragging .knob-readout {
+    transform: scale(1.15);
+}
+
+.knob-label {
+    font-size: 0.72rem;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
 }

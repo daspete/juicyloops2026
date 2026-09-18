@@ -8,9 +8,17 @@ import { BEATS } from './steps';
  * Press a cell to flip it, keep the pointer down and sweep across to paint the same state onto its neighbours.
  * The optional default slot renders the cell content.
  */
+/** Extra decoration for a cell: covered by a longer note (`tail`), joined to the next cell (`openEnd`), or partially filled. */
+export interface StepSpan {
+    tail?: boolean;
+    openEnd?: boolean;
+    fill?: number;
+}
+
 const props = defineProps<{
     ticks: T[];
     currentTick: number;
+    spans?: ReadonlyMap<number, StepSpan>;
 }>();
 
 const emit = defineEmits<{
@@ -86,8 +94,12 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                 :class="{
                     'tick--downbeat': index % 4 === 0,
                     'tick--active': ticks[index]!.isActive,
+                    'tick--tail': !ticks[index]!.isActive && spans?.get(index)?.tail,
+                    'tick--open-end': spans?.get(index)?.openEnd,
+                    'tick--partial': ticks[index]!.isActive && (spans?.get(index)?.fill ?? 1) < 1,
                     'tick--current': currentTick === index,
                 }"
+                :style="(spans?.get(index)?.fill ?? 1) < 1 ? { '--fill': spans!.get(index)!.fill } : undefined"
                 :data-step="index"
                 :aria-label="`Step ${index + 1}`"
                 :aria-pressed="ticks[index]!.isActive"

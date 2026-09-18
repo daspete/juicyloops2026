@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0f0c0a" />
+    <meta name="theme-color" content="#0f0c0a" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f1ea" media="(prefers-color-scheme: light)" />
     <title>Juicy Loops</title>
     <meta property="og:title" content="Juicy Loops" />
     <meta property="og:type" content="website" />
@@ -15,6 +16,14 @@
     <meta property="og:site_name" content="Juicy Loops" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="description" content="Simple Loopstation toy for creating and sharing loops" />
+    <script>
+      (function () {
+        var stored = null;
+        try { stored = localStorage.getItem('juicyloops:theme'); } catch (e) {}
+        var light = stored ? stored === 'light' : window.matchMedia('(prefers-color-scheme: light)').matches;
+        if (!light) document.documentElement.classList.add('dark');
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

@@ -56,3 +56,14 @@ export const noteLengthIndex = (length: NoteLength): number => NOTE_LENGTHS.find
 
 /** How many sequencer steps a length covers. */
 export const noteLengthSteps = (length: NoteLength): number => NOTE_LENGTHS[noteLengthIndex(length)]?.steps ?? 1;
+
+/** The available length closest to `steps`. Ties go to the longer one, so dragging past the middle grows the note. */
+export const nearestNoteLength = (steps: number): NoteLength => {
+    let best: (typeof NOTE_LENGTHS)[number] = NOTE_LENGTHS[0];
+    for (const entry of NOTE_LENGTHS) {
+        if (Math.abs(entry.steps - steps) <= Math.abs(best.steps - steps)) {
+            best = entry;
+        }
+    }
+    return best.tone;
+};
