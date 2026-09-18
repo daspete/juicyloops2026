@@ -6,7 +6,6 @@ import { computed, ref, watch } from 'vue';
 import TickGrid from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
-import TrackSampleSettings from './settings/TrackSampleSettings.vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
 
 const props = defineProps<{
@@ -14,10 +13,11 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const { currentTick: sectionStep, trackStep } = useJuicyLoops();
+const { currentTick: playingStep, trackStep, isPlaying } = useJuicyLoops();
 
-/** The playhead inside this track's own pattern. */
-const currentTick = computed(() => trackStep(props.track));
+/** The playhead inside this track's own pattern; off the grid while stopped, so no pad is lit for nothing. */
+const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -1));
+const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
 
 const isWaveformExpanded = ref(false);
 const isDragOver = ref(false);
@@ -59,30 +59,27 @@ const onDrop = async (event: DragEvent) => {
         <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)" />
         <div
             v-else
-            class="dropzone track-steps flex items-center gap-3 px-3"
+            class="dropzone track-steps"
             :data-over="isDragOver"
             @dragover.prevent="isDragOver = true"
             @dragleave="isDragOver = false"
             @drop.prevent="onDrop"
         >
             <Icon icon="mdi:tray-arrow-down" class="w-5 h-5 shrink-0" />
-            <span class="text-sm">Drop an audio file here, or</span>
+            <span>Drop an audio file here, or</span>
             <SamplerFileUpload :track="props.track" label="Choose a file" />
         </div>
 
         <template #expanded>
-            <div v-if="props.track.hasSample && !props.track.isUpdatingSample && isWaveformExpanded" class="flex flex-col gap-2">
+            <div v-if="props.track.hasSample && !props.track.isUpdatingSample && isWaveformExpanded" class="lane-stack">
                 <TrackWaveform :track="props.track" />
-                <div class="flex items-center gap-3">
-                    <span class="font-mono text-xs px-2 py-1 rounded-md bg-(--jl-cell) max-w-48 truncate" :title="props.track.sampleName ?? ''">{{ props.track.sampleName }}</span>
+                <div class="lane-foot">
+                    <span class="setting-file" :title="props.track.sampleName ?? ''">{{ props.track.sampleName }}</span>
                     <SamplerFileUpload :track="props.track" label="Change sample" />
-                    <span class="text-xs text-(--jl-muted)">Drag the highlighted region to choose which part plays.</span>
+                    <span class="lane-hint">Drag the highlighted region to choose which part plays.</span>
                 </div>
             </div>
         </template>
 
-        <template #sound>
-            <TrackSampleSettings :track="props.track" />
-        </template>
     </TrackShell>
 </template>

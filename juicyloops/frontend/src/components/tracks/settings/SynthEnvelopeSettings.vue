@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { DEFAULT_ENVELOPE, type SynthEnvelopeParam, type SynthTrack } from '@/juicyloops/tracks/SynthTrack';
+import { DEFAULT_ENVELOPE, ENVELOPE_PARAMS, type SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import JuicyKnob from '@/components/ui/JuicyKnob.vue';
 import { computed } from 'vue';
 
@@ -7,16 +7,6 @@ import { computed } from 'vue';
 const props = defineProps<{
     track: SynthTrack;
 }>();
-
-const seconds = (value: number) => (value < 1 ? `${Math.round(value * 1000)}ms` : `${value.toFixed(2)}s`);
-const percent = (value: number) => `${Math.round(value * 100)}%`;
-
-const STAGES: { key: SynthEnvelopeParam; label: string; min: number; max: number; step: number; curve: 'linear' | 'log'; format: (v: number) => string; hint: string }[] = [
-    { key: 'attack', label: 'Attack', min: 0.001, max: 2, step: 0.001, curve: 'log', format: seconds, hint: 'How long the note takes to reach full volume' },
-    { key: 'decay', label: 'Decay', min: 0.01, max: 2, step: 0.001, curve: 'log', format: seconds, hint: 'How long it takes to fall to the sustain level' },
-    { key: 'sustain', label: 'Sustain', min: 0, max: 1, step: 0.01, curve: 'linear', format: percent, hint: 'The level held while the note plays' },
-    { key: 'release', label: 'Release', min: 0.01, max: 4, step: 0.001, curve: 'log', format: seconds, hint: 'How long the tail rings out after the note ends' },
-];
 
 /* The curve: each stage gets horizontal room in proportion to its time (log-scaled so tiny attacks still show). */
 const WIDTH = 220;
@@ -57,16 +47,16 @@ const curve = computed(() => {
             </svg>
             <div class="flex gap-4">
                 <JuicyKnob
-                    v-for="stage in STAGES"
+                    v-for="stage in ENVELOPE_PARAMS"
                     :key="stage.key"
-                    :model-value="props.track.envelope[stage.key]"
-                    @update:model-value="props.track.setEnvelope(stage.key, $event)"
+                    :model-value="props.track.envelope[stage.stage]"
+                    @update:model-value="props.track.setEnvelope(stage.stage, $event)"
                     :min="stage.min"
                     :max="stage.max"
                     :step="stage.step"
                     :curve="stage.curve"
                     :format="stage.format"
-                    :reset-value="DEFAULT_ENVELOPE[stage.key]"
+                    :reset-value="DEFAULT_ENVELOPE[stage.stage]"
                     :label="stage.label"
                     :hint="stage.hint"
                     :size="60"

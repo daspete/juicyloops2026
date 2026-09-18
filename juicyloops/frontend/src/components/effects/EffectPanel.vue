@@ -12,6 +12,8 @@ const props = defineProps<{
     position: number;
     count: number;
     isOn: boolean;
+    /** Tighter spacing for the mixer strips. */
+    compact?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -22,11 +24,11 @@ const emit = defineEmits<{
 </script>
 
 <template>
-    <div class="rounded-xl bg-(--jl-cell) overflow-hidden">
-        <div class="flex items-center gap-2 px-3 h-9 border-b border-(--jl-line)">
+    <div class="device">
+        <div class="device-head">
             <span class="chip-dot" :data-on="props.isOn"></span>
-            <span class="font-semibold">{{ props.definition.label }}</span>
-            <span class="font-mono text-xs text-(--jl-muted)">{{ props.position }} of {{ props.count }}</span>
+            <span class="device-name">{{ props.definition.label }}</span>
+            <span class="device-pos">{{ props.position }} of {{ props.count }}</span>
             <div class="flex-1"></div>
             <button
                 type="button"
@@ -48,13 +50,13 @@ const emit = defineEmits<{
             >
                 <Icon icon="mdi:arrow-right" class="w-4 h-4" />
             </button>
-            <span class="w-px h-4 bg-(--jl-line) mx-1"></span>
+            <span class="vrule"></span>
             <button type="button" class="iconbtn" v-tooltip.bottom="'Back to the default settings'" @click="emit('reset')">
                 <Icon icon="mdi:restore" class="w-4 h-4" />
                 <span>Reset</span>
             </button>
         </div>
-        <div class="flex flex-wrap gap-x-7 gap-y-3 px-4 py-3">
+        <div class="device-knobs">
             <EffectKnob
                 v-for="param in props.definition.params"
                 :key="`${props.effect}-${param.key}`"

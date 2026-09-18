@@ -9,9 +9,11 @@ import EffectPanel from './EffectPanel.vue';
  * One effect chain (of a track, a container bus or the master), shown in signal order from the input to the output.
  * Chips can be dragged to reorder the chain, the chosen effect's knobs sit below.
  * A lit dot on a chip means that effect is doing something to the sound.
+ * `compact` stacks the chain top to bottom, for the narrow strips of the mixer.
  */
 const props = defineProps<{
     effects: Effects;
+    compact?: boolean;
 }>();
 
 /* The Effects instance is not reactive (it owns Tone nodes), so the rack keeps reactive mirrors of what it shows. */
@@ -86,9 +88,9 @@ const onDragEnd = () => {
 </script>
 
 <template>
-    <div class="flex flex-col gap-3">
-        <div class="flex flex-wrap items-center gap-1.5">
-            <span class="text-xs text-(--jl-muted) mr-1 flex items-center gap-1"><Icon icon="mdi:volume-source" class="w-4 h-4" /> in</span>
+    <div class="rack" :class="{ 'rack--compact': props.compact }">
+        <div class="chain">
+            <span class="chain-end"><Icon icon="mdi:volume-source" class="w-4 h-4" /> in</span>
             <template v-for="(key, index) in order" :key="key">
                 <button
                     type="button"
@@ -107,12 +109,12 @@ const onDragEnd = () => {
                     @dragend="onDragEnd"
                 >
                     <span class="chip-dot" :data-on="active.has(key)"></span>
-                    <span class="font-mono text-[0.65rem] text-(--jl-muted)">{{ index + 1 }}</span>
+                    <span class="chip-index">{{ index + 1 }}</span>
                     <span>{{ EFFECT_DEFINITIONS[key].label }}</span>
                 </button>
-                <Icon v-if="index < order.length - 1" icon="mdi:chevron-right" class="w-3.5 h-3.5 text-(--jl-line) -mx-1" />
+                <Icon v-if="index < order.length - 1" icon="mdi:chevron-right" class="chain-arrow" />
             </template>
-            <span class="text-xs text-(--jl-muted) ml-1 flex items-center gap-1">out <Icon icon="mdi:speaker" class="w-4 h-4" /></span>
+            <span class="chain-end">out <Icon icon="mdi:speaker" class="w-4 h-4" /></span>
         </div>
 
         <EffectPanel
@@ -123,6 +125,7 @@ const onDragEnd = () => {
             :position="selectedIndex + 1"
             :count="order.length"
             :is-on="active.has(selected)"
+            :compact="props.compact"
             @change="refresh"
             @move="move"
             @reset="reset"

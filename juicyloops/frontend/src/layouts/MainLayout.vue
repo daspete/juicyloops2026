@@ -3,7 +3,7 @@ import JuicyLoops from '@/components/JuicyLoops.vue';
 </script>
 
 <template>
-    <div class="w-screen h-screen">
+    <div class="h-full w-full">
         <JuicyLoops />
     </div>
 </template>

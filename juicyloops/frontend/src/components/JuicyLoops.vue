@@ -1,39 +1,67 @@
 <script setup lang="ts">
 import { Drawer } from 'primevue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { RouterLink, RouterView, useRoute } from 'vue-router';
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useTheme } from '@/composables/useTheme';
+import { useWorkspace } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
-import { STEP_COUNT } from '@/juicyloops/constants';
-import BusRack from './effects/BusRack.vue';
+import DetailPanel from './detail/DetailPanel.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
+import MixPanel from './mix/MixPanel.vue';
 import { TRACK_META } from './tracks/trackMeta';
 
 /**
- * The application shell: transport, view switcher and the frame around the editors.
- * The track editor and the song editor are routes rendered into the main area.
+ * The application shell: transport, view switcher, the mode switch and the frame around the editors.
+ * The track editor and the song editor are routes rendered into the main area; the mixer docks to its right,
+ * the detail panel below it.
  */
-const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode, song, containers } = useJuicyLoops();
+const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode: setPlaybackMode, containers } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
+const { mode, isPro, setMode, isMixerOpen, toggleMixer } = useWorkspace();
 const route = useRoute();
+const router = useRouter();
 
 /* What you see is what you hear: the song view plays the arrangement, the track view loops every track. */
 const isSongView = computed(() => route.name === 'app.song');
-watch(isSongView, (value) => setMode(value ? 'song' : 'loop'), { immediate: true });
+watch(isSongView, (value) => setPlaybackMode(value ? 'song' : 'loop'), { immediate: true });
+
+/* Quick mode has no song view: leaving Pro while arranging brings you back to the tracks. */
+watch(
+    [isPro, isSongView],
+    ([pro, song]) => {
+        if (!pro && song) {
+            router.replace({ name: 'app.index' });
+        }
+    },
+    { immediate: true },
+);
 
 const VIEWS = [
     { name: 'app.index', label: 'Tracks', icon: 'mdi:dots-grid', hint: 'Build containers of loops' },
     { name: 'app.song', label: 'Song', icon: 'mdi:view-sequential-outline', hint: 'Arrange the containers' },
 ] as const;
 
+const MODES = [
+    { key: 'quick', label: 'Quick', icon: 'mdi:lightning-bolt', hint: 'Just the tracks: add, paint, tweak' },
+    { key: 'pro', label: 'Pro', icon: 'mdi:tune-vertical-variant', hint: 'Containers, song arranger, mixer and automation' },
+] as const;
+
+/** What the status bar suggests, depending on where you are. */
+const statusHint = computed(() => {
+    if (isSongView.value) {
+        return 'Drag a container onto a lane · Drag clip edges to resize · Click an automation lane to draw';
+    }
+    return isPro.value
+        ? 'Tap a pad to add a step · Drag across pads to paint · Automate on a track head opens its lanes'
+        : 'Tap a pad to add a step · Drag across pads to paint · Switch to Pro for containers, the song and the mixer';
+});
+
 const isInitialized = ref(false);
 const isDiscussionsOpen = ref(false);
-/** The master channel strip: the rack everything passes through last, with the final level. */
-const isMasterOpen = ref(false);
 
 const initializeEngine = async () => {
     await engine.initialize();
@@ -41,13 +69,6 @@ const initializeEngine = async () => {
 };
 
 const position = computed(() => positionLabel(isSongView.value ? currentStep.value : currentTick.value));
-
-/** The progress bar spans one section in the track view and the whole song in the song view. */
-const loopProgress = computed(() => {
-    const total = isSongView.value ? song.value.length || STEP_COUNT : STEP_COUNT;
-    const step = isSongView.value ? currentStep.value : currentTick.value;
-    return `${((step + 1) / total) * 100}%`;
-});
 
 const onBpmInput = (event: Event) => setBpm(Number((event.target as HTMLInputElement).value));
 
@@ -129,14 +150,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
 </script>
 
 <template>
-    <div class="flex flex-col w-full h-full">
-        <header class="console">
-            <div class="console-left">
-                <div class="h-8 shrink-0">
+    <div class="app">
+        <header class="transportbar">
+            <div class="transportbar-left">
+                <div class="logo">
                     <JuicyLogo />
                 </div>
 
-                <nav class="viewswitch shrink-0" aria-label="Editor">
+                <nav v-if="isPro" class="viewswitch" aria-label="Editor">
                     <RouterLink
                         v-for="view in VIEWS"
                         :key="view.name"
@@ -152,77 +173,83 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                 </nav>
             </div>
 
-            <div class="console-center">
-                <div class="transport">
-                    <button
-                        type="button"
-                        class="playbtn"
-                        :data-playing="isPlaying"
-                        v-tooltip.bottom="isPlaying ? 'Stop (space)' : 'Play (space)'"
-                        :aria-label="isPlaying ? 'Stop' : 'Play'"
-                        @click="togglePlay"
-                    >
-                        <Icon :icon="isPlaying ? 'material-symbols:stop-rounded' : 'material-symbols:play-arrow-rounded'" class="w-7 h-7" />
+            <div class="transport">
+                <button
+                    type="button"
+                    class="playbtn"
+                    :data-playing="isPlaying"
+                    v-tooltip.bottom="isPlaying ? 'Stop (space)' : 'Play (space)'"
+                    :aria-label="isPlaying ? 'Stop' : 'Play'"
+                    @click="togglePlay"
+                >
+                    <Icon :icon="isPlaying ? 'material-symbols:stop-rounded' : 'material-symbols:play-arrow-rounded'" class="w-7 h-7" />
+                </button>
+
+                <div class="readout" :data-playing="isPlaying" aria-live="off" v-tooltip.bottom="{ value: 'Bar . beat . step', showDelay: 800 }">
+                    <span class="readout-dot"></span>
+                    <span class="readout-value">{{ position }}</span>
+                    <span class="readout-unit">{{ isSongView ? 'song' : 'loop' }}</span>
+                </div>
+
+                <div class="tempo">
+                    <button type="button" class="iconbtn" aria-label="Slower" v-tooltip.bottom="{ value: 'Hold to keep going', showDelay: 800 }" v-on="holdSlower">
+                        <Icon icon="mdi:minus" class="w-4 h-4" />
                     </button>
-
-                    <div class="readout" :data-playing="isPlaying" aria-live="off" v-tooltip.bottom="{ value: 'Bar . beat . step', showDelay: 800 }">
-                        <span class="readout-dot"></span>
-                        <span>{{ position }}</span>
-                    </div>
-
-                    <div class="tempo">
-                        <button
-                            type="button"
-                            class="iconbtn"
-                            aria-label="Slower"
-                            v-tooltip.bottom="{ value: 'Hold to keep going', showDelay: 800 }"
-                            v-on="holdSlower"
-                        >
-                            <Icon icon="mdi:minus" class="w-4 h-4" />
-                        </button>
-                        <input
-                            class="bpm-input"
-                            :class="{ 'bpm-input--dragging': isDraggingBpm }"
-                            type="number"
-                            :min="MIN_BPM"
-                            :max="MAX_BPM"
-                            :value="bpm"
-                            aria-label="Tempo in beats per minute"
-                            v-tooltip.bottom="{ value: 'Drag up or down, or click to type. Hold Shift for fine steps.', showDelay: 800 }"
-                            @change="onBpmInput"
-                            @pointerdown="onBpmPointerDown"
-                            @pointermove="onBpmPointerMove"
-                            @pointerup="onBpmPointerUp"
-                            @pointercancel="onBpmPointerUp"
-                        />
-                        <span class="tempo-unit">BPM</span>
-                        <button
-                            type="button"
-                            class="iconbtn"
-                            aria-label="Faster"
-                            v-tooltip.bottom="{ value: 'Hold to keep going', showDelay: 800 }"
-                            v-on="holdFaster"
-                        >
-                            <Icon icon="mdi:plus" class="w-4 h-4" />
-                        </button>
-                        <span class="tempo-divider"></span>
-                        <button type="button" class="iconbtn" v-tooltip.bottom="'Tap along to set the tempo'" @click="tapTempo">Tap</button>
-                    </div>
+                    <input
+                        class="bpm-input"
+                        :class="{ 'bpm-input--dragging': isDraggingBpm }"
+                        type="number"
+                        :min="MIN_BPM"
+                        :max="MAX_BPM"
+                        :value="bpm"
+                        aria-label="Tempo in beats per minute"
+                        v-tooltip.bottom="{ value: 'Drag up or down, or click to type. Hold Shift for fine steps.', showDelay: 800 }"
+                        @change="onBpmInput"
+                        @pointerdown="onBpmPointerDown"
+                        @pointermove="onBpmPointerMove"
+                        @pointerup="onBpmPointerUp"
+                        @pointercancel="onBpmPointerUp"
+                    />
+                    <span class="tempo-unit">BPM</span>
+                    <button type="button" class="iconbtn" aria-label="Faster" v-tooltip.bottom="{ value: 'Hold to keep going', showDelay: 800 }" v-on="holdFaster">
+                        <Icon icon="mdi:plus" class="w-4 h-4" />
+                    </button>
+                    <span class="vrule"></span>
+                    <button type="button" class="iconbtn" v-tooltip.bottom="'Tap along to set the tempo'" @click="tapTempo">Tap</button>
                 </div>
             </div>
 
-            <div class="console-right">
+            <div class="transportbar-right">
+                <div class="modeswitch" role="radiogroup" aria-label="Mode">
+                    <button
+                        v-for="item in MODES"
+                        :key="item.key"
+                        type="button"
+                        class="modeswitch-item"
+                        role="radio"
+                        :aria-checked="mode === item.key"
+                        :data-active="mode === item.key"
+                        :data-mode="item.key"
+                        v-tooltip.bottom="{ value: item.hint, showDelay: 400 }"
+                        @click="setMode(item.key)"
+                    >
+                        <Icon :icon="item.icon" class="w-4 h-4" />
+                        <span>{{ item.label }}</span>
+                    </button>
+                </div>
                 <button
+                    v-if="isPro"
                     type="button"
                     class="chip"
-                    :data-active="isMasterOpen"
-                    :aria-pressed="isMasterOpen"
-                    v-tooltip.bottom="'Master channel: level and effects for the whole song'"
-                    @click="isMasterOpen = !isMasterOpen"
+                    :data-active="isMixerOpen"
+                    :aria-pressed="isMixerOpen"
+                    v-tooltip.bottom="'Mixer: the container channel and the master, with their effects'"
+                    @click="toggleMixer"
                 >
                     <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
-                    <span>Master</span>
+                    <span>Mixer</span>
                 </button>
+                <span class="vrule"></span>
                 <button
                     type="button"
                     class="iconbtn"
@@ -232,59 +259,51 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                 >
                     <Icon :icon="theme === 'dark' ? 'ph:sun' : 'ph:moon'" class="w-5 h-5" />
                 </button>
-                <button
-                    type="button"
-                    class="iconbtn"
-                    aria-label="Questions and feedback"
-                    v-tooltip.bottom="'Questions and feedback'"
-                    @click="isDiscussionsOpen = true"
-                >
+                <button type="button" class="iconbtn" aria-label="Questions and feedback" v-tooltip.bottom="'Questions and feedback'" @click="isDiscussionsOpen = true">
                     <Icon icon="ph:chats" class="w-5 h-5" />
                 </button>
             </div>
         </header>
-        <div class="loopbar shrink-0" aria-hidden="true">
-            <div class="loopbar-fill" :data-playing="isPlaying" :style="{ width: loopProgress }"></div>
+
+        <div class="stage">
+            <main class="workspace">
+                <Suspense>
+                    <RouterView v-slot="{ Component }">
+                        <component :is="Component" />
+                    </RouterView>
+                </Suspense>
+            </main>
+            <MixPanel v-if="isPro && isMixerOpen" />
         </div>
 
-        <main class="flex-1 min-h-0 overflow-auto">
-            <Suspense>
-                <RouterView v-slot="{ Component }">
-                    <component :is="Component" />
-                </RouterView>
-            </Suspense>
-        </main>
+        <DetailPanel />
 
-        <footer class="flex justify-center py-2 text-xs text-(--jl-muted) shrink-0">
-            Made with ❤️ in Vienna by&nbsp;<a href="https://daspete.at" target="_blank" rel="noopener noreferrer" class="text-(--jl-brand) hover:underline"
-                >Pete</a
-            >
+        <footer class="statusbar">
+            <span class="statusbar-hint">{{ statusHint }}</span>
+            <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
+            <span class="flex-1"></span>
+            <span class="statusbar-credit">
+                Made with ❤️ in Vienna by <a href="https://daspete.at" target="_blank" rel="noopener noreferrer">Pete</a>
+            </span>
         </footer>
     </div>
 
     <div v-if="!isInitialized" class="welcome">
         <div class="welcome-card">
-            <div class="h-9 relative">
+            <div class="welcome-logo">
                 <JuicyLogo />
             </div>
-            <h1 class="welcome-title relative">Make a loop<br />in a minute.</h1>
-            <p class="text-(--jl-muted) leading-relaxed relative">
-                Add a track, tap some steps, press play. Your browser needs one click before it is allowed to make sound.
-            </p>
-            <div class="welcome-juice relative" aria-hidden="true">
+            <h1 class="welcome-title">Make a loop<br />in a minute.</h1>
+            <p class="welcome-text">Add a track, tap some steps, press play. Your browser needs one click before it is allowed to make sound.</p>
+            <div class="welcome-juice" aria-hidden="true">
                 <span v-for="(meta, type) in TRACK_META" :key="type" :style="{ '--jl-accent': meta.accent }"><i></i>{{ meta.label }}</span>
             </div>
-            <button type="button" class="playbtn playbtn--wide self-start relative" @click="initializeEngine">
+            <button type="button" class="playbtn playbtn--wide" @click="initializeEngine">
                 <Icon icon="material-symbols:play-arrow-rounded" class="w-6 h-6" />
                 <span>Start</span>
             </button>
         </div>
     </div>
-
-    <Drawer v-model:visible="isMasterOpen" header="Master channel" position="bottom" class="drawer--master">
-        <p class="text-sm text-(--jl-muted) mb-3">Everything you hear passes through here last: all containers, then this rack, then the speakers.</p>
-        <BusRack :bus="engine.master" />
-    </Drawer>
 
     <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
         <GiscusLoader />

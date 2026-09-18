@@ -20,6 +20,8 @@ export interface EffectParamDefinition {
     curve?: 'linear' | 'log';
     /** Optional display formatter for the knob readout. */
     format?: (value: number) => string;
+    /** False for values too expensive to change every step (a reverb rebuilds its impulse response). Default true. */
+    automatable?: boolean;
 }
 
 export interface EffectDefinition {
@@ -91,8 +93,8 @@ export const EFFECT_DEFINITIONS = {
         label: 'Reverb',
         params: [
             wet,
-            { key: 'decay', label: 'Decay', min: 0.1, max: 10, step: 0.01, initial: 1.5, curve: 'log', format: seconds },
-            { key: 'preDelay', label: 'Pre-delay', min: 0, max: 2, step: 0.01, initial: 0.01, format: seconds },
+            { key: 'decay', label: 'Decay', min: 0.1, max: 10, step: 0.01, initial: 1.5, curve: 'log', format: seconds, automatable: false },
+            { key: 'preDelay', label: 'Pre-delay', min: 0, max: 2, step: 0.01, initial: 0.01, format: seconds, automatable: false },
         ],
     },
     tremolo: { label: 'Tremolo', params: [wet, depth(0.5), lfoFrequency(10)] },

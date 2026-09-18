@@ -13,17 +13,17 @@ import { FocusTrap, Ripple, Tooltip } from 'primevue';
 /** Ink-violet surfaces so the coloured steps sit on a stage, not a spreadsheet. Matches --jl-* in globals.css. */
 const SURFACE = {
     0: '#ffffff',
-    50: '#f8f6fe',
-    100: '#ebe8f7',
-    200: '#dcd8ee',
+    50: '#f7f6fc',
+    100: '#e8e6f2',
+    200: '#dcd9ec',
     300: '#b8b1d9',
     400: '#8b84b0',
-    500: '#6c668f',
+    500: '#6b6591',
     600: '#453d6e',
-    700: '#2c2749',
-    800: '#1f1b36',
-    900: '#151229',
-    950: '#0c0a17',
+    700: '#2d284a',
+    800: '#1c1830',
+    900: '#14111f',
+    950: '#0a0913',
 };
 
 const JuicyTheme = definePreset(Aura, {

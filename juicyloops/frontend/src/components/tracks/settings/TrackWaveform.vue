@@ -18,15 +18,17 @@ onMounted(() => {
         return;
     }
 
-    const accent = getComputedStyle(container.value).getPropertyValue('--jl-accent').trim() || '#ff8a2a';
+    const style = getComputedStyle(container.value);
+    const accent = style.getPropertyValue('--jl-accent').trim() || '#ff8a2a';
+    const wave = style.getPropertyValue('--jl-bar').trim() || '#8b84b0';
     const regions = RegionsPlugin.create();
 
     waveSurfer = WaveSurfer.create({
         container: container.value,
         plugins: [regions],
         height: 88,
-        waveColor: '#bdb0a5',
-        progressColor: '#bdb0a5',
+        waveColor: wave,
+        progressColor: wave,
         cursorWidth: 0,
         barWidth: 2,
         barGap: 1,
@@ -37,7 +39,7 @@ onMounted(() => {
         regions.addRegion({
             start: props.track.sampleStartTime,
             end: props.track.sampleStartTime + props.track.sampleDuration,
-            color: `color-mix(in oklab, ${accent} 16%, transparent)`,
+            color: `color-mix(in oklab, ${accent} 24%, transparent)`,
             drag: true,
             resize: true,
         });

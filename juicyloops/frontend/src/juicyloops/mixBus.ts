@@ -1,18 +1,22 @@
 import { Gain, PanVol, type ToneAudioNode } from 'tone';
+import { MIX_PARAMS, type Automatable, type AutomationParam } from './automation';
 import { PARAM_RAMP_TIME } from './constants';
-import { Effects } from './effects/effects';
+import { EFFECT_PARAMS, Effects } from './effects/effects';
 
 /**
  * A summing stage with its own effect rack and volume/pan: `input -> effects -> output`.
  *
  * Every track container has one (all its tracks feed into it) and the song has one as the master channel
- * (all containers feed into it). The class is plain audio, the UI shows it through `BusRack`.
+ * (all containers feed into it). The class is plain audio, the UI shows it through `BusStrip`.
  */
-export class MixBus {
+export class MixBus implements Automatable {
     /** Where the sources connect to. */
     readonly input: ToneAudioNode = new Gain();
 
     readonly effects = new Effects();
+
+    /** Everything automation can drive on a bus: level, pan and the effect rack. */
+    readonly parameters: readonly AutomationParam[] = [...MIX_PARAMS, ...EFFECT_PARAMS];
 
     /** Volume (dB) and pan (-1..1) stage after the effects. */
     private readonly output = new PanVol(0, 0);
@@ -36,14 +40,34 @@ export class MixBus {
         this.output.toDestination();
     }
 
-    setVolume(volume: number): void {
-        this.output.volume.rampTo(volume, PARAM_RAMP_TIME);
+    setVolume(volume: number, time?: number): void {
+        this.output.volume.rampTo(volume, PARAM_RAMP_TIME, time);
         this.volume = volume;
     }
 
-    setPan(pan: number): void {
-        this.output.pan.rampTo(pan, PARAM_RAMP_TIME);
+    setPan(pan: number, time?: number): void {
+        this.output.pan.rampTo(pan, PARAM_RAMP_TIME, time);
         this.pan = pan;
+    }
+
+    getParameter(key: string): number {
+        if (key === 'volume') {
+            return this.volume;
+        }
+        if (key === 'pan') {
+            return this.pan;
+        }
+        return this.effects.getParameter(key);
+    }
+
+    setParameter(key: string, value: number, time?: number): void {
+        if (key === 'volume') {
+            this.setVolume(value, time);
+        } else if (key === 'pan') {
+            this.setPan(value, time);
+        } else {
+            this.effects.setParameter(key, value, time);
+        }
     }
 
     /** Copies the effect rack and the level settings of another bus. */

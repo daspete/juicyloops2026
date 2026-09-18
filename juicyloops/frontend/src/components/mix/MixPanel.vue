@@ -1,0 +1,43 @@
+<script setup lang="ts">
+import { Icon } from '@iconify/vue';
+import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useWorkspace } from '@/composables/useWorkspace';
+import BusStrip from './BusStrip.vue';
+
+/**
+ * The mixer, docked to the right of the workspace: the channel of the current container and the master,
+ * in signal order from top to bottom. Every track sums into the container channel, every container into the master.
+ * The tracks' own effects live in the detail panel below the workspace; these two racks sit apart on purpose.
+ */
+const { engine, currentContainer } = useJuicyLoops();
+const { toggleMixer } = useWorkspace();
+</script>
+
+<template>
+    <aside class="mixer" aria-label="Mixer">
+        <header class="mixer-bar">
+            <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
+            <span class="mixer-title">Mixer</span>
+            <span class="mixer-note">Tracks sum into the container, containers into the master.</span>
+            <div class="flex-1"></div>
+            <button type="button" class="iconbtn" aria-label="Close mixer" v-tooltip.bottom="'Close'" @click="toggleMixer">
+                <Icon icon="mdi:close" class="w-4 h-4" />
+            </button>
+        </header>
+        <div class="mixer-body">
+            <BusStrip
+                :key="currentContainer.id"
+                :bus="currentContainer.bus"
+                :name="currentContainer.name"
+                kind="Container channel"
+                icon="mdi:view-grid-outline"
+                note="Every track in this container runs through here before the master."
+                accent="var(--jl-brand)"
+            />
+            <div class="mixer-flow" aria-hidden="true">
+                <Icon icon="mdi:arrow-down" class="w-4 h-4" />
+            </div>
+            <BusStrip :bus="engine.master" name="Master" kind="Master channel" icon="mdi:speaker" note="Everything you hear passes through here last." accent="var(--jl-brand-2)" />
+        </div>
+    </aside>
+</template>

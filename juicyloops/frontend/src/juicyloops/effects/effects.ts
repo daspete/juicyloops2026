@@ -14,6 +14,7 @@ import {
     Vibrato,
     type ToneAudioNode,
 } from 'tone';
+import { atTime, type AutomationParam } from '../automation';
 import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
 
 export type { EffectKey, EffectParamKey } from './definitions';
@@ -21,10 +22,13 @@ export type { EffectKey, EffectParamKey } from './definitions';
 /** Anything with a numeric `value`, i.e. a Tone `Param` or `Signal`. */
 interface ValueHolder {
     value: number;
-    rampTo?: (value: number, rampTime: number) => unknown;
+    rampTo?: (value: number, rampTime: number, startTime?: number) => unknown;
 }
 
 const isValueHolder = (target: unknown): target is ValueHolder => typeof target === 'object' && target !== null && 'value' in target;
+
+/** How quickly an automated value glides to the next one, so stepping through a lane does not click. */
+const AUTOMATION_RAMP = 0.02;
 
 /**
  * How to build each effect. Parameters are applied right after construction, so the factories only
@@ -60,6 +64,35 @@ export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
     'equalizer',
     'limiter',
 ];
+
+const PARAM_PREFIX = 'fx.';
+
+/** The automation address of an effect parameter: `fx.<effect>.<param>`. */
+export const effectParamKey = (effect: EffectKey, param: string): string => `${PARAM_PREFIX}${effect}.${param}`;
+
+const parseParamKey = (key: string): { effect: EffectKey; param: string } | null => {
+    if (!key.startsWith(PARAM_PREFIX)) {
+        return null;
+    }
+    const [effect, param] = key.slice(PARAM_PREFIX.length).split('.');
+    return effect && param && EFFECT_KEYS.includes(effect as EffectKey) ? { effect: effect as EffectKey, param } : null;
+};
+
+/** Every effect parameter that may be automated, in rack order, as automation sees it. Same for every rack. */
+export const EFFECT_PARAMS: readonly AutomationParam[] = DEFAULT_EFFECT_ORDER.flatMap((effect) =>
+    (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[])
+        .filter((param) => param.automatable !== false)
+        .map((param) => ({
+            key: effectParamKey(effect, param.key),
+            label: param.label,
+            group: EFFECT_DEFINITIONS[effect].label,
+            min: param.min,
+            max: param.max,
+            step: param.step,
+            curve: param.curve,
+            format: param.format,
+        })),
+);
 
 /**
  * An effect chain. Every track has one, so does every container bus and the master bus.
@@ -143,18 +176,7 @@ export class Effects {
     }
 
     setParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>, value: number): void {
-        (this.params[effect] as Record<string, number>)[param] = value;
-
-        const shouldExist = this.isNeeded(effect);
-        const node = this.nodes.get(effect);
-
-        if (shouldExist && !node) {
-            this.createNode(effect);
-        } else if (!shouldExist && node) {
-            this.destroyNode(effect);
-        } else if (node) {
-            this.applyParam(node, effect, param, value);
-        }
+        this.apply(effect, param, value);
     }
 
     /** Convenience for setting several parameters of one effect at once. */
@@ -163,6 +185,22 @@ export class Effects {
             if (value !== undefined) {
                 this.setParam(effect, key, value);
             }
+        }
+    }
+
+    /* ---- automation ---- */
+
+    /** Reads a parameter by its automation address (`fx.<effect>.<param>`). */
+    getParameter(key: string): number {
+        const address = parseParamKey(key);
+        return address ? (this.params[address.effect][address.param] ?? 0) : 0;
+    }
+
+    /** Sets a parameter by its automation address, at `time` when given. */
+    setParameter(key: string, value: number, time?: number): void {
+        const address = parseParamKey(key);
+        if (address) {
+            this.apply(address.effect, address.param, value, time);
         }
     }
 
@@ -181,6 +219,26 @@ export class Effects {
             node.dispose();
         }
         this.nodes.clear();
+    }
+
+    /**
+     * Stores a value and pushes it to the node. A node is created when the effect becomes audible.
+     * It is only thrown away when the user turns the effect dry: automation sweeping through zero
+     * every bar must not rebuild a reverb every bar.
+     */
+    private apply(effect: EffectKey, param: string, value: number, time?: number): void {
+        this.params[effect][param] = value;
+
+        const shouldExist = this.isNeeded(effect);
+        const node = this.nodes.get(effect);
+
+        if (shouldExist && !node) {
+            this.createNode(effect);
+        } else if (!shouldExist && node && time === undefined) {
+            this.destroyNode(effect);
+        } else if (node) {
+            this.applyParam(node, effect, param, value, true, time);
+        }
     }
 
     /** An effect with a mix control is needed once it is not fully dry; the others are always in the chain. */
@@ -209,12 +267,14 @@ export class Effects {
         node.dispose();
     }
 
-    private applyParam(node: ToneAudioNode, effect: EffectKey, param: string, value: number, ramp = true): void {
+    private applyParam(node: ToneAudioNode, effect: EffectKey, param: string, value: number, ramp = true, time?: number): void {
         const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
         const target = (node as unknown as Record<string, unknown>)[param];
 
         if (isValueHolder(target)) {
-            if (ramp && definition?.ramp && target.rampTo) {
+            if (time !== undefined && target.rampTo) {
+                target.rampTo(value, definition?.ramp ?? AUTOMATION_RAMP, time);
+            } else if (ramp && definition?.ramp && target.rampTo) {
                 target.rampTo(value, definition.ramp);
             } else {
                 target.value = value;
@@ -222,7 +282,9 @@ export class Effects {
             return;
         }
 
-        (node as unknown as Record<string, number>)[param] = value;
+        atTime(time, () => {
+            (node as unknown as Record<string, number>)[param] = value;
+        });
     }
 
     /** Drops the outgoing connections of the source and every node and wires them up again in chain order. */

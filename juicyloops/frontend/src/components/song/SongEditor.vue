@@ -9,6 +9,7 @@ import { SONG_SNAP, SONG_STEPS_PER_BAR, snapStep, type SongClip, type SongLane }
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import { TRACK_META } from '../tracks/trackMeta';
 import ClipPreview from './ClipPreview.vue';
+import SongAutomationLane from './SongAutomationLane.vue';
 
 /**
  * The song view: an arranger like in a DAW. Lanes run left to right on a timeline measured in bars,
@@ -18,6 +19,7 @@ import ClipPreview from './ClipPreview.vue';
  * drag its edges to change how long it plays, and use the cut tool to split it. Click the ruler to play from there.
  * Once a clip was selected (or a container clicked in the palette), pressing on empty lane space and dragging
  * paints that clip again and again along the lane.
+ * Automation lanes below the clips draw a value of the master, a container or a track over the same timeline.
  */
 const { bpm, containers, song, currentStep, isPlaying, playFrom, selectContainer } = useJuicyLoops();
 const confirm = useConfirm();
@@ -98,6 +100,12 @@ const duplicateClip = (id: string) => {
         selectedId.value = copy.id;
     }
 };
+
+/** A new automation lane starts on the master's level; the lane's own menus change what it drives. */
+const addAutomation = () => song.value.addAutomation({ kind: 'master' }, 'volume');
+
+/** Spreads the lanes over the hue wheel. */
+const automationHue = (index: number) => 200 + index * 47;
 
 const editContainer = (containerId: string) => {
     selectContainer(containerId);
@@ -403,11 +411,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <div class="page gap-3">
+    <div class="page">
         <div v-if="!hasTracks" class="hero">
             <div>
                 <h2 class="hero-title">Nothing to <mark>arrange</mark> yet</h2>
-                <p class="mt-3 text-(--jl-muted) max-w-xl">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
+                <p class="hero-text">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
             </div>
             <RouterLink :to="{ name: 'app.index' }" class="playbtn playbtn--wide">
                 <Icon icon="mdi:dots-grid" class="w-5 h-5" />
@@ -416,13 +424,13 @@ onBeforeUnmount(() => {
         </div>
 
         <template v-else>
-            <div class="flex flex-wrap items-end gap-4 px-2">
-                <div>
-                    <h2 class="font-display font-bold text-2xl tracking-tight leading-none">Song</h2>
-                    <p class="mt-1.5 text-sm text-(--jl-muted)">
-                        <span class="font-mono">{{ bars }}</span> {{ bars === 1 ? 'bar' : 'bars' }} · <span class="font-mono">{{ duration }}</span> at
-                        <span class="font-mono">{{ bpm }}</span> BPM · <span class="font-mono">{{ song.lanes.length }}</span> {{ song.lanes.length === 1 ? 'lane' : 'lanes' }}
-                    </p>
+            <div class="toolbar">
+                <div class="toolbar-title">
+                    <h2>Song</h2>
+                    <span class="toolbar-meta">
+                        <b>{{ bars }}</b> {{ bars === 1 ? 'bar' : 'bars' }} <i>·</i> <b>{{ duration }}</b> at <b>{{ bpm }}</b> BPM <i>·</i> <b>{{ song.lanes.length }}</b>
+                        {{ song.lanes.length === 1 ? 'lane' : 'lanes' }}
+                    </span>
                 </div>
                 <div class="flex-1"></div>
                 <div class="viewswitch" role="radiogroup" aria-label="Tool">
@@ -453,10 +461,14 @@ onBeforeUnmount(() => {
                     <Icon icon="mdi:plus" class="w-4 h-4" />
                     <span>Add lane</span>
                 </button>
+                <button type="button" class="chip" v-tooltip.bottom="'Draw a value of the master, a container or a track over the song'" @click="addAutomation">
+                    <Icon icon="mdi:chart-bell-curve-cumulative" class="w-4 h-4" />
+                    <span>Automate</span>
+                </button>
             </div>
 
             <div class="palette">
-                <span class="eyebrow mr-1">Containers</span>
+                <span class="eyebrow">Containers</span>
                 <div
                     v-for="container in containers"
                     :key="container.id"
@@ -473,13 +485,13 @@ onBeforeUnmount(() => {
                     @dblclick="editContainer(container.id)"
                 >
                     <span class="palette-swatch"></span>
-                    <span class="font-semibold">{{ container.name }}</span>
-                    <span class="flex items-center gap-0.5" aria-hidden="true">
+                    <span class="palette-name">{{ container.name }}</span>
+                    <span class="ctab-dots" aria-hidden="true">
                         <span v-for="track in container.tracks.slice(0, 6)" :key="track.id" class="ctab-dot" :style="{ background: TRACK_META[track.type].accent }"></span>
                     </span>
-                    <span class="font-mono text-xs text-(--jl-muted)">{{ defaultLength(container) / SONG_STEPS_PER_BAR }} bars</span>
+                    <span class="ctab-count">{{ defaultLength(container) / SONG_STEPS_PER_BAR }} bars</span>
                 </div>
-                <span class="text-xs text-(--jl-muted) ml-1">{{
+                <span class="palette-hint">{{
                     template ? 'Drag onto a lane, or press on empty lane space and drag to repeat the last clip.' : 'Drag a container onto a lane. Double-click one to edit its tracks.'
                 }}</span>
             </div>
@@ -500,7 +512,7 @@ onBeforeUnmount(() => {
 
                     <div v-for="lane in song.lanes" :key="lane.id" class="arr-row" :class="{ 'arr-row--muted': lane.isMuted }">
                         <div class="arr-head">
-                            <div class="flex items-center gap-1 min-w-0">
+                            <div class="arr-head-title">
                                 <input
                                     v-if="editingLaneId === lane.id"
                                     ref="laneInput"
@@ -511,10 +523,10 @@ onBeforeUnmount(() => {
                                     @keydown.esc="editingLaneId = null"
                                     @blur="commitRenameLane"
                                 />
-                                <span v-else class="font-semibold truncate" @dblclick="startRenameLane(lane)">{{ lane.name }}</span>
-                                <span class="font-mono text-xs text-(--jl-muted) shrink-0">{{ lane.clips.length }}</span>
+                                <span v-else class="arr-head-name" @dblclick="startRenameLane(lane)">{{ lane.name }}</span>
+                                <span class="ctab-count">{{ lane.clips.length }}</span>
                             </div>
-                            <div class="flex items-center">
+                            <div class="arr-head-tools">
                                 <button
                                     type="button"
                                     class="iconbtn iconbtn--tiny"
@@ -597,6 +609,24 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
                     </div>
+
+                    <template v-if="song.automation.length">
+                        <div class="arr-row arr-row--section">
+                            <div class="arr-corner arr-corner--section">
+                                <span class="eyebrow">Automation</span>
+                                <span class="ctab-count">{{ song.automation.length }}</span>
+                            </div>
+                            <div class="arr-section-line"></div>
+                        </div>
+                        <SongAutomationLane
+                            v-for="(lane, index) in song.automation"
+                            :key="lane.id"
+                            :lane="lane"
+                            :total-steps="totalSteps"
+                            :hue="automationHue(index)"
+                            @remove="song.removeAutomation(lane.id)"
+                        />
+                    </template>
 
                     <div v-if="song.isEmpty" class="arr-empty">
                         <span class="song-hint">Drag a container from above onto a lane to start the song.</span>

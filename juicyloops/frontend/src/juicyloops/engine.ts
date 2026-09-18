@@ -1,4 +1,5 @@
 import { Context, getTransport, setContext, start, type TransportInstance } from 'tone';
+import type { Automatable, AutomationTarget } from './automation';
 import { DEFAULT_BPM } from './constants';
 import type { MixBus } from './mixBus';
 import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
@@ -66,6 +67,11 @@ export class Engine {
 
     seekToStep(step: number): void {
         this.sequencer.seekToStep(step);
+    }
+
+    /** What a song automation lane drives, or undefined when it was deleted. */
+    resolveTarget(target: AutomationTarget): Automatable | undefined {
+        return this.sequencer.resolveTarget(target);
     }
 
     onStep(listener: StepListener): () => void {

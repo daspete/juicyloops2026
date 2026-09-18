@@ -1,4 +1,5 @@
 import { createId } from './audio';
+import { createSongLane, type AutomationTarget, type SongAutomationLane } from './automation';
 
 /** Steps per bar; the song grid snaps to beats of `SONG_SNAP` steps. */
 export const SONG_STEPS_PER_BAR = 16;
@@ -31,13 +32,15 @@ export const snapStep = (step: number): number => Math.max(0, Math.round(step / 
 const createLane = (name: string): SongLane => ({ id: createId(), name, isMuted: false, clips: [] });
 
 /**
- * The arrangement: lanes of clips on a shared timeline measured in steps.
+ * The arrangement: lanes of clips on a shared timeline measured in steps, plus automation lanes
+ * that draw a parameter of a track, a container or the master over the same timeline.
  *
  * Pure data, no audio. The sequencer reads it while playing in song mode,
  * the song editor edits it. A song always has at least one lane.
  */
 export class Song {
     readonly lanes: SongLane[] = [];
+    readonly automation: SongAutomationLane[] = [];
 
     constructor(laneCount = 1) {
         for (let i = 0; i < Math.max(1, laneCount); i++) {
@@ -237,13 +240,51 @@ export class Song {
         return this.clips.filter((clip) => clip.containerId === containerId).length;
     }
 
-    /** Forgets a container everywhere, e.g. after it was deleted. */
+    /** Forgets a container everywhere, e.g. after it was deleted: its clips and the automation that drove it or its tracks. */
     removeContainer(containerId: string): void {
         for (const lane of this.lanes) {
             for (let i = lane.clips.length - 1; i >= 0; i--) {
                 if (lane.clips[i]!.containerId === containerId) {
                     lane.clips.splice(i, 1);
                 }
+            }
+        }
+        this.pruneAutomation((target) => target.kind !== 'master' && target.containerId === containerId);
+    }
+
+    /* ---- automation ---- */
+
+    addAutomation(target: AutomationTarget, param: string): SongAutomationLane {
+        const lane = createSongLane(target, param);
+        this.automation.push(lane);
+        return lane;
+    }
+
+    /** Points a lane at another value; the curve stays. */
+    retargetAutomation(id: string, target: AutomationTarget, param: string): void {
+        const lane = this.automation.find((candidate) => candidate.id === id);
+        if (lane) {
+            lane.target = target;
+            lane.param = param;
+        }
+    }
+
+    removeAutomation(id: string): void {
+        const index = this.automation.findIndex((lane) => lane.id === id);
+        if (index !== -1) {
+            this.automation.splice(index, 1);
+        }
+    }
+
+    /** Forgets the automation of a deleted track. */
+    removeTrack(trackId: string): void {
+        this.pruneAutomation((target) => target.kind === 'track' && target.trackId === trackId);
+    }
+
+    private pruneAutomation(gone: (target: AutomationTarget) => boolean): void {
+        for (let i = this.automation.length - 1; i >= 0; i--) {
+            if (gone(this.automation[i]!.target)) {
+                this.automation.splice(i, 1);
             }
         }
     }

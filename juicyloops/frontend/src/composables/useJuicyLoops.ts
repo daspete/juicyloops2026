@@ -1,4 +1,5 @@
 import { engine } from '@/juicyloops/engine';
+import type { Automatable, AutomationTarget } from '@/juicyloops/automation';
 import { DEFAULT_BPM, STEP_COUNT } from '@/juicyloops/constants';
 import type { PlaybackMode } from '@/juicyloops/sequencer';
 import type { Song } from '@/juicyloops/song';
@@ -137,7 +138,13 @@ const renameContainer = (id: string, name: string): void => {
 
 const addTrack = <T extends TrackType>(type: T): TrackOf<T> => currentContainer.value.addTrack(type);
 
-const removeTrack = (id: string): void => currentContainer.value.removeTrack(id);
+const removeTrack = (id: string): void => {
+    currentContainer.value.removeTrack(id);
+    song.value.removeTrack(id);
+};
+
+/** What a song automation lane drives, or undefined when it was deleted. */
+const resolveTarget = (target: AutomationTarget): Automatable | undefined => engine.resolveTarget(target);
 
 const duplicateTrack = (id: string): Promise<BaseTrack | null> => currentContainer.value.duplicateTrack(id);
 
@@ -168,4 +175,5 @@ export const useJuicyLoops = () => ({
     addTrack,
     removeTrack,
     duplicateTrack,
+    resolveTarget,
 });

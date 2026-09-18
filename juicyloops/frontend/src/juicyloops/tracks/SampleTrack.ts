@@ -63,7 +63,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         this.setReversed(!this.isReversed);
     }
 
-    play(step: number, time: number): void {
+    protected trigger(step: number, time: number): void {
         if (!this.player.loaded || !this.activeTick(step)) {
             return;
         }

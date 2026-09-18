@@ -1,8 +1,9 @@
 import { PanVol, type ToneAudioNode } from 'tone';
 import { markRaw } from 'vue';
 import { createId } from '../audio';
+import { MIX_PARAMS, toNormalized, toValue, TrackAutomation, type Automatable, type AutomationParam, type StepAutomationLane, type StepAutomationSnapshot } from '../automation';
 import { normalizeTrackLength, PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
-import { Effects } from '../effects/effects';
+import { EFFECT_PARAMS, Effects } from '../effects/effects';
 import type { BaseTick, TickSnapshot } from '../ticks/BaseTick';
 import type { TrackType } from './registry';
 
@@ -12,6 +13,7 @@ export interface TrackSnapshot {
     ticks: TickSnapshot[];
     volume: number;
     pan: number;
+    automation: StepAutomationSnapshot[];
 }
 
 /**
@@ -21,11 +23,14 @@ export interface TrackSnapshot {
  * and the track wraps it around its own pattern, so a 16-step track repeats twice per section
  * and a 48-step one stretches over one and a half.
  *
+ * Every value that can be turned (level, pan, the effects, and whatever a subclass adds) is a parameter
+ * automation can drive: step lanes on the track itself, and lanes on the song's timeline.
+ *
  * Tone.js nodes are wrapped in `markRaw` so Vue's reactivity never proxies them
  * (they are expensive to proxy and rely on private state). Everything else on a track
  * is plain data and can be observed by the UI.
  */
-export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
+export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Automatable {
     readonly id = createId();
 
     abstract readonly type: TrackType;
@@ -33,6 +38,9 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
     readonly ticks: TTick[];
 
     readonly effects = markRaw(new Effects());
+
+    /** Step lanes: one value per step for every automated parameter, looping with the pattern. */
+    readonly automation = new TrackAutomation(STEP_COUNT);
 
     /** Volume (dB) and pan (-1..1) stage at the end of the chain. */
     protected readonly output = markRaw(new PanVol(0, 0));
@@ -52,7 +60,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
         return this.ticks.length;
     }
 
-    /** Changes the length of the pattern. New steps start silent, removed steps are gone. */
+    /** Changes the length of the pattern. New steps start silent, removed steps are gone. Automation lanes follow. */
     setLength(length: number): void {
         const target = normalizeTrackLength(length);
         if (target > this.ticks.length) {
@@ -60,6 +68,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
         } else {
             this.ticks.splice(target);
         }
+        this.automation.resize(target);
     }
 
     /** The position inside this pattern for a running step count. */
@@ -67,8 +76,14 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
         return ((step % this.ticks.length) + this.ticks.length) % this.ticks.length;
     }
 
-    /** Called by the sequencer for every step. `step` keeps counting past the pattern; `time` is the audio-context time to schedule at. */
-    abstract play(step: number, time: number): void;
+    /** Called by the sequencer for every step: applies the step's automation, then plays whatever the tick holds. */
+    play(step: number, time: number): void {
+        this.applyAutomation(this.stepOf(step), time);
+        this.trigger(step, time);
+    }
+
+    /** Makes the sound of a step. `step` keeps counting past the pattern; `time` is the audio-context time to schedule at. */
+    protected abstract trigger(step: number, time: number): void;
 
     /** Wires `source -> effects -> output`. Subclasses call this once with their sound source; `connectTo` decides where the output goes. */
     protected connectSource(source: ToneAudioNode): void {
@@ -91,19 +106,73 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
         return tick?.isActive ? tick : null;
     }
 
-    setVolume(volume: number): void {
-        this.output.volume.rampTo(volume, PARAM_RAMP_TIME);
+    setVolume(volume: number, time?: number): void {
+        this.output.volume.rampTo(volume, PARAM_RAMP_TIME, time);
         this.volume = volume;
     }
 
-    setPan(pan: number): void {
-        this.output.pan.rampTo(pan, PARAM_RAMP_TIME);
+    setPan(pan: number, time?: number): void {
+        this.output.pan.rampTo(pan, PARAM_RAMP_TIME, time);
         this.pan = pan;
     }
 
     toggleMute(): void {
         this.isMuted = !this.isMuted;
     }
+
+    /* ---- parameters and automation ---- */
+
+    /** Everything automation can drive on this track. Subclasses add their own in `ownParameters`. */
+    get parameters(): readonly AutomationParam[] {
+        return [...MIX_PARAMS, ...this.ownParameters(), ...EFFECT_PARAMS];
+    }
+
+    /** Parameters specific to a track type (a synth's envelope, ...). */
+    protected ownParameters(): readonly AutomationParam[] {
+        return [];
+    }
+
+    parameter(key: string): AutomationParam | undefined {
+        return this.parameters.find((param) => param.key === key);
+    }
+
+    getParameter(key: string): number {
+        if (key === 'volume') {
+            return this.volume;
+        }
+        if (key === 'pan') {
+            return this.pan;
+        }
+        return this.effects.getParameter(key);
+    }
+
+    setParameter(key: string, value: number, time?: number): void {
+        if (key === 'volume') {
+            this.setVolume(value, time);
+        } else if (key === 'pan') {
+            this.setPan(value, time);
+        } else {
+            this.effects.setParameter(key, value, time);
+        }
+    }
+
+    /** Adds a step lane for a parameter, flat at the parameter's current value, so the sound does not change until you draw. */
+    addAutomation(key: string): StepAutomationLane | null {
+        const param = this.parameter(key);
+        return param ? this.automation.add(key, toNormalized(param, this.getParameter(key))) : null;
+    }
+
+    private applyAutomation(index: number, time: number): void {
+        for (const lane of this.automation.lanes) {
+            const param = this.parameter(lane.param);
+            const position = lane.values[index];
+            if (param && position !== undefined) {
+                this.setParameter(lane.param, toValue(param, position), time);
+            }
+        }
+    }
+
+    /* ---- pattern tools ---- */
 
     /** Activates every n-th tick and deactivates all others. */
     activateEveryNth(interval: number): void {
@@ -131,13 +200,14 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
         }
     }
 
-    /** Copies the pattern, effects and settings of another track of the same type onto this one. */
+    /** Copies the pattern, effects, automation and settings of another track of the same type onto this one. */
     async copyFrom(source: this): Promise<void> {
         this.setLength(source.length);
         source.ticks.forEach((tick, index) => {
             this.ticks[index] = tick.clone();
         });
         this.effects.copyFrom(source.effects);
+        this.automation.copyFrom(source.automation);
         this.setVolume(source.volume);
         this.setPan(source.pan);
     }
@@ -154,6 +224,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
             ticks: this.ticks.map((tick) => tick.serialize()),
             volume: this.volume,
             pan: this.pan,
+            automation: this.automation.serialize(),
         };
     }
 }

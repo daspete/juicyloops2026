@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useWorkspace } from '@/composables/useWorkspace';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
 import { Slider, useConfirm } from 'primevue';
 import { computed, ref } from 'vue';
-import EffectRack from '../effects/EffectRack.vue';
-import TrackPatternSettings from './settings/TrackPatternSettings.vue';
+import TrackAutomationLanes from './settings/TrackAutomationLanes.vue';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import { TRACK_META } from './trackMeta';
 
 /**
- * Everything every track row has in common: the coloured identity, mute + volume,
- * the tool bar, and the inline panels (velocity lane and the Tweak panel with sound, pattern and effects).
+ * Everything every track row has in common: the coloured channel head (name, mute, volume, tools)
+ * and the lanes that can open under the step grid (velocity, automation, piano roll, waveform).
+ * Clicking the head selects the track; its sound, pattern tools and effects then live in the detail panel below the workspace.
  * The row is a two-row grid: head and step grid side by side, everything that opens below them across the full width.
  *
  * Slots:
  *  - `actions`  extra tool buttons (before the shared ones)
  *  - default    main content (usually the tick grid)
  *  - `expanded` content shown below the grid (piano roll, waveform, ...)
- *  - `sound`    track specific controls for the Sound card of the Tweak panel
  */
 const props = defineProps<{
     track: BaseTrack;
@@ -28,24 +28,31 @@ const props = defineProps<{
 }>();
 
 const { removeTrack, duplicateTrack } = useJuicyLoops();
+const { selectedTrack, selectTrack, openTrack, isTrackShowing, toggleDetail, isPro } = useWorkspace();
 const confirm = useConfirm();
 
 const meta = computed(() => TRACK_META[props.track.type]);
+const isSelected = computed(() => selectedTrack.value?.id === props.track.id);
+const isTweakOpen = computed(() => isTrackShowing(props.track.id));
 
 const isVelocityOpen = ref(false);
-const isTweakOpen = ref(false);
-
-type TweakTab = 'sound' | 'pattern' | 'effects';
-const tweakTab = ref<TweakTab>('sound');
-const TWEAK_TABS: readonly { key: TweakTab; label: string; icon: string; note: string }[] = [
-    { key: 'sound', label: 'Sound', icon: 'mdi:waveform', note: 'How every step of this track sounds' },
-    { key: 'pattern', label: 'Pattern', icon: 'mdi:dots-grid', note: 'Length and quick edits of the whole loop' },
-    { key: 'effects', label: 'Effects', icon: 'mdi:auto-fix', note: 'In signal order, drag a chip to reorder' },
-];
+/** The automation lanes under the grid. A track that already has lanes (a duplicate) starts with them open. */
+const isAutomationOpen = ref(props.track.automation.lanes.length > 0);
+const showsAutomation = computed(() => isPro.value && isAutomationOpen.value);
 
 const isPatternEmpty = computed(() => !props.track.ticks.some((tick) => tick.isActive));
 
 const volumeLabel = computed(() => `${props.track.volume > 0 ? '+' : ''}${props.track.volume.toFixed(1)} dB`);
+
+const select = () => selectTrack(props.track.id);
+
+const toggleTweak = () => {
+    if (isTweakOpen.value) {
+        toggleDetail();
+    } else {
+        openTrack(props.track.id);
+    }
+};
 
 const confirmRemove = (event: MouseEvent) => {
     confirm.require({
@@ -61,34 +68,36 @@ const confirmRemove = (event: MouseEvent) => {
 </script>
 
 <template>
-    <div class="track" :class="{ 'track--muted': props.track.isMuted }" :style="{ '--jl-accent': meta.accent }">
+    <div class="track" :class="{ 'track--muted': props.track.isMuted, 'track--selected': isSelected }" :style="{ '--jl-accent': meta.accent }">
         <div class="track-inner">
-            <div class="track-head">
-                <div class="flex items-center gap-2 h-8">
+            <div class="track-head" @pointerdown="select">
+                <div class="track-title">
                     <span class="track-badge"><Icon :icon="meta.icon" class="w-4 h-4" /></span>
                     <span class="track-name">{{ meta.label }}</span>
                     <span class="track-index">{{ props.trackIndex + 1 }}</span>
-                    <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Tweak → Pattern.'">{{ props.track.length }} st</span>
+                    <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Pattern in the panel below.'">{{ props.track.length }}</span>
                     <div class="flex-1"></div>
-                    <button type="button" class="iconbtn" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id)">
-                        <Icon icon="mdi:content-copy" class="w-4 h-4" />
-                    </button>
-                    <button type="button" class="iconbtn iconbtn--danger" aria-label="Remove track" v-tooltip.bottom="'Remove track'" @click="confirmRemove">
-                        <Icon icon="mdi:trash-can-outline" class="w-4 h-4" />
-                    </button>
+                    <span class="track-actions">
+                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id)">
+                            <Icon icon="mdi:content-copy" class="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" class="iconbtn iconbtn--tiny iconbtn--danger" aria-label="Remove track" v-tooltip.bottom="'Remove track'" @click="confirmRemove">
+                            <Icon icon="mdi:trash-can-outline" class="w-3.5 h-3.5" />
+                        </button>
+                    </span>
                 </div>
 
-                <div class="flex items-center gap-2 h-7">
+                <div class="track-mix">
                     <button
                         type="button"
-                        class="iconbtn"
+                        class="mutebtn"
                         :data-active="props.track.isMuted"
                         v-tooltip.bottom="props.track.isMuted ? 'Unmute' : 'Mute'"
                         :aria-label="props.track.isMuted ? 'Unmute' : 'Mute'"
                         :aria-pressed="props.track.isMuted"
                         @click="props.track.toggleMute()"
                     >
-                        <Icon :icon="props.track.isMuted ? 'mdi:volume-off' : 'mdi:volume-high'" class="w-4 h-4" />
+                        M
                     </button>
                     <Slider
                         :model-value="props.track.volume"
@@ -99,7 +108,7 @@ const confirmRemove = (event: MouseEvent) => {
                         class="flex-1"
                         aria-label="Track volume"
                     />
-                    <span class="font-mono text-xs text-(--jl-muted) w-14 text-right">{{ volumeLabel }}</span>
+                    <span class="track-db">{{ volumeLabel }}</span>
                 </div>
 
                 <div class="tools">
@@ -116,13 +125,19 @@ const confirmRemove = (event: MouseEvent) => {
                         <span>Velocity</span>
                     </button>
                     <button
+                        v-if="isPro"
                         type="button"
                         class="tool"
-                        :data-active="isTweakOpen"
-                        v-tooltip.bottom="'Sound, pattern tools and effects'"
-                        :aria-pressed="isTweakOpen"
-                        @click="isTweakOpen = !isTweakOpen"
+                        :data-active="showsAutomation"
+                        v-tooltip.bottom="'Draw any value of this track over the loop'"
+                        :aria-pressed="showsAutomation"
+                        @click="isAutomationOpen = !isAutomationOpen"
                     >
+                        <Icon icon="mdi:chart-bell-curve-cumulative" class="w-4 h-4" />
+                        <span>Automate</span>
+                        <span v-if="props.track.automation.lanes.length" class="tool-count">{{ props.track.automation.lanes.length }}</span>
+                    </button>
+                    <button type="button" class="tool" :data-active="isTweakOpen" v-tooltip.bottom="'Sound, pattern tools and effects'" :aria-pressed="isTweakOpen" @click="toggleTweak">
                         <Icon icon="mdi:tune-variant" class="w-4 h-4" />
                         <span>Tweak</span>
                     </button>
@@ -142,40 +157,11 @@ const confirmRemove = (event: MouseEvent) => {
                 <div v-if="isVelocityOpen" class="track-lane">
                     <TrackVolumeSettings :track="props.track" />
                 </div>
+                <div v-if="showsAutomation" class="track-lane">
+                    <TrackAutomationLanes :track="props.track" @close="isAutomationOpen = false" />
+                </div>
                 <div class="track-lane">
                     <slot name="expanded" />
-                </div>
-
-                <div v-if="isTweakOpen" class="tweak">
-                    <div class="tweak-tabs">
-                        <div class="tweak-tablist" role="tablist" aria-label="Tweak">
-                            <button
-                                v-for="tab in TWEAK_TABS"
-                                :key="tab.key"
-                                type="button"
-                                class="tweak-tab"
-                                role="tab"
-                                :data-active="tweakTab === tab.key"
-                                :aria-selected="tweakTab === tab.key"
-                                @click="tweakTab = tab.key"
-                            >
-                                <Icon :icon="tab.icon" class="w-4 h-4" />
-                                <span>{{ tab.label }}</span>
-                            </button>
-                        </div>
-                        <span class="tweak-note">{{ TWEAK_TABS.find((tab) => tab.key === tweakTab)?.note }}</span>
-                    </div>
-                    <div class="tweak-body">
-                        <div v-show="tweakTab === 'sound'" class="settings" role="tabpanel">
-                            <slot name="sound" />
-                        </div>
-                        <div v-show="tweakTab === 'pattern'" class="settings" role="tabpanel">
-                            <TrackPatternSettings :track="props.track" />
-                        </div>
-                        <div v-show="tweakTab === 'effects'" role="tabpanel">
-                            <EffectRack :effects="props.track.effects" />
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>

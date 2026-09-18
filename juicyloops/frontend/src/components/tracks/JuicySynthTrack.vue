@@ -8,8 +8,6 @@ import { VirtualScroller } from 'primevue';
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue';
 import TickGrid, { type StepSpan } from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
-import SynthEnvelopeSettings from './settings/SynthEnvelopeSettings.vue';
-import SynthSettings from './settings/SynthSettings.vue';
 import { beatsOf } from './steps';
 
 const props = defineProps<{
@@ -17,10 +15,11 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const { currentTick: sectionStep, trackStep } = useJuicyLoops();
+const { currentTick: playingStep, trackStep, isPlaying } = useJuicyLoops();
 
-/** The playhead inside this track's own pattern. */
-const currentTick = computed(() => trackStep(props.track));
+/** The playhead inside this track's own pattern; off the grid while stopped, so no pad is lit for nothing. */
+const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -1));
+const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
 
 const beats = computed(() => beatsOf(props.track.length));
 
@@ -46,12 +45,6 @@ const rowNotes = (note: string): RollNote[] =>
         const steps = noteLengthSteps(tick.duration);
         return [{ head: index, end: noteEnd(index, steps), fill: Math.min(1, steps) }];
     });
-
-/** Silent steps whose note currently sits on this row, so moving a note is a matter of looking, not guessing. */
-const isGhost = (note: string, index: number) => {
-    const tick = props.track.ticks[index]!;
-    return tick.note === note && !tick.isActive;
-};
 
 /* Where a cell sits inside the row, in the same units the grid is laid out in, so note bars line up with the cells under them. */
 const cellLeft = (step: number) => `${Math.floor(step / 4)} * (var(--jl-beat-w) + var(--jl-beat-gap)) + ${step % 4} * (var(--jl-cell-w) + 3px)`;
@@ -307,7 +300,7 @@ const shiftOctave = async (direction: 1 | -1) => {
                                             v-for="tickIndex in beat"
                                             :key="tickIndex"
                                             class="pianotick"
-                                            :class="{ 'pianotick--ghost': isGhost(note, tickIndex), 'pianotick--current': currentTick === tickIndex }"
+                                            :class="{ 'pianotick--current': currentTick === tickIndex }"
                                             :data-step="tickIndex"
                                             :title="`Step ${tickIndex + 1}: ${note}`"
                                             @click="placeNote(props.track.ticks[tickIndex]!, note)"
@@ -330,7 +323,7 @@ const shiftOctave = async (direction: 1 | -1) => {
                         </div>
                     </template>
                 </VirtualScroller>
-                <div class="flex items-center gap-2" style="padding-left: var(--jl-head-space)">
+                <div class="lane-foot">
                     <button type="button" class="chip" @click="shiftOctave(-1)">
                         <Icon icon="mdi:arrow-down" class="w-4 h-4" />
                         <span>Octave down</span>
@@ -339,14 +332,10 @@ const shiftOctave = async (direction: 1 | -1) => {
                         <Icon icon="mdi:arrow-up" class="w-4 h-4" />
                         <span>Octave up</span>
                     </button>
-                    <span class="text-xs text-(--jl-muted)">Click a cell to place a note, drag a note anywhere, drag its ends to change its length. Outlined cells are silent steps.</span>
+                    <span class="lane-hint">Click a cell to place a note. Drag a note to move it, drag its ends to change its length.</span>
                 </div>
             </div>
         </template>
 
-        <template #sound>
-            <SynthSettings :track="props.track" />
-            <SynthEnvelopeSettings :track="props.track" />
-        </template>
     </TrackShell>
 </template>
