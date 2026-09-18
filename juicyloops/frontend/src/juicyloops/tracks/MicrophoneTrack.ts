@@ -13,13 +13,22 @@ export class MicrophoneTrack extends SampleTrack {
 
     constructor() {
         super();
-
         this.microphone.connect(this.recorder);
-        this.microphone.open().catch((error) => console.warn('Could not open the microphone', error));
     }
 
+    /**
+     * The microphone stream is only open while recording. An open stream costs audio processing
+     * for as long as the track exists, and the browser shows a "recording" indicator the whole time.
+     */
     async startRecording(): Promise<void> {
         if (this.isRecording) {
+            return;
+        }
+
+        try {
+            await this.microphone.open();
+        } catch (error) {
+            console.warn('Could not open the microphone', error);
             return;
         }
 
@@ -37,6 +46,7 @@ export class MicrophoneTrack extends SampleTrack {
             await this.loadSample(recording, 'Recording');
         } finally {
             this.isRecording = false;
+            this.microphone.close();
         }
     }
 

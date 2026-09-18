@@ -1,4 +1,4 @@
-import { getTransport, start, type TransportInstance } from 'tone';
+import { Context, getTransport, setContext, start, type TransportInstance } from 'tone';
 import { DEFAULT_BPM } from './constants';
 import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
 import type { TrackContainer } from './trackContainer';
@@ -9,6 +9,14 @@ import type { TrackContainer } from './trackContainer';
  * This module (and everything under `src/juicyloops`) knows nothing about the UI.
  * The Vue side talks to it through `useJuicyLoops` only.
  */
+/*
+ * Notes are scheduled this far ahead of time. A step sequencer does not need low latency,
+ * so a generous window keeps the audio steady while the main thread is busy with the UI.
+ */
+const LOOK_AHEAD_SECONDS = 0.2;
+
+setContext(new Context({ latencyHint: 'balanced', lookAhead: LOOK_AHEAD_SECONDS }));
+
 export class Engine {
     readonly transport: TransportInstance = getTransport();
     readonly sequencer = new Sequencer();

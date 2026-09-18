@@ -13,8 +13,17 @@ describe('effect definitions', () => {
             for (const param of definition.params) {
                 expect(param.min).toBeLessThan(param.max);
                 expect(param.step).toBeGreaterThan(0);
+                expect(param.initial).toBeGreaterThanOrEqual(param.min);
+                expect(param.initial).toBeLessThanOrEqual(param.max);
             }
         }
+    });
+
+    it('starts every mixable effect fully dry', () => {
+        const wetParams = EFFECT_KEYS.flatMap((key) => EFFECT_DEFINITIONS[key].params.filter((param) => param.key === 'wet'));
+
+        expect(wetParams.length).toBeGreaterThan(0);
+        expect(wetParams.every((param) => param.initial === 0)).toBe(true);
     });
 
     it('does not repeat a parameter within one effect', () => {

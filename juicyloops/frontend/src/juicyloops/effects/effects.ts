@@ -14,7 +14,7 @@ import {
     Vibrato,
     type ToneAudioNode,
 } from 'tone';
-import { EFFECT_DEFINITIONS, EFFECT_KEYS, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
+import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
 
 export type { EffectKey, EffectParamKey } from './definitions';
 
@@ -26,10 +26,23 @@ interface ValueHolder {
 
 const isValueHolder = (target: unknown): target is ValueHolder => typeof target === 'object' && target !== null && 'value' in target;
 
-const createBitCrusher = (): BitCrusher => {
-    const bitCrusher = new BitCrusher(8);
-    bitCrusher.wet.value = 0;
-    return bitCrusher;
+/**
+ * How to build each effect. Parameters are applied right after construction, so the factories only
+ * need to produce a node; LFO driven effects are started here because they are silent otherwise.
+ */
+const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
+    chorus: () => new Chorus().start(),
+    phaser: () => new Phaser(),
+    distortion: () => new Distortion(),
+    bitCrusher: () => new BitCrusher(),
+    autoFilter: () => new AutoFilter().start(),
+    tremolo: () => new Tremolo().start(),
+    vibrato: () => new Vibrato(),
+    delay: () => new FeedbackDelay(),
+    reverb: () => new Reverb(),
+    compressor: () => new Compressor(),
+    equalizer: () => new EQ3(),
+    limiter: () => new Limiter(),
 };
 
 /** Signal flow order a fresh track starts with. */
@@ -49,46 +62,47 @@ export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
 ];
 
 /**
- * The per-track effect chain. All effects are always wired in series and start fully dry (`wet = 0`).
+ * The per-track effect chain.
+ *
+ * Parameter values live here as plain numbers; the Tone nodes are only created while an effect is
+ * audible (`wet > 0`) and are thrown away again when it is turned fully dry. A convolution reverb,
+ * a bit crusher worklet and a handful of LFOs per track are expensive even when they have nothing
+ * to do, so a fresh track costs almost nothing and a dozen tracks stay in budget.
+ *
+ * The dynamics stages (compressor, equalizer, limiter) have no mix control and are cheap native
+ * nodes, so they are always part of the chain and the track sounds the same as before.
+ *
  * Parameters are addressed by the keys declared in `EFFECT_DEFINITIONS`, so the UI can stay generic.
  * The order of the chain can be changed at any time; the nodes are re-wired on the spot.
  */
 export class Effects {
-    readonly nodes: Record<EffectKey, ToneAudioNode> = {
-        chorus: new Chorus({ wet: 0 }).start(),
-        phaser: new Phaser({ wet: 0 }),
-        distortion: new Distortion({ wet: 0 }),
-        bitCrusher: createBitCrusher(),
-        autoFilter: new AutoFilter({ wet: 0 }).start(),
-        tremolo: new Tremolo({ wet: 0 }).start(),
-        vibrato: new Vibrato({ wet: 0 }),
-        delay: new FeedbackDelay({ wet: 0 }),
-        reverb: new Reverb({ wet: 0 }),
-        compressor: new Compressor({ threshold: -24, ratio: 12, attack: 0.003, release: 0.25 }),
-        equalizer: new EQ3(0, 0, 0),
-        limiter: new Limiter(-1),
-    };
+    private readonly nodes = new Map<EffectKey, ToneAudioNode>();
+
+    /** The current value of every parameter, whether or not the effect's node exists. */
+    private readonly params = Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect)])) as Record<EffectKey, Record<string, number>>;
 
     /** Current signal flow order, first entry is closest to the sound source. */
     private chain: EffectKey[] = [...DEFAULT_EFFECT_ORDER];
-
-    /** The values every parameter had when the chain was created, used by `reset`. */
-    private readonly defaults: Record<EffectKey, Record<string, number>>;
 
     private source: ToneAudioNode | null = null;
     private destination: ToneAudioNode | null = null;
 
     constructor() {
-        this.defaults = Object.fromEntries(
-            EFFECT_KEYS.map((effect) => [
-                effect,
-                Object.fromEntries(EFFECT_DEFINITIONS[effect].params.map((param) => [param.key, this.getParam(effect, param.key as EffectParamKey<typeof effect>)])),
-            ]),
-        ) as Record<EffectKey, Record<string, number>>;
+        // Only the always-on dynamics stages exist from the start.
+        for (const effect of EFFECT_KEYS) {
+            if (this.isNeeded(effect)) {
+                this.createNode(effect);
+            }
+        }
     }
 
     get order(): readonly EffectKey[] {
         return this.chain;
+    }
+
+    /** Whether the effect currently has a node in the chain. */
+    isActive(effect: EffectKey): boolean {
+        return this.nodes.has(effect);
     }
 
     /** Routes `source -> effects -> destination`. Existing connections of both ends are dropped first. */
@@ -121,42 +135,26 @@ export class Effects {
 
     /** Puts every parameter of one effect back to its initial value. */
     reset(effect: EffectKey): void {
-        this.setParams(effect, this.defaults[effect] as Partial<Record<EffectParamKey<typeof effect>, number>>);
-    }
-
-    /** Drops the outgoing connections of the source and every effect and wires them up again in chain order. */
-    private rewire(): void {
-        if (!this.source || !this.destination) {
-            return;
-        }
-
-        this.source.disconnect();
-        for (const node of Object.values(this.nodes)) {
-            node.disconnect();
-        }
-
-        connectSeries(this.source, ...this.chain.map((key) => this.nodes[key]), this.destination);
+        this.setParams(effect, initialParams(effect) as Partial<Record<EffectParamKey<typeof effect>, number>>);
     }
 
     getParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>): number {
-        const target = this.paramTarget(effect, param);
-        return isValueHolder(target) ? target.value : (target as number);
+        return this.params[effect][param]!;
     }
 
     setParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>, value: number): void {
-        const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
-        const target = this.paramTarget(effect, param);
+        (this.params[effect] as Record<string, number>)[param] = value;
 
-        if (isValueHolder(target)) {
-            if (definition?.ramp && target.rampTo) {
-                target.rampTo(value, definition.ramp);
-            } else {
-                target.value = value;
-            }
-            return;
+        const shouldExist = this.isNeeded(effect);
+        const node = this.nodes.get(effect);
+
+        if (shouldExist && !node) {
+            this.createNode(effect);
+        } else if (!shouldExist && node) {
+            this.destroyNode(effect);
+        } else if (node) {
+            this.applyParam(node, effect, param, value);
         }
-
-        (this.nodes[effect] as unknown as Record<string, number>)[param] = value;
     }
 
     /** Convenience for setting several parameters of one effect at once. */
@@ -179,12 +177,66 @@ export class Effects {
     }
 
     dispose(): void {
-        for (const node of Object.values(this.nodes)) {
+        for (const node of this.nodes.values()) {
             node.dispose();
         }
+        this.nodes.clear();
     }
 
-    private paramTarget(effect: EffectKey, param: string): unknown {
-        return (this.nodes[effect] as unknown as Record<string, unknown>)[param];
+    /** An effect with a mix control is needed once it is not fully dry; the others are always in the chain. */
+    private isNeeded(effect: EffectKey): boolean {
+        const wet = this.params[effect].wet;
+        return wet === undefined || wet > 0;
+    }
+
+    private createNode(effect: EffectKey): void {
+        const node = FACTORIES[effect]();
+        for (const [param, value] of Object.entries(this.params[effect])) {
+            this.applyParam(node, effect, param, value, false);
+        }
+        this.nodes.set(effect, node);
+        this.rewire();
+    }
+
+    private destroyNode(effect: EffectKey): void {
+        const node = this.nodes.get(effect);
+        if (!node) {
+            return;
+        }
+
+        this.nodes.delete(effect);
+        this.rewire();
+        node.dispose();
+    }
+
+    private applyParam(node: ToneAudioNode, effect: EffectKey, param: string, value: number, ramp = true): void {
+        const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
+        const target = (node as unknown as Record<string, unknown>)[param];
+
+        if (isValueHolder(target)) {
+            if (ramp && definition?.ramp && target.rampTo) {
+                target.rampTo(value, definition.ramp);
+            } else {
+                target.value = value;
+            }
+            return;
+        }
+
+        (node as unknown as Record<string, number>)[param] = value;
+    }
+
+    /** Drops the outgoing connections of the source and every node and wires them up again in chain order. */
+    private rewire(): void {
+        if (!this.source || !this.destination) {
+            return;
+        }
+
+        this.source.disconnect();
+        for (const node of this.nodes.values()) {
+            node.disconnect();
+        }
+
+        const active = this.chain.filter((key) => this.nodes.has(key)).map((key) => this.nodes.get(key)!);
+        connectSeries(this.source, ...active, this.destination);
     }
 }
