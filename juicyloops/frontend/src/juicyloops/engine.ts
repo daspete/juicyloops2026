@@ -4,6 +4,7 @@ import { DEFAULT_BPM } from './constants';
 import type { MixBus } from './mixBus';
 import { Sequencer, type PlaybackMode, type SessionState, type StepListener } from './sequencer';
 import type { TrackContainer } from './trackContainer';
+import { SampleTrack } from './tracks/SampleTrack';
 
 /**
  * Facade over Tone's transport and the sequencer.
@@ -84,6 +85,17 @@ export class Engine {
 
     restore(state: SessionState): void {
         this.sequencer.restore(state);
+    }
+
+    /**
+     * Replaces the whole session with a loaded one: playback stops, the state is taken over and the samples
+     * are decoded. Resolves once every sample is playable.
+     */
+    async load(state: SessionState): Promise<void> {
+        this.stop();
+        this.sequencer.restore(state);
+        const tracks = this.sequencer.containers.flatMap((container) => container.tracks);
+        await Promise.all(tracks.filter((track): track is SampleTrack => track instanceof SampleTrack).map((track) => track.whenReady()));
     }
 
     onStep(listener: StepListener): () => void {

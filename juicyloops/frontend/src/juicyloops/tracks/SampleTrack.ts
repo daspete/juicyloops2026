@@ -38,6 +38,9 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
 
     isReversed = false;
 
+    /** The last sample load that was started; `whenReady` waits for it. */
+    private loading: Promise<void> = Promise.resolve();
+
     constructor(id?: string) {
         super(id);
         this.connectSource(this.player);
@@ -56,6 +59,11 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         this.sampleName = name;
         this.setSampleTimes(0, buffer.duration);
         this.hasSample = true;
+    }
+
+    /** Resolves once the sample the track was last given is decoded and playable (right away when there is none). */
+    whenReady(): Promise<void> {
+        return this.loading;
     }
 
     /** Forgets the sample; the row shows its drop zone or record button again. */
@@ -122,7 +130,9 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         if (sample.sampleBlob !== this.sampleBlob) {
             if (sample.sampleBlob) {
                 // Decoding is asynchronous; the slice is set once the audio is back.
-                void this.loadSample(sample.sampleBlob, sample.sampleName).then(() => this.setSampleTimes(sample.sampleStartTime, sample.sampleDuration));
+                this.loading = this.loadSample(sample.sampleBlob, sample.sampleName)
+                    .then(() => this.setSampleTimes(sample.sampleStartTime, sample.sampleDuration))
+                    .catch((error) => console.warn('Could not decode the sample', sample.sampleName, error));
             } else {
                 this.clearSample();
             }

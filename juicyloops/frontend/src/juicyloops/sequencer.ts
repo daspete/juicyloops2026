@@ -120,11 +120,14 @@ export class Sequencer {
         };
     }
 
-    /** Takes a captured state back. Containers that still exist keep their objects, deleted ones return with their ids. */
+    /**
+     * Takes a captured state back. Containers that still exist keep their objects, deleted ones return with their ids.
+     * New containers are restored through their reactive proxy, so the tracks inside are too (see `TrackContainer.restore`).
+     */
     restore(state: SessionState): void {
         const next = state.containers.map((containerState) => {
             const existing = this.getContainer(containerState.id);
-            const container = existing ?? new TrackContainer(containerState.name, containerState.id);
+            const container = existing ?? (reactive(new TrackContainer(containerState.name, containerState.id)) as TrackContainer);
             if (!existing) {
                 container.connectTo(this.master.input);
             }

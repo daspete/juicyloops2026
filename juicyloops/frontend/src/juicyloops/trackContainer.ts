@@ -1,5 +1,5 @@
 import type { ToneAudioNode } from 'tone';
-import { markRaw } from 'vue';
+import { markRaw, reactive } from 'vue';
 import { createId } from './audio';
 import { MixBus, type BusSnapshot } from './mixBus';
 import type { BaseTrack, TrackState } from './tracks/BaseTrack';
@@ -101,6 +101,9 @@ export class TrackContainer {
     /**
      * Takes a captured state back. Tracks that still exist keep their objects (and their decoded samples),
      * deleted ones come back with their old ids, and ones the state does not know are disposed.
+     *
+     * A track that comes back is restored through its reactive proxy (the same one the array hands the UI),
+     * because a sample track finishes loading later and the UI must see it happen.
      */
     restore(state: ContainerState): void {
         this.name = state.name;
@@ -108,7 +111,7 @@ export class TrackContainer {
 
         const next = state.tracks.map((trackState) => {
             const existing = this.tracks.find((track) => track.id === trackState.id && track.type === trackState.type);
-            const track: BaseTrack = existing ?? createTrack(trackState.type, trackState.id);
+            const track: BaseTrack = existing ?? (reactive(createTrack(trackState.type, trackState.id)) as unknown as BaseTrack);
             if (!existing) {
                 track.connectTo(this.bus.input);
             }

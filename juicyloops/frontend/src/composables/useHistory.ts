@@ -47,6 +47,9 @@ let current: Entry = capture();
 /** Bumped after every undo or redo, so views that keep their own copy of a value (knobs) read it again. */
 const version = ref(0);
 
+/** Bumped whenever the session changes (a commit that kept something, an undo, a redo, a reset): what "unsaved changes" is measured against. */
+const revision = ref(0);
+
 const canUndo = computed(() => undoStack.value.length > 0);
 const canRedo = computed(() => redoStack.value.length > 0);
 
@@ -62,6 +65,7 @@ const commit = (): boolean => {
     }
     redoStack.value = [];
     current = next;
+    revision.value++;
     return true;
 };
 
@@ -71,6 +75,7 @@ const apply = (entry: Entry) => {
     setBpm(entry.state.bpm);
     selectContainer(entry.state.currentContainerId);
     version.value++;
+    revision.value++;
 };
 
 const undo = (): void => {
@@ -91,11 +96,13 @@ const redo = (): void => {
     }
 };
 
-/** Forgets the history and starts again from the session as it is now. */
+/** Forgets the history and starts again from the session as it is now (after a file was opened). */
 const reset = (): void => {
     undoStack.value = [];
     redoStack.value = [];
     current = capture();
+    version.value++;
+    revision.value++;
 };
 
-export const useHistory = () => ({ canUndo, canRedo, commit, undo, redo, reset, version });
+export const useHistory = () => ({ canUndo, canRedo, commit, undo, redo, reset, version, revision });

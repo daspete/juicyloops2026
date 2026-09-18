@@ -11,8 +11,8 @@ export class MicrophoneTrack extends SampleTrack {
 
     isRecording = false;
 
-    constructor() {
-        super();
+    constructor(id?: string) {
+        super(id);
         this.microphone.connect(this.recorder);
     }
 
