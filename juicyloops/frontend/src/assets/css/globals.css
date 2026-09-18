@@ -7,65 +7,92 @@
 /*
  * Every colour in the app comes from these tokens. `html.dark` (the PrimeVue dark selector)
  * flips the set, so light and dark mode are one stylesheet.
+ *
+ * Two colour families live here:
+ *  - the brand (violet to magenta, from the logo) for everything that belongs to the shell:
+ *    play button, playhead, progress, containers, the song grid.
+ *  - the juice: one colour per track type. Rows set --jl-accent to their own, and everything
+ *    inside a row (steps, knobs, panels, sliders) inherits it.
  */
 :root {
-    /* The "juice": one colour per track type. Rows set --jl-accent to their own. */
-    --jl-synth: #f26d0c;
-    --jl-sampler: #6fae14;
+    --jl-brand: #7c3aed;
+    --jl-brand-2: #c026d3;
+    --jl-brand-ink: #ffffff;
+    --jl-brand-gradient: linear-gradient(135deg, var(--jl-brand), var(--jl-brand-2));
+
+    --jl-synth: #f0700a;
+    --jl-sampler: #6ab60c;
     --jl-mic: #e8306f;
     --jl-accent: var(--jl-synth);
     --jl-accent-ink: #14100c;
 
-    --jl-bg: #f6f1ea;
-    --jl-glow: rgba(249, 115, 22, 0.16);
+    --jl-bg: #f4f2fc;
     --jl-surface: #ffffff;
-    --jl-surface-2: #fbf8f3;
-    --jl-cell: #ebe4dc;
-    --jl-cell-hover: #ddd4ca;
-    --jl-cell-downbeat: #e3dbd1;
-    --jl-line: #e2d9ce;
-    --jl-line-strong: #c9bdaf;
-    --jl-bar: #b9ada2;
-    --jl-text: #1c1714;
-    --jl-muted: #7a6d63;
-    --jl-overlay: rgba(255, 253, 250, 0.88);
+    --jl-surface-2: #f8f6fe;
+    --jl-cell: #ebe8f7;
+    --jl-cell-hover: #dcd7f0;
+    --jl-cell-downbeat: #e2def3;
+    --jl-line: #dcd8ee;
+    --jl-line-strong: #b8b1d9;
+    --jl-bar: #aba3cf;
+    --jl-text: #17132b;
+    --jl-muted: #6c668f;
+    --jl-overlay: rgba(255, 255, 255, 0.86);
     --jl-key-white: #ffffff;
-    --jl-key-white-ink: #1c1714;
-    --jl-key-black: #3a312b;
-    --jl-key-black-ink: #f3ece4;
-    --jl-shadow: 0 10px 30px -18px rgba(60, 40, 20, 0.35);
+    --jl-key-white-ink: #17132b;
+    --jl-key-black: #2c2547;
+    --jl-key-black-ink: #ece8fb;
+    --jl-shadow: 0 12px 32px -18px rgba(60, 40, 140, 0.35);
+    --jl-blob-1: rgba(124, 58, 237, 0.16);
+    --jl-blob-2: rgba(240, 112, 10, 0.14);
+    --jl-blob-3: rgba(232, 48, 111, 0.1);
 
     /* Width of the control column on the left of every track row. The step ruler uses it too. */
-    --jl-track-head: 20rem;
+    --jl-track-head: 17rem;
+    /* Gap between that column and the grid. */
+    --jl-track-gap: 0.75rem;
+    /* Head plus gap: how far the step grids of a row are indented. Zero when the head sits above the grid. */
+    --jl-head-space: calc(var(--jl-track-head) + var(--jl-track-gap));
+    /* Padding of a track row on either side of its content. */
+    --jl-row-pad: 0.6rem;
     /* Width of the note-name column in the piano roll. */
     --jl-key-width: 3rem;
+    /* Gap between beats in every step grid. */
+    --jl-beat-gap: 0.55rem;
 
     color-scheme: light;
 }
 
 html.dark {
-    --jl-synth: #ff8a2a;
-    --jl-sampler: #a8e63d;
+    --jl-brand: #a78bfa;
+    --jl-brand-2: #e879f9;
+    --jl-brand-ink: #14092b;
+    --jl-brand-gradient: linear-gradient(135deg, #8b5cf6, #d946ef);
+
+    --jl-synth: #ff8c1a;
+    --jl-sampler: #b6f04a;
     --jl-mic: #ff4f8b;
 
-    --jl-bg: #0f0c0a;
-    --jl-glow: rgba(249, 115, 22, 0.14);
-    --jl-surface: #171310;
-    --jl-surface-2: #120f0d;
-    --jl-cell: #211b17;
-    --jl-cell-hover: #2e2621;
-    --jl-cell-downbeat: #27201b;
-    --jl-line: #2a2320;
-    --jl-line-strong: #4a3f38;
-    --jl-bar: #4c423b;
-    --jl-text: #f3ece4;
-    --jl-muted: #9a8d82;
-    --jl-overlay: rgba(15, 12, 10, 0.85);
-    --jl-key-white: #efe9e3;
-    --jl-key-white-ink: #1a1512;
-    --jl-key-black: #1a1512;
-    --jl-key-black-ink: #bdb0a5;
-    --jl-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+    --jl-bg: #0c0a17;
+    --jl-surface: #151229;
+    --jl-surface-2: #110e22;
+    --jl-cell: #1f1b36;
+    --jl-cell-hover: #2c2749;
+    --jl-cell-downbeat: #262040;
+    --jl-line: #272244;
+    --jl-line-strong: #453d6e;
+    --jl-bar: #4d4579;
+    --jl-text: #f5f2ff;
+    --jl-muted: #9b94bd;
+    --jl-overlay: rgba(12, 10, 23, 0.86);
+    --jl-key-white: #ebe7fa;
+    --jl-key-white-ink: #17132b;
+    --jl-key-black: #17132b;
+    --jl-key-black-ink: #b3abd6;
+    --jl-shadow: 0 14px 36px -18px rgba(0, 0, 0, 0.85);
+    --jl-blob-1: rgba(139, 92, 246, 0.22);
+    --jl-blob-2: rgba(255, 140, 26, 0.12);
+    --jl-blob-3: rgba(255, 79, 139, 0.12);
 
     color-scheme: dark;
 }
@@ -75,15 +102,28 @@ html {
 }
 
 body {
+    position: relative;
+    min-height: 100vh;
     font-family: var(--font-sans);
     color: var(--jl-text);
-    background:
-        radial-gradient(60rem 30rem at 50% -10rem, var(--jl-glow), transparent 70%),
-        var(--jl-bg);
+    background: var(--jl-bg);
     -webkit-font-smoothing: antialiased;
     transition:
         background-color 0.25s ease,
         color 0.25s ease;
+}
+
+/* The stage lighting: three soft colour washes behind everything, fixed so they never scroll. */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+        radial-gradient(48rem 28rem at 18% -6rem, var(--jl-blob-1), transparent 70%),
+        radial-gradient(40rem 26rem at 100% 12rem, var(--jl-blob-2), transparent 70%),
+        radial-gradient(36rem 24rem at 30% 110%, var(--jl-blob-3), transparent 70%);
 }
 
 .fade-enter-active,
@@ -121,6 +161,26 @@ textarea {
     user-select: text;
 }
 
+/* ---------- page frame ---------- */
+
+/* The editors share one column. Below the desktop breakpoint the main area scrolls sideways instead of squeezing the grid. */
+.page {
+    width: 100%;
+    min-width: 42rem;
+    margin: 0 auto;
+    padding: 1rem 1.25rem 2rem;
+    display: flex;
+    flex-direction: column;
+}
+
+.eyebrow {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
 /* ---------- generic controls ---------- */
 
 .iconbtn {
@@ -128,10 +188,10 @@ textarea {
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
-    height: 1.75rem;
-    min-width: 1.75rem;
-    padding: 0 0.4rem;
-    border-radius: 0.5rem;
+    height: 1.85rem;
+    min-width: 1.85rem;
+    padding: 0 0.45rem;
+    border-radius: 0.55rem;
     color: var(--jl-muted);
     font-size: 0.8rem;
     font-weight: 600;
@@ -168,7 +228,15 @@ textarea {
     color: #e03c3c;
 }
 
-:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn):focus-visible {
+.iconbtn--tiny {
+    height: 1.4rem;
+    min-width: 1.4rem;
+    padding: 0 0.3rem;
+    font-size: 0.68rem;
+    border-radius: 0.4rem;
+}
+
+:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn, .tool):focus-visible {
     outline: 2px solid var(--jl-accent);
     outline-offset: 2px;
 }
@@ -177,8 +245,8 @@ textarea {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
-    height: 1.75rem;
-    padding: 0 0.7rem;
+    height: 1.9rem;
+    padding: 0 0.75rem;
     border-radius: 999px;
     border: 1px solid var(--jl-line);
     background: var(--jl-surface);
@@ -189,7 +257,8 @@ textarea {
     transition:
         background-color 0.12s ease,
         color 0.12s ease,
-        border-color 0.12s ease;
+        border-color 0.12s ease,
+        box-shadow 0.12s ease;
 }
 
 .chip:hover {
@@ -201,6 +270,18 @@ textarea {
     background: color-mix(in oklab, var(--jl-accent) 18%, transparent);
     border-color: color-mix(in oklab, var(--jl-accent) 60%, transparent);
     color: var(--jl-accent);
+}
+
+/* A chip that adds a track: the juice colour is the whole message. */
+.chip--juice {
+    border-color: color-mix(in oklab, var(--jl-accent) 35%, var(--jl-line));
+    color: var(--jl-text);
+}
+
+.chip--juice:hover {
+    background: color-mix(in oklab, var(--jl-accent) 14%, var(--jl-surface));
+    border-color: var(--jl-accent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--jl-accent) 16%, transparent);
 }
 
 .chip--draggable {
@@ -220,8 +301,8 @@ textarea {
 }
 
 .chip-dot {
-    width: 0.4rem;
-    height: 0.4rem;
+    width: 0.45rem;
+    height: 0.45rem;
     border-radius: 999px;
     background: var(--jl-line-strong);
 }
@@ -238,9 +319,9 @@ textarea {
 }
 
 .setting-label {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--jl-muted);
 }
@@ -250,8 +331,49 @@ textarea {
     align-items: center;
     gap: 0.25rem;
     padding: 0.2rem;
-    border-radius: 0.6rem;
+    border-radius: 0.65rem;
     background: var(--jl-cell);
+}
+
+/* ---------- console (header) ---------- */
+
+.console {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 0.75rem 1rem;
+    padding: 0.6rem 1.25rem;
+    flex-shrink: 0;
+}
+
+.console-left,
+.console-right {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.console-right {
+    justify-content: flex-end;
+    gap: 0.25rem;
+}
+
+.console-center {
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+
+@media (max-width: 47.9rem) {
+    .console {
+        grid-template-columns: 1fr auto;
+    }
+
+    .console-center {
+        grid-column: 1 / -1;
+        grid-row: 2;
+    }
 }
 
 /* ---------- transport ---------- */
@@ -259,60 +381,129 @@ textarea {
 .transport {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+    gap: 0.6rem;
+    padding: 0.3rem 0.4rem 0.3rem 0.3rem;
     border-radius: 999px;
     border: 1px solid var(--jl-line);
     background: var(--jl-surface);
     box-shadow: var(--jl-shadow);
+    max-width: 100%;
 }
 
 .playbtn {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
+    flex-shrink: 0;
+    width: 2.9rem;
+    height: 2.9rem;
     border-radius: 999px;
-    background: var(--jl-synth);
-    color: var(--jl-accent-ink);
+    background: var(--jl-brand-gradient);
+    color: var(--jl-brand-ink);
     cursor: pointer;
-    box-shadow: 0 0 0 0 color-mix(in oklab, var(--jl-synth) 50%, transparent);
+    box-shadow: 0 6px 18px -6px color-mix(in oklab, var(--jl-brand-2) 70%, transparent);
     transition:
         transform 0.12s ease,
         box-shadow 0.2s ease,
-        background-color 0.2s ease;
+        filter 0.2s ease;
 }
 
 .playbtn:hover {
     transform: scale(1.05);
+    filter: brightness(1.08);
+}
+
+.playbtn:active {
+    transform: scale(0.97);
 }
 
 .playbtn[data-playing='true'] {
-    background: var(--jl-text);
-    color: var(--jl-bg);
     animation: playpulse 1.2s ease-out infinite;
 }
 
 .playbtn--wide {
     width: auto;
-    height: 2.75rem;
-    padding: 0 1.4rem 0 1rem;
+    height: 2.9rem;
+    padding: 0 1.5rem 0 1.1rem;
     gap: 0.4rem;
     font-weight: 700;
 }
 
 @keyframes playpulse {
     0% {
-        box-shadow: 0 0 0 0 color-mix(in oklab, var(--jl-synth) 55%, transparent);
+        box-shadow:
+            0 6px 18px -6px color-mix(in oklab, var(--jl-brand-2) 70%, transparent),
+            0 0 0 0 color-mix(in oklab, var(--jl-brand) 55%, transparent);
     }
     100% {
-        box-shadow: 0 0 0 14px transparent;
+        box-shadow:
+            0 6px 18px -6px color-mix(in oklab, var(--jl-brand-2) 70%, transparent),
+            0 0 0 14px transparent;
     }
 }
 
+/* Where we are: bar.beat.step, living inside the transport so the eye never has to travel. */
+.readout {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 2.1rem;
+    padding: 0 0.7rem 0 0.6rem;
+    border-radius: 999px;
+    background: var(--jl-cell);
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: var(--jl-muted);
+    font-variant-numeric: tabular-nums;
+    transition: color 0.2s ease;
+}
+
+.readout[data-playing='true'] {
+    color: var(--jl-text);
+}
+
+.readout-dot {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--jl-line-strong);
+    transition: background-color 0.2s ease;
+}
+
+.readout[data-playing='true'] .readout-dot {
+    background: var(--jl-brand-2);
+    box-shadow: 0 0 8px var(--jl-brand-2);
+}
+
+.tempo {
+    display: flex;
+    align-items: center;
+    gap: 0.1rem;
+    height: 2.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background: var(--jl-cell);
+}
+
+.tempo-unit {
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: var(--jl-muted);
+    padding-right: 0.2rem;
+}
+
+.tempo-divider {
+    width: 1px;
+    height: 1rem;
+    margin: 0 0.15rem;
+    background: var(--jl-line-strong);
+}
+
 .bpm-input {
-    width: 4.2rem;
+    width: 3.6rem;
     height: 1.75rem;
     padding: 0;
     text-align: center;
@@ -325,6 +516,8 @@ textarea {
     outline: 0;
     -moz-appearance: textfield;
     appearance: textfield;
+    cursor: ns-resize;
+    touch-action: none;
 }
 
 .bpm-input::-webkit-outer-spin-button,
@@ -333,18 +526,13 @@ textarea {
     margin: 0;
 }
 
-.bpm-input {
-    cursor: ns-resize;
-    touch-action: none;
-}
-
 .bpm-input:focus {
     cursor: text;
 }
 
 .bpm-input:focus-visible,
 .bpm-input--dragging {
-    color: var(--jl-synth);
+    color: var(--jl-brand-2);
 }
 
 .loopbar {
@@ -354,8 +542,8 @@ textarea {
 
 .loopbar-fill {
     height: 100%;
-    background: linear-gradient(90deg, var(--jl-synth), var(--jl-mic));
-    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-synth) 60%, transparent);
+    background: linear-gradient(90deg, var(--jl-brand), var(--jl-brand-2));
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-brand-2) 60%, transparent);
     transition: width 0.08s linear;
 }
 
@@ -363,14 +551,80 @@ textarea {
     opacity: 0.35;
 }
 
+/* ---------- view switcher ---------- */
+
+.viewswitch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--jl-cell);
+}
+
+.viewswitch-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 1.95rem;
+    padding: 0 0.85rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    text-decoration: none;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.viewswitch-item:hover {
+    color: var(--jl-text);
+}
+
+.viewswitch-item[data-active='true'] {
+    background: var(--jl-surface);
+    color: var(--jl-text);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.viewswitch-item:focus-visible {
+    outline: 2px solid var(--jl-brand);
+    outline-offset: 1px;
+}
+
+.viewswitch-count {
+    min-width: 1.1rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--jl-brand) 22%, transparent);
+    color: var(--jl-brand);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-align: center;
+    line-height: 1.1rem;
+}
+
 /* ---------- step grid ---------- */
 
+/*
+ * Every step grid is a row of beats of one fixed width, so the ruler, the pads, the velocity lane and the
+ * piano roll all line up whatever their length. Eight beats fill exactly one section of the timeline;
+ * longer patterns run on and the timeline scrolls sideways.
+ */
 .steps {
     display: grid;
-    grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: 0.5rem;
-    width: 100%;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--jl-beat-w);
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--jl-beat-gap);
+    width: max-content;
     touch-action: none;
+}
+
+.track-steps {
+    min-height: 3.75rem;
 }
 
 .beat {
@@ -379,6 +633,7 @@ textarea {
     gap: 3px;
 }
 
+/* Every step is a pad: dark and quiet until it holds a note, then lit in the row's juice colour. */
 .tick {
     position: relative;
     display: flex;
@@ -386,14 +641,14 @@ textarea {
     justify-content: center;
     width: 100%;
     height: 100%;
-    border-radius: 0.45rem;
+    border-radius: 0.55rem;
     background: var(--jl-cell);
     color: var(--jl-muted);
     font-family: var(--font-mono);
     font-size: 0.72rem;
-    font-weight: 500;
+    font-weight: 600;
     cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     transition:
         background-color 0.08s ease,
         color 0.08s ease,
@@ -410,14 +665,27 @@ textarea {
     color: var(--jl-text);
 }
 
+/* The note name only matters where there is a note. Hovering an empty pad previews what it would play. */
+.tick-label {
+    opacity: 0;
+    transition: opacity 0.1s ease;
+}
+
+.tick--active .tick-label,
+.tick:hover .tick-label {
+    opacity: 1;
+}
+
 .tick--active,
 .tick--active:hover {
-    background: linear-gradient(180deg, color-mix(in oklab, var(--jl-accent) 78%, white), var(--jl-accent) 55%);
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.32), transparent 60%),
+        var(--jl-accent);
     color: var(--jl-accent-ink);
     font-weight: 700;
     box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.25),
-        0 0 10px color-mix(in oklab, var(--jl-accent) 45%, transparent);
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 4px 14px -4px color-mix(in oklab, var(--jl-accent) 75%, transparent);
 }
 
 /* A note shorter than one step fills only part of its cell. */
@@ -430,9 +698,9 @@ textarea {
 /* Cells covered by a longer note from an earlier step. */
 .tick--tail,
 .tick--tail:hover {
-    background: color-mix(in oklab, var(--jl-accent) 40%, var(--jl-cell));
+    background: color-mix(in oklab, var(--jl-accent) 45%, var(--jl-cell));
     color: color-mix(in oklab, var(--jl-accent-ink) 70%, var(--jl-accent));
-    border-radius: 0 0.45rem 0.45rem 0;
+    border-radius: 0 0.55rem 0.55rem 0;
 }
 
 .tick--open-end {
@@ -440,36 +708,79 @@ textarea {
     border-bottom-right-radius: 0;
 }
 
+/* The playhead: a light sweeping over the pad it is on. */
 .tick--current::after {
     content: '';
     position: absolute;
     inset: 0;
     border-radius: inherit;
-    background: rgba(255, 255, 255, 0.18);
-    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-text) 55%, transparent);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-text) 60%, transparent);
     pointer-events: none;
 }
 
 .tick--current.tick--active {
-    transform: scale(1.07);
-    filter: brightness(1.15);
+    transform: scale(1.08);
+    filter: brightness(1.18);
     z-index: 1;
 }
 
 .track--muted .tick--active {
-    filter: saturate(0.2) brightness(0.9);
+    filter: saturate(0.15) brightness(0.85);
+}
+
+/* Ghost repeats: the same pattern again, faded, where a short loop comes around within the section. */
+.tick--ghost,
+.tick--ghost:hover {
+    opacity: 0.32;
+    pointer-events: none;
+    cursor: default;
+    background: var(--jl-cell);
+    box-shadow: none;
+    outline: 1px dashed var(--jl-line-strong);
+    outline-offset: -1px;
+}
+
+.tick--ghost.tick--active,
+.tick--ghost.tick--active:hover {
+    background: var(--jl-accent);
+    outline: none;
+    opacity: 0.4;
+}
+
+.tick--ghost.tick--current {
+    opacity: 0.7;
+}
+
+.tick--ghost.tick--current.tick--active {
+    transform: none;
+    filter: none;
 }
 
 /* ---------- beat ruler ---------- */
+
+.ruler {
+    display: flex;
+    padding: 0 var(--jl-row-pad) 0 calc(var(--jl-row-pad) + 1px);
+}
+
+.ruler-spacer {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    flex-shrink: 0;
+    width: var(--jl-head-space);
+    background: var(--jl-bg);
+}
 
 .ruler-cell {
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 1.1rem;
-    border-radius: 0.3rem;
+    height: 1.2rem;
+    border-radius: 0.35rem;
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     font-weight: 700;
     color: var(--jl-muted);
     transition:
@@ -486,13 +797,13 @@ textarea {
 }
 
 .ruler-cell--current {
-    background: var(--jl-synth);
-    color: var(--jl-accent-ink);
-    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-synth) 55%, transparent);
+    background: var(--jl-brand-gradient);
+    color: var(--jl-brand-ink);
+    box-shadow: 0 0 12px color-mix(in oklab, var(--jl-brand-2) 60%, transparent);
 }
 
 .ruler-cell--current::before {
-    background: var(--jl-accent-ink);
+    background: var(--jl-brand-ink);
 }
 
 /* ---------- velocity lane ---------- */
@@ -500,7 +811,7 @@ textarea {
 .velocity-cell {
     position: relative;
     height: 3.5rem;
-    border-radius: 0.35rem;
+    border-radius: 0.4rem;
     background: var(--jl-cell);
     overflow: hidden;
     cursor: ns-resize;
@@ -524,11 +835,11 @@ textarea {
 
 .note-handle {
     position: absolute;
-    top: 3px;
-    bottom: 3px;
-    width: 6px;
+    top: 4px;
+    bottom: 4px;
+    width: 4px;
     border-radius: 2px;
-    background: rgba(20, 16, 12, 0.5);
+    background: rgba(20, 16, 12, 0.35);
     cursor: ew-resize;
     opacity: 0;
     transition: opacity 0.12s ease;
@@ -548,26 +859,37 @@ textarea {
 }
 
 .note-handle:hover {
-    background: rgba(20, 16, 12, 0.85);
+    background: rgba(20, 16, 12, 0.8);
 }
 
 /* ---------- piano roll ---------- */
 
 .pianoroll {
-    /* Reach into the empty space below the track head so the step columns stay aligned with the grid above. */
-    margin-left: calc(-1 * var(--jl-key-width) - 0.75rem);
+    /* Reach back under the track head so the key names sit in the head column and the step columns stay aligned with the grid above. */
+    margin-left: calc(-1 * var(--jl-head-space));
 }
 
 .pianorow {
     display: flex;
     align-items: stretch;
-    gap: 0.75rem;
     height: 1.5rem;
     padding-bottom: 3px;
 }
 
+/* The key column stays put while the timeline scrolls. */
+.pianokeys {
+    position: sticky;
+    left: var(--jl-row-pad);
+    z-index: 2;
+    flex: 0 0 var(--jl-head-space);
+    display: flex;
+    justify-content: flex-end;
+    padding-right: var(--jl-track-gap);
+    background: var(--jl-surface);
+}
+
 .pianokey {
-    flex: 0 0 var(--jl-key-width);
+    width: var(--jl-key-width);
     display: flex;
     align-items: center;
     justify-content: flex-end;
@@ -592,8 +914,16 @@ textarea {
 }
 
 .pianorow .steps {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: none;
+}
+
+.pianolane {
+    position: relative;
+    height: 100%;
+}
+
+.pianolane > .steps {
+    height: 100%;
 }
 
 .pianotick {
@@ -617,44 +947,76 @@ textarea {
     box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-accent) 45%, transparent);
 }
 
-/* Active notes are always the plain accent colour, no matter which row they sit on or whether the playhead is on them. */
-.pianorow .pianotick--active,
-.pianorow--black .pianotick--active,
-.pianorow:hover .pianotick--active {
-    background: var(--jl-accent);
-    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 45%, transparent);
-}
-
-.pianorow .pianotick--active[style*='--fill'] {
-    background: linear-gradient(90deg, var(--jl-accent) calc(var(--fill) * 100%), var(--jl-cell) calc(var(--fill) * 100%));
-}
-
-.pianorow .pianotick--tail,
-.pianorow--black .pianotick--tail,
-.pianorow:hover .pianotick--tail {
-    background: color-mix(in oklab, var(--jl-accent) 55%, var(--jl-cell));
-    border-radius: 0 0.3rem 0.3rem 0;
-}
-
-.pianorow .pianotick--open-end {
-    border-top-right-radius: 0;
-    border-bottom-right-radius: 0;
-}
-
-.pianorow .pianotick--current:not(.pianotick--active) {
+.pianorow .pianotick--current {
     background: color-mix(in oklab, var(--jl-cell-hover) 70%, var(--jl-text) 8%);
 }
 
-.pianorow .pianotick--current.pianotick--active {
+/* A note is one bar over the cells it covers, however long it is. */
+.pianonote {
+    position: absolute;
+    top: 0;
+    bottom: 3px;
+    z-index: 1;
+    border-radius: 0.3rem;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 55%),
+        var(--jl-accent);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 45%, transparent);
+    cursor: grab;
+    touch-action: none;
+    transition: filter 0.1s ease;
+}
+
+.pianonote:hover {
+    filter: brightness(1.1);
+}
+
+.pianonote:active {
+    cursor: grabbing;
+}
+
+.pianonote--current {
     outline: 2px solid rgba(255, 255, 255, 0.9);
     outline-offset: -2px;
+}
+
+.pianonote .note-handle {
+    top: 2px;
+    bottom: 2px;
+}
+
+/* ---------- timeline (track editor) ---------- */
+
+/*
+ * The ruler and the rows share one horizontally scrolling area. One section is as wide as the
+ * area minus the head column, so a 32-step track fills the screen and longer ones scroll.
+ */
+.timeline {
+    container-type: inline-size;
+    overflow-x: auto;
+    overflow-y: hidden;
+    margin: 0 calc(-1 * var(--jl-row-pad));
+    padding: 0 var(--jl-row-pad) 1rem;
+    --jl-lane: calc(100cqw - var(--jl-head-space) - 2 * var(--jl-row-pad) - 2px);
+    --jl-beat-w: calc((var(--jl-lane) - 7 * var(--jl-beat-gap)) / 8);
+    /* One step cell: four per beat with 3px between them. */
+    --jl-cell-w: calc((var(--jl-beat-w) - 9px) / 4);
+}
+
+.timeline-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 100%;
+    width: calc(var(--jl-head-space) + 2 * var(--jl-row-pad) + 2px + var(--jl-sections, 1) * (var(--jl-lane) + var(--jl-beat-gap)));
+    padding-top: 0.15rem;
 }
 
 /* ---------- track row ---------- */
 
 .track {
     position: relative;
-    border-radius: 0.9rem;
+    border-radius: 1rem;
     background: var(--jl-surface);
     border: 1px solid var(--jl-line);
     box-shadow: var(--jl-shadow);
@@ -663,26 +1025,125 @@ textarea {
         background-color 0.25s ease;
 }
 
-.track::before {
+.track--muted {
+    opacity: 0.55;
+}
+
+/* Head and step grid share the first row, whatever opens (velocity, piano roll, waveform, tweak) fills the second. */
+.track-inner {
+    display: grid;
+    grid-template-columns: var(--jl-track-head) max-content;
+    gap: 0.5rem var(--jl-track-gap);
+    padding: var(--jl-row-pad);
+}
+
+/* The head stays put while the timeline scrolls. The juice colour runs down its left edge. */
+.track-head {
+    position: sticky;
+    left: var(--jl-row-pad);
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0.2rem 0.25rem 0.2rem 0.75rem;
+    border-radius: 0.7rem;
+    background:
+        linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 10%, transparent), transparent 75%),
+        var(--jl-surface);
+}
+
+.track-head::before {
     content: '';
     position: absolute;
-    left: -1px;
-    top: 0.9rem;
-    bottom: 0.9rem;
-    width: 3px;
+    left: 0;
+    top: 0.3rem;
+    bottom: 0.3rem;
+    width: 4px;
     border-radius: 999px;
     background: var(--jl-accent);
-    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-accent) 60%, transparent);
+    box-shadow: 0 0 14px color-mix(in oklab, var(--jl-accent) 70%, transparent);
 }
 
-.track--muted {
-    opacity: 0.6;
+.track-grid {
+    display: flex;
+    flex-direction: column;
+    min-width: var(--jl-lane);
 }
 
-.track-head {
-    width: var(--jl-track-head);
-    border-radius: 0.6rem;
-    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 9%, transparent), transparent 70%);
+.track-grid-slot {
+    position: relative;
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+}
+
+/* The pads grow to the height of the head beside them. */
+.track-steps {
+    flex: 1 1 auto;
+    min-height: 3.75rem;
+}
+
+.track-below {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.track-below:not(:has(*)) {
+    display: none;
+}
+
+/* Lanes line up with the step grid above them. */
+.track-lane {
+    padding-left: var(--jl-head-space);
+}
+
+.track-lane:not(:has(*)) {
+    display: none;
+}
+
+.track-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.55rem;
+    background: color-mix(in oklab, var(--jl-accent) 20%, transparent);
+    color: var(--jl-accent);
+}
+
+.track-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1rem;
+    letter-spacing: -0.01em;
+}
+
+.track-index {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--jl-muted);
+}
+
+.track-length {
+    padding: 0.1rem 0.35rem;
+    border-radius: 0.35rem;
+    background: color-mix(in oklab, var(--jl-accent) 14%, transparent);
+    color: var(--jl-accent);
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.track .p-slider {
+    background: var(--jl-cell-hover);
 }
 
 .track .p-slider-range {
@@ -697,12 +1158,50 @@ textarea {
     background: var(--jl-accent);
 }
 
-.track-dot {
-    width: 0.55rem;
-    height: 0.55rem;
-    border-radius: 999px;
-    background: var(--jl-accent);
-    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 70%, transparent);
+/* The tool row under the volume: what the row can show or open. */
+.tools {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    border-radius: 0.65rem;
+    background: color-mix(in oklab, var(--jl-cell) 70%, transparent);
+}
+
+.tool {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    flex: 1 1 0;
+    height: 1.75rem;
+    padding: 0 0.4rem;
+    border-radius: 0.5rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color 0.12s ease,
+        color 0.12s ease,
+        box-shadow 0.12s ease;
+}
+
+.tool:hover {
+    color: var(--jl-text);
+    background: var(--jl-cell-hover);
+}
+
+.tool[data-active='true'] {
+    background: var(--jl-surface);
+    color: var(--jl-accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.tool:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
 }
 
 .grid-hint {
@@ -731,29 +1230,128 @@ textarea {
     }
 }
 
+/* Below the desktop breakpoint the head sits above the grid instead of beside it. */
+@media (max-width: 63.9rem) {
+    :root {
+        --jl-head-space: 0rem;
+    }
+
+    .page {
+        min-width: 40rem;
+    }
+
+    .track-inner {
+        grid-template-columns: max-content;
+    }
+
+    .track-head {
+        position: static;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.35rem 0.75rem;
+        width: var(--jl-lane);
+    }
+
+    .track-head > * {
+        flex: 1 1 14rem;
+    }
+
+    .ruler-spacer {
+        display: none;
+    }
+
+    .pianoroll {
+        margin-left: 0;
+    }
+
+    .pianokeys {
+        flex-basis: var(--jl-key-width);
+        padding-right: 0;
+    }
+}
+
+/* ---------- empty state and add cards ---------- */
+
+.hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    padding: 3.5rem 1rem 2rem;
+    text-align: center;
+}
+
+.hero-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 2.9rem;
+    line-height: 1;
+    letter-spacing: -0.03em;
+}
+
+.hero-title mark {
+    background: var(--jl-brand-gradient);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+
+.hero-cards {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+}
+
 .addcard {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-    gap: 0.5rem;
-    width: 15rem;
-    padding: 1.1rem 1.2rem;
-    border-radius: 1rem;
+    gap: 0.6rem;
+    width: 15.5rem;
+    padding: 1.2rem 1.25rem 1.3rem;
+    border-radius: 1.1rem;
     border: 1px solid var(--jl-line);
     background: var(--jl-surface);
     box-shadow: var(--jl-shadow);
     text-align: left;
     cursor: pointer;
+    overflow: hidden;
     transition:
         transform 0.15s ease,
         border-color 0.15s ease,
         box-shadow 0.15s ease;
 }
 
+.addcard::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 4px;
+    background: var(--jl-accent);
+}
+
 .addcard:hover {
     transform: translateY(-3px);
     border-color: color-mix(in oklab, var(--jl-accent) 60%, transparent);
-    box-shadow: 0 12px 30px -12px color-mix(in oklab, var(--jl-accent) 60%, transparent);
+    box-shadow: 0 16px 34px -14px color-mix(in oklab, var(--jl-accent) 65%, transparent);
+}
+
+.addcard .track-badge {
+    width: 2.6rem;
+    height: 2.6rem;
+    border-radius: 0.8rem;
+}
+
+.addcard-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.25rem;
+    letter-spacing: -0.01em;
 }
 
 .dropzone {
@@ -782,6 +1380,7 @@ textarea {
     color: white;
     font-weight: 700;
     cursor: pointer;
+    box-shadow: 0 6px 16px -6px color-mix(in oklab, var(--jl-mic) 70%, transparent);
     transition: transform 0.12s ease;
 }
 
@@ -816,58 +1415,92 @@ textarea {
 
 /* ---------- tweak panel ---------- */
 
+/* One panel with three pages. It sticks to the visible part of the timeline, so it never scrolls off with the pads. */
 .tweak {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding-top: 0.25rem;
-}
-
-.tweak-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.panel {
-    flex: 1 1 22rem;
-    min-width: 0;
-    border-radius: 0.75rem;
+    position: sticky;
+    left: var(--jl-row-pad);
+    width: calc(100cqw - 2 * var(--jl-row-pad) - 2px);
+    max-width: 100%;
+    margin-top: 0.25rem;
+    border-radius: 0.8rem;
     border: 1px solid var(--jl-line);
     background: var(--jl-surface-2);
 }
 
-.tweak > .panel {
-    flex: none;
-}
-
-.panel-title {
+.tweak-tabs {
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    height: 2rem;
-    padding: 0 0.75rem;
+    gap: 0.75rem;
+    padding: 0.4rem 0.5rem;
     border-bottom: 1px solid var(--jl-line);
-    font-size: 0.7rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--jl-accent);
 }
 
-.panel-note {
-    margin-left: auto;
-    font-weight: 500;
-    letter-spacing: 0;
-    text-transform: none;
+.tweak-tablist {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 0.65rem;
+    background: var(--jl-cell);
+}
+
+.tweak-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    height: 1.9rem;
+    padding: 0 0.85rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    cursor: pointer;
+    transition:
+        background-color 0.12s ease,
+        color 0.12s ease,
+        box-shadow 0.12s ease;
+}
+
+.tweak-tab:hover {
+    color: var(--jl-text);
+}
+
+.tweak-tab[data-active='true'] {
+    background: var(--jl-surface);
+    color: var(--jl-accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+}
+
+.tweak-tab:focus-visible {
+    outline: 2px solid var(--jl-accent);
+    outline-offset: 1px;
+}
+
+.tweak-note {
+    font-size: 0.78rem;
     color: var(--jl-muted);
 }
 
-.panel-body {
+.tweak-body {
+    padding: 0.9rem 1rem 1rem;
+}
+
+/* Settings sit in one wrapping row with a common rhythm; every block has a label above one control strip. */
+.settings {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem 1.25rem;
-    padding: 0.75rem;
+    align-items: flex-start;
+    gap: 1rem 1.5rem;
+}
+
+.setting-row--tall {
+    padding: 0.6rem 0.75rem;
+    gap: 1.25rem;
+}
+
+.setting-canvas {
+    border-radius: 0.5rem;
+    background: var(--jl-surface-2);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
 }
 
 /* ---------- knob ---------- */
@@ -943,267 +1576,13 @@ textarea {
     white-space: nowrap;
 }
 
-@media (prefers-reduced-motion: reduce) {
-    *,
-    *::before,
-    *::after {
-        animation: none !important;
-        transition-duration: 0.01ms !important;
-    }
-}
-
-/* ---------- view switcher ---------- */
-
-.viewswitch {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    padding: 3px;
-    border-radius: 999px;
-    background: var(--jl-cell);
-}
-
-.viewswitch-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    height: 1.9rem;
-    padding: 0 0.8rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--jl-muted);
-    text-decoration: none;
-    transition:
-        background-color 0.15s ease,
-        color 0.15s ease,
-        box-shadow 0.15s ease;
-}
-
-.viewswitch-item:hover {
-    color: var(--jl-text);
-}
-
-.viewswitch-item[data-active='true'] {
-    background: var(--jl-surface);
-    color: var(--jl-text);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-}
-
-.viewswitch-item:focus-visible {
-    outline: 2px solid var(--jl-accent);
-    outline-offset: 1px;
-}
-
-.viewswitch-count {
-    min-width: 1.1rem;
-    padding: 0 0.3rem;
-    border-radius: 999px;
-    background: color-mix(in oklab, var(--jl-synth) 20%, transparent);
-    color: var(--jl-synth);
-    font-family: var(--font-mono);
-    font-size: 0.65rem;
-    text-align: center;
-    line-height: 1.1rem;
-}
-
-/* ---------- song editor ---------- */
-
-:root {
-    /* Width of one section column in the song grid. */
-    --jl-section-width: 7rem;
-}
-
-.iconbtn--tiny {
-    height: 1.35rem;
-    min-width: 1.35rem;
-    padding: 0 0.3rem;
-    font-size: 0.68rem;
-    border-radius: 0.4rem;
-}
-
-.song-hint {
-    padding: 0.35rem 0.8rem;
-    border-radius: 999px;
-    background: var(--jl-overlay);
-    border: 1px dashed color-mix(in oklab, var(--jl-synth) 60%, transparent);
-    font-size: 0.8rem;
-    font-weight: 600;
-    animation: hintfloat 2.4s ease-in-out infinite;
-}
-
-.song {
-    border-radius: 0.9rem;
-    background: var(--jl-surface);
-    border: 1px solid var(--jl-line);
-    box-shadow: var(--jl-shadow);
-    overflow-x: auto;
-}
-
-.song-grid {
-    display: grid;
-    gap: 0.4rem 0.5rem;
-    align-items: stretch;
-    padding: 0.6rem;
-    min-width: max-content;
-    touch-action: none;
-}
-
-.song-corner,
-.song-head {
-    position: sticky;
-    left: 0.6rem;
-    z-index: 2;
-    background: var(--jl-surface);
-}
-
-.song-corner {
-    display: flex;
-    align-items: flex-end;
-    padding: 0 0.6rem 0.3rem;
-}
-
-.section-head {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    border-radius: 0.6rem;
-    background: var(--jl-cell);
-    overflow: hidden;
-    transition: background-color 0.15s ease;
-}
-
-.section-head[data-current='true'] {
-    background: color-mix(in oklab, var(--jl-text) 12%, var(--jl-cell));
-}
-
-.section-num {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.15rem;
-    padding: 0.45rem 0 0.35rem;
-    cursor: pointer;
-    transition: background-color 0.12s ease;
-}
-
-.section-num:hover {
-    background: var(--jl-cell-hover);
-}
-
-.section-num:focus-visible {
-    outline: 2px solid var(--jl-synth);
-    outline-offset: -2px;
-}
-
-.section-tools {
-    display: flex;
-    justify-content: center;
-    gap: 1px;
-    padding: 0 0.15rem 0.25rem;
-    opacity: 0;
-    transition: opacity 0.12s ease;
-}
-
-.section-head:hover .section-tools,
-.section-head:focus-within .section-tools {
-    opacity: 1;
-}
-
-.section-progress {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    height: 3px;
-    background: linear-gradient(90deg, var(--jl-synth), var(--jl-mic));
-    transition: width 0.08s linear;
-}
-
-.song-add {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 0.3rem;
-}
-
-.song-head {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.6rem;
-    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 9%, var(--jl-surface)), var(--jl-surface) 70%);
-    box-shadow: inset 3px 0 0 0 var(--jl-accent);
-    transition: opacity 0.2s ease;
-}
-
-.song-head--muted {
-    opacity: 0.55;
-}
-
-.songcell {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 3.6rem;
-    padding: 0.5rem;
-    border-radius: 0.6rem;
-    background: var(--jl-cell);
-    cursor: pointer;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transition:
-        background-color 0.1s ease,
-        box-shadow 0.15s ease,
-        transform 0.1s ease;
-}
-
-.songcell:hover {
-    background: var(--jl-cell-hover);
-}
-
-.songcell[data-on='true'],
-.songcell[data-on='true']:hover {
-    background: linear-gradient(180deg, color-mix(in oklab, var(--jl-accent) 78%, white), var(--jl-accent) 55%);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.25),
-        0 0 12px color-mix(in oklab, var(--jl-accent) 40%, transparent);
-}
-
-.songcell[data-current='true']::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-text) 55%, transparent);
-    pointer-events: none;
-}
-
-.songcell[data-current='true'][data-on='true'] {
-    transform: scale(1.03);
-    filter: brightness(1.1);
-    z-index: 1;
-}
-
-.songcell:focus-visible {
-    outline: 2px solid var(--jl-accent);
-    outline-offset: 2px;
-}
-
-.songcell-preview {
-    pointer-events: none;
-}
-
-/* ---------- container tabs ---------- */
-
 .ctab {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
-    height: 2rem;
-    padding: 0 0.8rem;
-    border-radius: 0.6rem;
+    height: 2.1rem;
+    padding: 0 0.85rem;
+    border-radius: 0.7rem;
     border: 1px solid var(--jl-line);
     background: var(--jl-surface);
     font-size: 0.85rem;
@@ -1223,13 +1602,13 @@ textarea {
 
 .ctab[data-active='true'] {
     color: var(--jl-text);
-    border-color: color-mix(in oklab, var(--jl-synth) 60%, transparent);
-    background: color-mix(in oklab, var(--jl-synth) 10%, var(--jl-surface));
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--jl-synth) 14%, transparent);
+    border-color: color-mix(in oklab, var(--jl-brand) 65%, transparent);
+    background: color-mix(in oklab, var(--jl-brand) 12%, var(--jl-surface));
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--jl-brand) 16%, transparent);
 }
 
 .ctab:focus-visible {
-    outline: 2px solid var(--jl-synth);
+    outline: 2px solid var(--jl-brand);
     outline-offset: 2px;
 }
 
@@ -1242,36 +1621,368 @@ textarea {
     color: var(--jl-text);
     font: inherit;
     font-weight: 600;
-    outline: 2px solid var(--jl-synth);
+    outline: 2px solid var(--jl-brand);
 }
 
 .ctab-dot {
-    width: 0.4rem;
-    height: 0.4rem;
+    width: 0.45rem;
+    height: 0.45rem;
     border-radius: 999px;
 }
 
-.cpreview {
+/* ---------- song editor (arranger) ---------- */
+
+:root {
+    /* Width of the lane-name column on the left of the arranger. */
+    --jl-lane-head: 13rem;
+    /* Height of one lane. */
+    --jl-lane-h: 4.6rem;
+}
+
+.song-hint {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    background: var(--jl-overlay);
+    border: 1px dashed color-mix(in oklab, var(--jl-brand) 60%, transparent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    animation: hintfloat 2.4s ease-in-out infinite;
+}
+
+/* The containers you can drop onto lanes. Each has its own hue, the same one its clips get. */
+.palette {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0 0.5rem;
+    min-height: 2.4rem;
+}
+
+.palette-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 2.1rem;
+    padding: 0 0.85rem 0 0.6rem;
+    border-radius: 0.7rem;
+    border: 1px solid color-mix(in oklab, hsl(var(--jl-clip-hue) 80% 60%) 45%, var(--jl-line));
+    background: var(--jl-surface);
+    font-size: 0.85rem;
+    color: var(--jl-text);
+    cursor: grab;
+    touch-action: none;
+    transition:
+        box-shadow 0.12s ease,
+        transform 0.12s ease;
+}
+
+.palette-item:hover {
+    box-shadow: 0 0 0 3px color-mix(in oklab, hsl(var(--jl-clip-hue) 80% 60%) 20%, transparent);
+}
+
+.palette-item:active {
+    cursor: grabbing;
+    transform: scale(0.98);
+}
+
+.palette-item[data-empty='true'] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.palette-item:focus-visible {
+    outline: 2px solid var(--jl-brand);
+    outline-offset: 2px;
+}
+
+.palette-swatch {
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.25rem;
+    background: linear-gradient(135deg, hsl(var(--jl-clip-hue) 85% 66%), hsl(calc(var(--jl-clip-hue) + 25) 85% 56%));
+}
+
+/* The arrangement itself: one scrolling area, lane names stay put on the left. */
+.arranger {
+    position: relative;
+    border-radius: 1rem;
+    background: var(--jl-surface);
+    border: 1px solid var(--jl-line);
+    box-shadow: var(--jl-shadow);
+    overflow: auto;
+    max-height: calc(100vh - 16rem);
+}
+
+.arranger--dragging,
+.arranger--dragging * {
+    cursor: grabbing !important;
+}
+
+.arranger--cut .clip {
+    cursor: crosshair;
+}
+
+/* With a clip to repeat, empty lane space is a canvas: press and drag to lay it down again and again. */
+.arranger--paint .arr-lane {
+    cursor: cell;
+}
+
+.arr-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    min-width: 100%;
+    padding-bottom: 0.6rem;
+}
+
+.arr-row {
+    display: flex;
+    align-items: stretch;
+}
+
+.arr-row--ruler {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--jl-surface);
+    border-bottom: 1px solid var(--jl-line);
+}
+
+.arr-corner,
+.arr-head {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    flex: 0 0 var(--jl-lane-head);
+    background: var(--jl-surface);
+    border-right: 1px solid var(--jl-line);
+}
+
+.arr-corner {
+    display: flex;
+    align-items: flex-end;
+    padding: 0 0.75rem 0.35rem;
+}
+
+.arr-row--ruler .arr-corner {
+    z-index: 6;
+}
+
+/* Bar numbers. Bars inside the song are bright, the empty tail after it is dim. */
+.arr-ruler {
+    display: flex;
+    width: calc(var(--jl-song-steps) * var(--jl-song-step));
+    height: 2rem;
+    cursor: pointer;
+}
+
+.arr-bar {
+    flex: 0 0 calc(16 * var(--jl-song-step));
+    display: flex;
+    align-items: flex-end;
+    padding: 0 0 0.3rem 0.4rem;
+    border-left: 1px solid var(--jl-line-strong);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--jl-line-strong);
+}
+
+.arr-bar[data-inside='true'] {
+    color: var(--jl-muted);
+}
+
+.arr-ruler:hover .arr-bar {
+    color: var(--jl-text);
+}
+
+.arr-head {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.25rem;
+    padding: 0.4rem 0.4rem 0.4rem 0.75rem;
+    transition: opacity 0.2s ease;
+}
+
+.arr-row--muted .arr-head,
+.arr-row--muted .clip {
+    opacity: 0.5;
+}
+
+/* The lane body: beat and bar lines, clips laid on top. */
+.arr-lane {
+    position: relative;
+    flex: 0 0 calc(var(--jl-song-steps) * var(--jl-song-step));
+    height: var(--jl-lane-h);
+    border-bottom: 1px solid var(--jl-line);
+    background:
+        repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(16 * var(--jl-song-step))),
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--jl-song-step)));
+    touch-action: none;
+}
+
+.arr-empty {
+    position: sticky;
+    left: 0;
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+    width: 100cqw;
+}
+
+/* One clip: a container playing for a while. Coloured by its container. */
+.clip {
+    --jl-clip: hsl(var(--jl-clip-hue) 85% 62%);
+    --jl-clip-2: hsl(calc(var(--jl-clip-hue) + 25) 85% 54%);
+    position: absolute;
+    top: 0.4rem;
+    bottom: 0.4rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 0.35rem 0.75rem 0.4rem;
+    border-radius: 0.6rem;
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.25), transparent 60%),
+        linear-gradient(135deg, var(--jl-clip), var(--jl-clip-2));
+    color: #14092b;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        0 6px 16px -8px color-mix(in oklab, var(--jl-clip) 80%, transparent);
+    cursor: grab;
+    overflow: hidden;
+    user-select: none;
+    touch-action: none;
+    transition:
+        box-shadow 0.12s ease,
+        opacity 0.12s ease;
+}
+
+.clip:active {
+    cursor: grabbing;
+}
+
+.clip:focus-visible {
+    outline: 2px solid var(--jl-text);
+    outline-offset: 2px;
+}
+
+.clip--selected {
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        0 0 0 2px var(--jl-surface),
+        0 0 0 4px var(--jl-text),
+        0 8px 20px -8px color-mix(in oklab, var(--jl-clip) 80%, transparent);
+    z-index: 2;
+}
+
+.clip--lifted {
+    opacity: 0.35;
+}
+
+.clip--ghost {
+    opacity: 0.75;
+    pointer-events: none;
+    z-index: 3;
+    outline: 2px dashed rgba(255, 255, 255, 0.8);
+    outline-offset: -2px;
+}
+
+.clip--ghost[data-valid='false'] {
+    --jl-clip: #ef4444;
+    --jl-clip-2: #b91c1c;
+    color: white;
+}
+
+.clip-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.clip-preview {
     display: flex;
     flex-direction: column;
     gap: 2px;
     width: 100%;
+    overflow: hidden;
+    pointer-events: none;
 }
 
-.cpreview .preview {
-    height: 0.5rem;
+.clip-preview .preview {
+    --preview-on: rgba(20, 9, 43, 0.85);
+    --preview-off: rgba(20, 9, 43, 0.14);
+    height: 0.45rem;
+    width: max-content;
 }
 
-.cpreview[data-ink='true'] {
-    --preview-on: var(--jl-accent-ink);
-    --preview-off: rgba(0, 0, 0, 0.12);
+.clip .note-handle {
+    top: 0;
+    bottom: 0;
+    width: 8px;
+    border-radius: 0;
+    background: rgba(20, 9, 43, 0.25);
+    opacity: 1;
 }
 
-.cpreview-empty {
-    font-size: 0.7rem;
-    color: var(--jl-muted);
-    font-style: italic;
+.clip .note-handle--start {
+    left: 0;
 }
+
+.clip .note-handle--end {
+    right: 0;
+}
+
+.clip .note-handle:hover {
+    background: rgba(20, 9, 43, 0.5);
+}
+
+.clip-cut {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--jl-text);
+    box-shadow: 0 0 6px var(--jl-text);
+    pointer-events: none;
+}
+
+.clip-tools {
+    position: absolute;
+    top: 0.2rem;
+    right: 0.3rem;
+    display: flex;
+    gap: 1px;
+    padding: 1px;
+    border-radius: 0.45rem;
+    background: var(--jl-surface);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.clip-tools .iconbtn {
+    color: var(--jl-text);
+}
+
+.arr-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: linear-gradient(180deg, var(--jl-brand), var(--jl-brand-2));
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-brand-2) 70%, transparent);
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* ---------- container tabs ---------- */
 
 /* ---------- pattern preview ---------- */
 
@@ -1279,7 +1990,6 @@ textarea {
     --preview-on: var(--jl-accent);
     --preview-off: var(--jl-line);
     display: grid;
-    grid-template-columns: repeat(32, minmax(0, 1fr));
     align-items: end;
     gap: 1.5px;
     height: 0.9rem;
@@ -1299,4 +2009,83 @@ textarea {
 .preview-step[data-on='true'] {
     height: calc(45% + 55% * var(--level));
     background: var(--preview-on);
+}
+
+/* ---------- welcome ---------- */
+
+.welcome {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: color-mix(in oklab, var(--jl-bg) 80%, transparent);
+    backdrop-filter: blur(10px);
+}
+
+.welcome-card {
+    position: relative;
+    width: 100%;
+    max-width: 30rem;
+    padding: 2.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    border-radius: 1.5rem;
+    border: 1px solid var(--jl-line);
+    background: var(--jl-surface);
+    box-shadow:
+        0 30px 80px -30px rgba(0, 0, 0, 0.6),
+        0 0 0 1px color-mix(in oklab, var(--jl-brand) 25%, transparent);
+    overflow: hidden;
+}
+
+.welcome-card::before {
+    content: '';
+    position: absolute;
+    inset: -40% -20% auto;
+    height: 60%;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--jl-brand) 28%, transparent), transparent);
+    pointer-events: none;
+}
+
+.welcome-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 2.6rem;
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+}
+
+.welcome-juice {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.welcome-juice span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+}
+
+.welcome-juice i {
+    width: 0.55rem;
+    height: 0.55rem;
+    border-radius: 999px;
+    background: var(--jl-accent);
+    box-shadow: 0 0 8px var(--jl-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation: none !important;
+        transition-duration: 0.01ms !important;
+    }
 }

@@ -58,8 +58,8 @@ export class Engine {
         this.sequencer.setMode(mode);
     }
 
-    seekToSection(index: number): void {
-        this.sequencer.seekToSection(index);
+    seekToStep(step: number): void {
+        this.sequencer.seekToStep(step);
     }
 
     onStep(listener: StepListener): () => void {

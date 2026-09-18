@@ -4,7 +4,7 @@ import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
 
 /**
  * A group of tracks that loop together: what the track editor edits and what the song arranges.
- * Every track inside is a pattern of `STEP_COUNT` steps; playing the container plays all of them at once.
+ * Every track inside is a pattern with its own length; playing the container plays all of them at once.
  */
 export class TrackContainer {
     readonly id = createId();

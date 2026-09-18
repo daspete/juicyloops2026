@@ -1,5 +1,5 @@
 import { engine } from '@/juicyloops/engine';
-import { DEFAULT_BPM } from '@/juicyloops/constants';
+import { DEFAULT_BPM, STEP_COUNT } from '@/juicyloops/constants';
 import type { PlaybackMode } from '@/juicyloops/sequencer';
 import type { Song } from '@/juicyloops/song';
 import type { TrackContainer } from '@/juicyloops/trackContainer';
@@ -15,8 +15,10 @@ export const MAX_BPM = 900;
  * Everything below runs once, no matter how many components call `useJuicyLoops()`.
  */
 const bpm = ref(DEFAULT_BPM);
-const currentTick = ref(0);
-const currentSection = ref(0);
+/** The play position: inside the song in song mode, a running count in loop mode. */
+const currentStep = ref(0);
+/** The play position inside one section of `STEP_COUNT` steps, what the ruler of the track editor shows. */
+const currentTick = computed(() => currentStep.value % STEP_COUNT);
 const isPlaying = ref(false);
 const mode: Ref<PlaybackMode> = ref('loop');
 /*
@@ -31,13 +33,15 @@ const song = ref(engine.song) as Ref<Song>;
 
 watch(bpm, (value) => engine.setBpm(value));
 watch(mode, (value) => engine.setMode(value));
-engine.onStep((step, section) => {
+engine.onStep((step) => {
     // Steps are scheduled ahead of time, so a few still arrive after stop; they must not undo the reset.
     if (isPlaying.value) {
-        currentTick.value = step;
-        currentSection.value = section;
+        currentStep.value = step;
     }
 });
+
+/** Where the playhead sits inside one track's own pattern. */
+const trackStep = (track: BaseTrack): number => track.stepOf(currentStep.value);
 
 const clampBpm = (value: number): number => Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(value)));
 
@@ -55,19 +59,17 @@ const play = (): void => {
 const stop = (): void => {
     engine.stop();
     isPlaying.value = false;
-    currentTick.value = 0;
-    currentSection.value = 0;
+    currentStep.value = 0;
 };
 
 const setMode = (value: PlaybackMode): void => {
     mode.value = value;
 };
 
-/** Jumps to a section. Starts playback when stopped, so a click on a section always makes sound. */
-const playSection = (index: number): void => {
-    engine.seekToSection(index);
-    currentSection.value = index;
-    currentTick.value = 0;
+/** Jumps to a step of the song. Starts playback when stopped, so a click on the timeline always makes sound. */
+const playFrom = (step: number): void => {
+    engine.seekToStep(step);
+    currentStep.value = step;
     if (!isPlaying.value) {
         play();
     }
@@ -145,7 +147,8 @@ export const useJuicyLoops = () => ({
     setBpm,
     tapTempo,
     currentTick,
-    currentSection,
+    currentStep,
+    trackStep,
     isPlaying,
     play,
     stop,
@@ -153,7 +156,7 @@ export const useJuicyLoops = () => ({
     mode,
     setMode,
     song,
-    playSection,
+    playFrom,
     containers,
     currentContainer,
     selectContainer,

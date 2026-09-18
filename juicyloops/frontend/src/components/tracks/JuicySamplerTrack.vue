@@ -2,7 +2,7 @@
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import TickGrid from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
@@ -14,7 +14,10 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const { currentTick } = useJuicyLoops();
+const { currentTick: sectionStep, trackStep } = useJuicyLoops();
+
+/** The playhead inside this track's own pattern. */
+const currentTick = computed(() => trackStep(props.track));
 
 const isWaveformExpanded = ref(false);
 const isDragOver = ref(false);
@@ -41,7 +44,7 @@ const onDrop = async (event: DragEvent) => {
         <template #actions>
             <button
                 type="button"
-                class="iconbtn"
+                class="tool"
                 :disabled="!props.track.hasSample"
                 :data-active="isWaveformExpanded"
                 v-tooltip.bottom="'Trim the part of the sample that plays'"
@@ -53,10 +56,10 @@ const onDrop = async (event: DragEvent) => {
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)" />
         <div
             v-else
-            class="dropzone h-15 flex items-center gap-3 px-3"
+            class="dropzone track-steps flex items-center gap-3 px-3"
             :data-over="isDragOver"
             @dragover.prevent="isDragOver = true"
             @dragleave="isDragOver = false"

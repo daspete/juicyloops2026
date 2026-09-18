@@ -1,7 +1,7 @@
 import { PanVol, type ToneAudioNode } from 'tone';
 import { markRaw } from 'vue';
 import { createId } from '../audio';
-import { PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
+import { normalizeTrackLength, PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
 import { Effects } from '../effects/effects';
 import type { BaseTick, TickSnapshot } from '../ticks/BaseTick';
 import type { TrackType } from './registry';
@@ -16,6 +16,10 @@ export interface TrackSnapshot {
 
 /**
  * Common behaviour of every track: a row of ticks, an effect chain and a volume/pan stage.
+ *
+ * Every track has its own length. The sequencer hands every track the same running step,
+ * and the track wraps it around its own pattern, so a 16-step track repeats twice per section
+ * and a 48-step one stretches over one and a half.
  *
  * Tone.js nodes are wrapped in `markRaw` so Vue's reactivity never proxies them
  * (they are expensive to proxy and rely on private state). Everything else on a track
@@ -43,7 +47,27 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
 
     protected abstract createTick(): TTick;
 
-    /** Called by the sequencer for every step. `time` is the audio-context time to schedule at. */
+    /** Length of the pattern in steps. */
+    get length(): number {
+        return this.ticks.length;
+    }
+
+    /** Changes the length of the pattern. New steps start silent, removed steps are gone. */
+    setLength(length: number): void {
+        const target = normalizeTrackLength(length);
+        if (target > this.ticks.length) {
+            this.ticks.push(...Array.from({ length: target - this.ticks.length }, () => this.createTick()));
+        } else {
+            this.ticks.splice(target);
+        }
+    }
+
+    /** The position inside this pattern for a running step count. */
+    stepOf(step: number): number {
+        return ((step % this.ticks.length) + this.ticks.length) % this.ticks.length;
+    }
+
+    /** Called by the sequencer for every step. `step` keeps counting past the pattern; `time` is the audio-context time to schedule at. */
     abstract play(step: number, time: number): void;
 
     /** Wires `source -> effects -> output -> speakers`. Subclasses call this once with their sound source. */
@@ -58,7 +82,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
             return null;
         }
 
-        const tick = this.ticks[step];
+        const tick = this.ticks[this.stepOf(step)];
         return tick?.isActive ? tick : null;
     }
 
@@ -104,6 +128,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> {
 
     /** Copies the pattern, effects and settings of another track of the same type onto this one. */
     async copyFrom(source: this): Promise<void> {
+        this.setLength(source.length);
         source.ticks.forEach((tick, index) => {
             this.ticks[index] = tick.clone();
         });

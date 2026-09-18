@@ -12,6 +12,7 @@ import { TRACK_META } from './trackMeta';
 /**
  * Everything every track row has in common: the coloured identity, mute + volume,
  * the tool bar, and the inline panels (velocity lane and the Tweak panel with sound, pattern and effects).
+ * The row is a two-row grid: head and step grid side by side, everything that opens below them across the full width.
  *
  * Slots:
  *  - `actions`  extra tool buttons (before the shared ones)
@@ -34,6 +35,14 @@ const meta = computed(() => TRACK_META[props.track.type]);
 const isVelocityOpen = ref(false);
 const isTweakOpen = ref(false);
 
+type TweakTab = 'sound' | 'pattern' | 'effects';
+const tweakTab = ref<TweakTab>('sound');
+const TWEAK_TABS: readonly { key: TweakTab; label: string; icon: string; note: string }[] = [
+    { key: 'sound', label: 'Sound', icon: 'mdi:waveform', note: 'How every step of this track sounds' },
+    { key: 'pattern', label: 'Pattern', icon: 'mdi:dots-grid', note: 'Length and quick edits of the whole loop' },
+    { key: 'effects', label: 'Effects', icon: 'mdi:auto-fix', note: 'In signal order, drag a chip to reorder' },
+];
+
 const isPatternEmpty = computed(() => !props.track.ticks.some((tick) => tick.isActive));
 
 const volumeLabel = computed(() => `${props.track.volume > 0 ? '+' : ''}${props.track.volume.toFixed(1)} dB`);
@@ -53,13 +62,13 @@ const confirmRemove = (event: MouseEvent) => {
 
 <template>
     <div class="track" :class="{ 'track--muted': props.track.isMuted }" :style="{ '--jl-accent': meta.accent }">
-        <div class="flex gap-3 p-2">
-            <div class="track-head shrink-0 flex flex-col gap-1 p-1">
-                <div class="flex items-center gap-2 h-7 pl-1">
-                    <span class="track-dot"></span>
-                    <Icon :icon="meta.icon" class="w-4 h-4" />
-                    <span class="font-semibold">{{ meta.label }}</span>
-                    <span class="font-mono text-xs text-(--jl-muted)">{{ props.trackIndex + 1 }}</span>
+        <div class="track-inner">
+            <div class="track-head">
+                <div class="flex items-center gap-2 h-8">
+                    <span class="track-badge"><Icon :icon="meta.icon" class="w-4 h-4" /></span>
+                    <span class="track-name">{{ meta.label }}</span>
+                    <span class="track-index">{{ props.trackIndex + 1 }}</span>
+                    <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Tweak → Pattern.'">{{ props.track.length }} st</span>
                     <div class="flex-1"></div>
                     <button type="button" class="iconbtn" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id)">
                         <Icon icon="mdi:content-copy" class="w-4 h-4" />
@@ -93,11 +102,11 @@ const confirmRemove = (event: MouseEvent) => {
                     <span class="font-mono text-xs text-(--jl-muted) w-14 text-right">{{ volumeLabel }}</span>
                 </div>
 
-                <div class="flex items-center gap-0.5 h-7">
+                <div class="tools">
                     <slot name="actions" />
                     <button
                         type="button"
-                        class="iconbtn"
+                        class="tool"
                         :data-active="isVelocityOpen"
                         v-tooltip.bottom="'How loud each step plays'"
                         :aria-pressed="isVelocityOpen"
@@ -108,7 +117,7 @@ const confirmRemove = (event: MouseEvent) => {
                     </button>
                     <button
                         type="button"
-                        class="iconbtn"
+                        class="tool"
                         :data-active="isTweakOpen"
                         v-tooltip.bottom="'Sound, pattern tools and effects'"
                         :aria-pressed="isTweakOpen"
@@ -120,37 +129,53 @@ const confirmRemove = (event: MouseEvent) => {
                 </div>
             </div>
 
-            <div class="flex-1 min-w-0 flex flex-col gap-2">
-                <div class="relative">
+            <div class="track-grid">
+                <div class="track-grid-slot">
                     <slot />
                     <div v-if="props.hasGrid && isPatternEmpty" class="grid-hint">
                         <span>Tap a step, or drag across a few</span>
                     </div>
                 </div>
-                <TrackVolumeSettings v-if="isVelocityOpen" :track="props.track" />
-                <slot name="expanded" />
+            </div>
+
+            <div class="track-below">
+                <div v-if="isVelocityOpen" class="track-lane">
+                    <TrackVolumeSettings :track="props.track" />
+                </div>
+                <div class="track-lane">
+                    <slot name="expanded" />
+                </div>
 
                 <div v-if="isTweakOpen" class="tweak">
-                    <div class="tweak-row">
-                        <section class="panel">
-                            <h3 class="panel-title"><Icon icon="mdi:waveform" class="w-3.5 h-3.5" /> Sound</h3>
-                            <div class="panel-body">
-                                <slot name="sound" />
-                            </div>
-                        </section>
-                        <section class="panel">
-                            <h3 class="panel-title"><Icon icon="mdi:dots-grid" class="w-3.5 h-3.5" /> Pattern</h3>
-                            <div class="panel-body">
-                                <TrackPatternSettings :track="props.track" />
-                            </div>
-                        </section>
+                    <div class="tweak-tabs">
+                        <div class="tweak-tablist" role="tablist" aria-label="Tweak">
+                            <button
+                                v-for="tab in TWEAK_TABS"
+                                :key="tab.key"
+                                type="button"
+                                class="tweak-tab"
+                                role="tab"
+                                :data-active="tweakTab === tab.key"
+                                :aria-selected="tweakTab === tab.key"
+                                @click="tweakTab = tab.key"
+                            >
+                                <Icon :icon="tab.icon" class="w-4 h-4" />
+                                <span>{{ tab.label }}</span>
+                            </button>
+                        </div>
+                        <span class="tweak-note">{{ TWEAK_TABS.find((tab) => tab.key === tweakTab)?.note }}</span>
                     </div>
-                    <section class="panel">
-                        <h3 class="panel-title"><Icon icon="mdi:auto-fix" class="w-3.5 h-3.5" /> Effects <span class="panel-note">in signal order, drag a chip to reorder</span></h3>
-                        <div class="panel-body">
+                    <div class="tweak-body">
+                        <div v-show="tweakTab === 'sound'" class="settings" role="tabpanel">
+                            <slot name="sound" />
+                        </div>
+                        <div v-show="tweakTab === 'pattern'" class="settings" role="tabpanel">
+                            <TrackPatternSettings :track="props.track" />
+                        </div>
+                        <div v-show="tweakTab === 'effects'" role="tabpanel">
                             <EffectRack :track="props.track" />
                         </div>
-                    </section>
+                    </div>
                 </div>
             </div>
         </div>

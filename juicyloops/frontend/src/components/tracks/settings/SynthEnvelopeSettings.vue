@@ -50,8 +50,8 @@ const curve = computed(() => {
 <template>
     <div class="setting">
         <div class="setting-label">Shape</div>
-        <div class="flex flex-wrap items-center gap-4 rounded-xl p-3 bg-(--jl-cell)">
-            <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" :width="WIDTH" :height="HEIGHT" class="shrink-0 rounded-md bg-(--jl-bg)" aria-hidden="true">
+        <div class="setting-row setting-row--tall flex-wrap">
+            <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" :width="WIDTH" :height="HEIGHT" class="shrink-0 setting-canvas" aria-hidden="true">
                 <polygon :points="curve.area" fill="var(--jl-accent)" opacity="0.18" />
                 <polyline :points="curve.line" fill="none" stroke="var(--jl-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
             </svg>

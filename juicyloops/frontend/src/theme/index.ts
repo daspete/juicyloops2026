@@ -10,43 +10,43 @@ import { definePreset } from '@primeuix/themes';
 
 import { FocusTrap, Ripple, Tooltip } from 'primevue';
 
-/** Warm charcoal surfaces so the coloured steps sit on something that feels like a dark room, not a spreadsheet. */
+/** Ink-violet surfaces so the coloured steps sit on a stage, not a spreadsheet. Matches --jl-* in globals.css. */
 const SURFACE = {
     0: '#ffffff',
-    50: '#f8f5f1',
-    100: '#efe9e3',
-    200: '#ddd3ca',
-    300: '#bdb0a5',
-    400: '#8f8277',
-    500: '#6b5f56',
-    600: '#4c423b',
-    700: '#332b26',
-    800: '#241e1a',
-    900: '#171310',
-    950: '#0f0c0a',
+    50: '#f8f6fe',
+    100: '#ebe8f7',
+    200: '#dcd8ee',
+    300: '#b8b1d9',
+    400: '#8b84b0',
+    500: '#6c668f',
+    600: '#453d6e',
+    700: '#2c2749',
+    800: '#1f1b36',
+    900: '#151229',
+    950: '#0c0a17',
 };
 
 const JuicyTheme = definePreset(Aura, {
     semantic: {
         primary: {
-            50: '#fff1ed',
-            100: '#fee6e0',
-            200: '#fec8ba',
-            300: '#fead95',
-            400: '#fd9167',
-            500: '#f97316',
-            600: '#c65a0f',
-            700: '#944108',
-            800: '#652a04',
-            900: '#3c1601',
-            950: '#260b01',
+            50: '#f5f3ff',
+            100: '#ede9fe',
+            200: '#ddd6fe',
+            300: '#c4b5fd',
+            400: '#a78bfa',
+            500: '#8b5cf6',
+            600: '#7c3aed',
+            700: '#6d28d9',
+            800: '#5b21b6',
+            900: '#4c1d95',
+            950: '#2e1065',
         },
         colorScheme: {
             dark: {
                 surface: SURFACE,
                 primary: {
                     color: '{primary.500}',
-                    contrastColor: '#1a0d04',
+                    contrastColor: '#14092b',
                     hoverColor: '{primary.400}',
                     activeColor: '{primary.600}',
                 },

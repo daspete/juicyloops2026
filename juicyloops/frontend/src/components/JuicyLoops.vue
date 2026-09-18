@@ -10,12 +10,13 @@ import { positionLabel } from './tracks/steps';
 import { STEP_COUNT } from '@/juicyloops/constants';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
+import { TRACK_META } from './tracks/trackMeta';
 
 /**
  * The application shell: transport, view switcher and the frame around the editors.
  * The track editor and the song editor are routes rendered into the main area.
  */
-const { engine, bpm, setBpm, tapTempo, currentTick, currentSection, isPlaying, togglePlay, setMode, song, containers } = useJuicyLoops();
+const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode, song, containers } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
 const route = useRoute();
 
@@ -36,13 +37,13 @@ const initializeEngine = async () => {
     isInitialized.value = true;
 };
 
-const position = computed(() => positionLabel(currentTick.value, isSongView.value ? currentSection.value : 0));
+const position = computed(() => positionLabel(isSongView.value ? currentStep.value : currentTick.value));
 
-/** The progress bar spans one pattern in the track view and the whole song in the song view. */
+/** The progress bar spans one section in the track view and the whole song in the song view. */
 const loopProgress = computed(() => {
-    const sections = isSongView.value ? song.value.length : 1;
-    const section = isSongView.value ? currentSection.value : 0;
-    return `${((section * STEP_COUNT + currentTick.value + 1) / (sections * STEP_COUNT)) * 100}%`;
+    const total = isSongView.value ? song.value.length || STEP_COUNT : STEP_COUNT;
+    const step = isSongView.value ? currentStep.value : currentTick.value;
+    return `${((step + 1) / total) * 100}%`;
 });
 
 const onBpmInput = (event: Event) => setBpm(Number((event.target as HTMLInputElement).value));
@@ -126,27 +127,29 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
 
 <template>
     <div class="flex flex-col w-full h-full">
-        <header class="flex items-center gap-4 px-4 h-16 shrink-0 overflow-x-auto">
-            <div class="h-8 shrink-0">
-                <JuicyLogo />
+        <header class="console">
+            <div class="console-left">
+                <div class="h-8 shrink-0">
+                    <JuicyLogo />
+                </div>
+
+                <nav class="viewswitch shrink-0" aria-label="Editor">
+                    <RouterLink
+                        v-for="view in VIEWS"
+                        :key="view.name"
+                        :to="{ name: view.name }"
+                        class="viewswitch-item"
+                        :data-active="route.name === view.name"
+                        v-tooltip.bottom="{ value: view.hint, showDelay: 600 }"
+                    >
+                        <Icon :icon="view.icon" class="w-4 h-4" />
+                        <span>{{ view.label }}</span>
+                        <span v-if="view.name === 'app.index' && containers.length > 1" class="viewswitch-count">{{ containers.length }}</span>
+                    </RouterLink>
+                </nav>
             </div>
 
-            <nav class="viewswitch shrink-0" aria-label="Editor">
-                <RouterLink
-                    v-for="view in VIEWS"
-                    :key="view.name"
-                    :to="{ name: view.name }"
-                    class="viewswitch-item"
-                    :data-active="route.name === view.name"
-                    v-tooltip.bottom="{ value: view.hint, showDelay: 600 }"
-                >
-                    <Icon :icon="view.icon" class="w-4 h-4" />
-                    <span>{{ view.label }}</span>
-                    <span v-if="view.name === 'app.index' && containers.length > 1" class="viewswitch-count">{{ containers.length }}</span>
-                </RouterLink>
-            </nav>
-
-            <div class="flex-1 flex items-center justify-center gap-5">
+            <div class="console-center">
                 <div class="transport">
                     <button
                         type="button"
@@ -159,7 +162,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                         <Icon :icon="isPlaying ? 'material-symbols:stop-rounded' : 'material-symbols:play-arrow-rounded'" class="w-7 h-7" />
                     </button>
 
-                    <div class="flex items-center gap-1 rounded-full bg-(--jl-cell) px-1 h-9">
+                    <div class="readout" :data-playing="isPlaying" aria-live="off" v-tooltip.bottom="{ value: 'Bar . beat . step', showDelay: 800 }">
+                        <span class="readout-dot"></span>
+                        <span>{{ position }}</span>
+                    </div>
+
+                    <div class="tempo">
                         <button
                             type="button"
                             class="iconbtn"
@@ -184,7 +192,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                             @pointerup="onBpmPointerUp"
                             @pointercancel="onBpmPointerUp"
                         />
-                        <span class="text-xs font-semibold text-(--jl-muted) pr-1">BPM</span>
+                        <span class="tempo-unit">BPM</span>
                         <button
                             type="button"
                             class="iconbtn"
@@ -194,38 +202,32 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                         >
                             <Icon icon="mdi:plus" class="w-4 h-4" />
                         </button>
+                        <span class="tempo-divider"></span>
                         <button type="button" class="iconbtn" v-tooltip.bottom="'Tap along to set the tempo'" @click="tapTempo">Tap</button>
                     </div>
                 </div>
-
-                <div
-                    class="hidden sm:flex items-center gap-2 font-mono text-sm w-20"
-                    :class="isPlaying ? 'text-(--jl-text)' : 'text-(--jl-muted)'"
-                    aria-live="off"
-                >
-                    <span class="w-1.5 h-1.5 rounded-full" :class="isPlaying ? 'bg-(--jl-synth)' : 'bg-(--jl-line)'"></span>
-                    {{ position }}
-                </div>
             </div>
 
-            <button
-                type="button"
-                class="iconbtn"
-                :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-                v-tooltip.bottom="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
-                @click="toggleTheme"
-            >
-                <Icon :icon="theme === 'dark' ? 'ph:sun' : 'ph:moon'" class="w-5 h-5" />
-            </button>
-            <button
-                type="button"
-                class="iconbtn"
-                aria-label="Questions and feedback"
-                v-tooltip.bottom="'Questions and feedback'"
-                @click="isDiscussionsOpen = true"
-            >
-                <Icon icon="ph:chats" class="w-5 h-5" />
-            </button>
+            <div class="console-right">
+                <button
+                    type="button"
+                    class="iconbtn"
+                    :aria-label="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+                    v-tooltip.bottom="theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'"
+                    @click="toggleTheme"
+                >
+                    <Icon :icon="theme === 'dark' ? 'ph:sun' : 'ph:moon'" class="w-5 h-5" />
+                </button>
+                <button
+                    type="button"
+                    class="iconbtn"
+                    aria-label="Questions and feedback"
+                    v-tooltip.bottom="'Questions and feedback'"
+                    @click="isDiscussionsOpen = true"
+                >
+                    <Icon icon="ph:chats" class="w-5 h-5" />
+                </button>
+            </div>
         </header>
         <div class="loopbar shrink-0" aria-hidden="true">
             <div class="loopbar-fill" :data-playing="isPlaying" :style="{ width: loopProgress }"></div>
@@ -240,22 +242,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
         </main>
 
         <footer class="flex justify-center py-2 text-xs text-(--jl-muted) shrink-0">
-            Made with ❤️ in Vienna by&nbsp;<a href="https://daspete.at" target="_blank" rel="noopener noreferrer" class="text-(--jl-synth) hover:underline"
+            Made with ❤️ in Vienna by&nbsp;<a href="https://daspete.at" target="_blank" rel="noopener noreferrer" class="text-(--jl-brand) hover:underline"
                 >Pete</a
             >
         </footer>
     </div>
 
-    <div v-if="!isInitialized" class="fixed inset-0 z-50 flex items-center justify-center bg-(--jl-bg)/80 backdrop-blur-sm p-4">
-        <div class="w-full max-w-md rounded-2xl border border-(--jl-line) bg-(--jl-surface) p-8 flex flex-col gap-5 shadow-2xl">
-            <div class="h-10">
+    <div v-if="!isInitialized" class="welcome">
+        <div class="welcome-card">
+            <div class="h-9 relative">
                 <JuicyLogo />
             </div>
-            <h1 class="font-display font-extrabold text-4xl leading-none tracking-tight">Make a loop<br />in a minute.</h1>
-            <p class="text-(--jl-muted) leading-relaxed">
+            <h1 class="welcome-title relative">Make a loop<br />in a minute.</h1>
+            <p class="text-(--jl-muted) leading-relaxed relative">
                 Add a track, tap some steps, press play. Your browser needs one click before it is allowed to make sound.
             </p>
-            <button type="button" class="playbtn playbtn--wide self-start" @click="initializeEngine">
+            <div class="welcome-juice relative" aria-hidden="true">
+                <span v-for="(meta, type) in TRACK_META" :key="type" :style="{ '--jl-accent': meta.accent }"><i></i>{{ meta.label }}</span>
+            </div>
+            <button type="button" class="playbtn playbtn--wide self-start relative" @click="initializeEngine">
                 <Icon icon="material-symbols:play-arrow-rounded" class="w-6 h-6" />
                 <span>Start</span>
             </button>

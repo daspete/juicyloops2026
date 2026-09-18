@@ -1,5 +1,5 @@
 import { getDraw, getTransport } from 'tone';
-import { STEP_COUNT, STEP_SUBDIVISION } from './constants';
+import { STEP_SUBDIVISION } from './constants';
 import { Song } from './song';
 import { TrackContainer } from './trackContainer';
 
@@ -9,8 +9,11 @@ import { TrackContainer } from './trackContainer';
  */
 export type PlaybackMode = 'loop' | 'song';
 
-/** `step` is the position inside the pattern, `section` the position inside the song (always 0 in loop mode). */
-export type StepListener = (step: number, section: number) => void;
+/**
+ * `step` is the play position: inside the song in song mode (it wraps at the song's end),
+ * a running count in loop mode that tracks wrap around their own length.
+ */
+export type StepListener = (step: number) => void;
 
 /** Owns the containers and the song, and drives them from a repeating transport event. */
 export class Sequencer {
@@ -42,9 +45,9 @@ export class Sequencer {
         this.mode = mode;
     }
 
-    /** Moves the play position to the start of a section (also while playing). */
-    seekToSection(index: number): void {
-        getTransport().ticks = index * STEP_COUNT * this.ticksPerStep;
+    /** Moves the play position to a step (also while playing). */
+    seekToStep(step: number): void {
+        getTransport().ticks = Math.max(0, step) * this.ticksPerStep;
     }
 
     /**
@@ -109,24 +112,24 @@ export class Sequencer {
 
     private playStep(time: number): void {
         /*
-         * The transport runs freely; the pattern position and the section are derived from its tick count.
-         * In song mode the section wraps around at the end of the arrangement, so the song loops.
+         * The transport runs freely; the play position is derived from its tick count.
+         * In loop mode tracks wrap it around their own length. In song mode it wraps at the
+         * end of the arrangement, so the song loops, and every clip plays its container from
+         * the clip's own start.
          */
         const absoluteStep = Math.round(getTransport().getTicksAtTime(time) / this.ticksPerStep);
-        const step = absoluteStep % STEP_COUNT;
-        const section = this.mode === 'song' ? Math.floor(absoluteStep / STEP_COUNT) % this.song.length : 0;
+        const songLength = this.song.length;
+        const step = this.mode === 'song' ? (songLength ? absoluteStep % songLength : 0) : absoluteStep;
 
         if (this.mode === 'loop') {
             this.currentContainer.play(step, time);
         } else {
-            for (const container of this.containers) {
-                if (this.song.plays(section, container.id)) {
-                    container.play(step, time);
-                }
+            for (const [containerId, patternStep] of this.song.playingAt(step)) {
+                this.getContainer(containerId)?.play(patternStep, time);
             }
         }
 
         // The callback fires ahead of time (transport look-ahead), so UI updates are deferred until the step is heard.
-        getDraw().schedule(() => this.stepListeners.forEach((listener) => listener(step, section)), time);
+        getDraw().schedule(() => this.stepListeners.forEach((listener) => listener(step)), time);
     }
 }

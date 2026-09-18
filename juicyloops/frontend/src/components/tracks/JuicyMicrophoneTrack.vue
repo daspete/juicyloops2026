@@ -13,7 +13,10 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const { currentTick } = useJuicyLoops();
+const { currentTick: sectionStep, trackStep } = useJuicyLoops();
+
+/** The playhead inside this track's own pattern. */
+const currentTick = computed(() => trackStep(props.track));
 
 const isWaveformExpanded = ref(false);
 
@@ -38,7 +41,7 @@ const toggleRecording = async () => {
         <template #actions>
             <button
                 type="button"
-                class="iconbtn"
+                class="tool"
                 :disabled="!props.track.hasSample"
                 :data-active="isWaveformExpanded"
                 v-tooltip.bottom="'Trim the part of the recording that plays'"
@@ -50,8 +53,8 @@ const toggleRecording = async () => {
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" @paint="(tick, _index, active) => (tick.isActive = active)" />
-        <div v-else class="h-15 flex items-center gap-4 px-1">
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <div v-else class="track-steps flex items-center gap-4 px-1">
             <button type="button" class="recbtn" :data-recording="props.track.isRecording" @click="toggleRecording">
                 <span class="rec-dot"></span>
                 <span>{{ recordLabel }}</span>

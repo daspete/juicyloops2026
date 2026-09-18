@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { BEATS } from '../steps';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { beatsOf } from '../steps';
 
 /**
  * Velocity lane: one bar per step, aligned with the grid above.
@@ -10,6 +10,8 @@ import { BEATS } from '../steps';
 const props = defineProps<{
     track: BaseTrack;
 }>();
+
+const beats = computed(() => beatsOf(props.track.length));
 
 const isDrawing = ref(false);
 
@@ -50,7 +52,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopDrawing));
 <template>
     <div class="flex flex-col gap-1">
         <div class="steps" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopDrawing">
-            <div v-for="(beat, beatIndex) in BEATS" :key="beatIndex" class="beat">
+            <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
                 <div
                     v-for="index in beat"
                     :key="index"

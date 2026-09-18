@@ -1,118 +1,254 @@
 import { createId } from './audio';
 
-/** One slot of the arrangement. Every section is one full pass of the pattern (`STEP_COUNT` steps). */
-export interface SongSection {
-    readonly id: string;
-    /** Ids of the track containers that play in this section. */
-    readonly containerIds: Set<string>;
-}
-
-export const DEFAULT_SECTION_COUNT = 4;
-
-const createSection = (containerIds: Iterable<string> = []): SongSection => ({ id: createId(), containerIds: new Set(containerIds) });
+/** Steps per bar; the song grid snaps to beats of `SONG_SNAP` steps. */
+export const SONG_STEPS_PER_BAR = 16;
+export const SONG_SNAP = 4;
 
 /**
- * The arrangement: a list of sections, each of which switches a subset of the track containers on.
+ * One block on a song lane: a track container playing from `start` for `length` steps.
+ * `offset` is where inside the container's patterns the clip begins, so a clip cut in two
+ * keeps sounding like the uncut one.
+ */
+export interface SongClip {
+    readonly id: string;
+    containerId: string;
+    start: number;
+    length: number;
+    offset: number;
+}
+
+/** A horizontal lane of clips, like a track in a DAW. Clips on one lane never overlap. */
+export interface SongLane {
+    readonly id: string;
+    name: string;
+    isMuted: boolean;
+    readonly clips: SongClip[];
+}
+
+/** Snaps a step to the song grid. */
+export const snapStep = (step: number): number => Math.max(0, Math.round(step / SONG_SNAP) * SONG_SNAP);
+
+const createLane = (name: string): SongLane => ({ id: createId(), name, isMuted: false, clips: [] });
+
+/**
+ * The arrangement: lanes of clips on a shared timeline measured in steps.
  *
  * Pure data, no audio. The sequencer reads it while playing in song mode,
- * the song editor edits it. A song always has at least one section.
+ * the song editor edits it. A song always has at least one lane.
  */
 export class Song {
-    readonly sections: SongSection[] = [];
+    readonly lanes: SongLane[] = [];
 
-    constructor(sectionCount = DEFAULT_SECTION_COUNT) {
-        for (let i = 0; i < Math.max(1, sectionCount); i++) {
-            this.sections.push(createSection());
+    constructor(laneCount = 1) {
+        for (let i = 0; i < Math.max(1, laneCount); i++) {
+            this.addLane();
         }
     }
 
+    /** Length of the song in steps: the end of the last clip, rounded up to a whole bar. Zero when empty. */
     get length(): number {
-        return this.sections.length;
+        const end = Math.max(0, ...this.clips.map((clip) => clip.start + clip.length));
+        return Math.ceil(end / SONG_STEPS_PER_BAR) * SONG_STEPS_PER_BAR;
     }
 
-    /** Whether the container plays in the section. Out-of-range sections never play anything. */
-    plays(sectionIndex: number, containerId: string): boolean {
-        return this.sections[sectionIndex]?.containerIds.has(containerId) ?? false;
+    get clips(): SongClip[] {
+        return this.lanes.flatMap((lane) => lane.clips);
     }
 
-    /** True when no container is placed anywhere. */
     get isEmpty(): boolean {
-        return this.sections.every((section) => section.containerIds.size === 0);
+        return this.lanes.every((lane) => lane.clips.length === 0);
     }
 
-    setPlays(sectionIndex: number, containerId: string, plays: boolean): void {
-        const section = this.sections[sectionIndex];
-        if (!section) {
+    /* ---- playback ---- */
+
+    /**
+     * What sounds at a step: for every container, the position inside its patterns.
+     * Muted lanes stay silent, and a container placed on several lanes at once plays once.
+     */
+    playingAt(step: number): Map<string, number> {
+        const result = new Map<string, number>();
+        for (const lane of this.lanes) {
+            if (lane.isMuted) {
+                continue;
+            }
+            for (const clip of lane.clips) {
+                if (step >= clip.start && step < clip.start + clip.length && !result.has(clip.containerId)) {
+                    result.set(clip.containerId, step - clip.start + clip.offset);
+                }
+            }
+        }
+        return result;
+    }
+
+    /* ---- lanes ---- */
+
+    addLane(name = `Lane ${this.lanes.length + 1}`): SongLane {
+        const lane = createLane(name);
+        this.lanes.push(lane);
+        return lane;
+    }
+
+    getLane(id: string): SongLane | undefined {
+        return this.lanes.find((lane) => lane.id === id);
+    }
+
+    /** Removes a lane with all its clips, unless it is the last one. */
+    removeLane(id: string): void {
+        const index = this.lanes.findIndex((lane) => lane.id === id);
+        if (index === -1 || this.lanes.length === 1) {
             return;
         }
+        this.lanes.splice(index, 1);
+    }
 
-        if (plays) {
-            section.containerIds.add(containerId);
-        } else {
-            section.containerIds.delete(containerId);
+    /** Moves a lane up (`-1`) or down (`1`). */
+    moveLane(id: string, direction: 1 | -1): void {
+        const index = this.lanes.findIndex((lane) => lane.id === id);
+        const target = index + direction;
+        if (index === -1 || target < 0 || target >= this.lanes.length) {
+            return;
         }
+        [this.lanes[index], this.lanes[target]] = [this.lanes[target]!, this.lanes[index]!];
     }
 
-    toggle(sectionIndex: number, containerId: string): void {
-        this.setPlays(sectionIndex, containerId, !this.plays(sectionIndex, containerId));
+    /* ---- clips ---- */
+
+    getClip(id: string): SongClip | undefined {
+        return this.clips.find((clip) => clip.id === id);
     }
 
-    /** Switches a container on (or off) in every section. */
-    setPlaysEverywhere(containerId: string, plays: boolean): void {
-        this.sections.forEach((_, index) => this.setPlays(index, containerId, plays));
+    laneOf(clipId: string): SongLane | undefined {
+        return this.lanes.find((lane) => lane.clips.some((clip) => clip.id === clipId));
     }
 
-    /** Number of sections in which the container plays. */
-    countSections(containerId: string): number {
-        return this.sections.filter((section) => section.containerIds.has(containerId)).length;
+    /** Whether a clip of `length` steps starting at `start` would be free of other clips on the lane (`ignoreId` excluded). */
+    isFree(laneId: string, start: number, length: number, ignoreId?: string): boolean {
+        const lane = this.getLane(laneId);
+        return !!lane && lane.clips.every((clip) => clip.id === ignoreId || clip.start + clip.length <= start || clip.start >= start + length);
     }
 
-    /** Appends an empty section, or inserts it at `index`. */
-    addSection(index = this.sections.length): SongSection {
-        const section = createSection();
-        this.sections.splice(index, 0, section);
-        return section;
-    }
-
-    /** Inserts a copy right after the original. */
-    duplicateSection(id: string): SongSection | null {
-        const index = this.indexOf(id);
-        if (index === -1) {
+    /** Places a container on a lane. Returns null when the spot is taken. */
+    addClip(laneId: string, containerId: string, start: number, length: number): SongClip | null {
+        const lane = this.getLane(laneId);
+        const snapped = snapStep(start);
+        const size = Math.max(SONG_SNAP, snapStep(length));
+        if (!lane || !this.isFree(laneId, snapped, size)) {
             return null;
         }
 
-        const copy = createSection(this.sections[index]!.containerIds);
-        this.sections.splice(index + 1, 0, copy);
+        const clip: SongClip = { id: createId(), containerId, start: snapped, length: size, offset: 0 };
+        lane.clips.push(clip);
+        this.sortLane(lane);
+        return clip;
+    }
+
+    /** Moves a clip to another start (and optionally lane). Refused when that spot is taken. */
+    moveClip(id: string, start: number, laneId?: string): boolean {
+        const from = this.laneOf(id);
+        const clip = this.getClip(id);
+        const to = laneId ? this.getLane(laneId) : from;
+        const snapped = snapStep(start);
+        if (!from || !clip || !to || !this.isFree(to.id, snapped, clip.length, id)) {
+            return false;
+        }
+
+        if (to !== from) {
+            from.clips.splice(from.clips.indexOf(clip), 1);
+            to.clips.push(clip);
+        }
+        clip.start = snapped;
+        this.sortLane(to);
+        return true;
+    }
+
+    /** Drags the right edge: the clip ends at `end` (exclusive). Never shorter than one beat, never into a neighbour. */
+    setClipEnd(id: string, end: number): void {
+        const lane = this.laneOf(id);
+        const clip = this.getClip(id);
+        if (!lane || !clip) {
+            return;
+        }
+
+        const next = lane.clips.find((other) => other.start >= clip.start + clip.length);
+        const limit = next ? next.start : Number.POSITIVE_INFINITY;
+        clip.length = Math.min(limit - clip.start, Math.max(SONG_SNAP, snapStep(end) - clip.start));
+    }
+
+    /** Drags the left edge: the clip starts at `start`, keeps its end, and its pattern stays where it was. */
+    setClipStart(id: string, start: number): void {
+        const lane = this.laneOf(id);
+        const clip = this.getClip(id);
+        if (!lane || !clip) {
+            return;
+        }
+
+        const previous = [...lane.clips].reverse().find((other) => other.start + other.length <= clip.start);
+        const end = clip.start + clip.length;
+        const snapped = Math.min(end - SONG_SNAP, Math.max(previous ? previous.start + previous.length : 0, snapStep(start)));
+        clip.offset += snapped - clip.start;
+        clip.start = snapped;
+        clip.length = end - snapped;
+        this.sortLane(lane);
+    }
+
+    /** Cuts a clip in two at a step. Nothing happens on the clip's edges. Returns the new right half. */
+    splitClip(id: string, at: number): SongClip | null {
+        const lane = this.laneOf(id);
+        const clip = this.getClip(id);
+        const cut = snapStep(at);
+        if (!lane || !clip || cut <= clip.start || cut >= clip.start + clip.length) {
+            return null;
+        }
+
+        const right: SongClip = { id: createId(), containerId: clip.containerId, start: cut, length: clip.start + clip.length - cut, offset: clip.offset + cut - clip.start };
+        clip.length = cut - clip.start;
+        lane.clips.push(right);
+        this.sortLane(lane);
+        return right;
+    }
+
+    /** Copies a clip right behind itself, if there is room. */
+    duplicateClip(id: string): SongClip | null {
+        const lane = this.laneOf(id);
+        const clip = this.getClip(id);
+        if (!lane || !clip) {
+            return null;
+        }
+
+        const start = clip.start + clip.length;
+        if (!this.isFree(lane.id, start, clip.length)) {
+            return null;
+        }
+        const copy: SongClip = { ...clip, id: createId(), start };
+        lane.clips.push(copy);
+        this.sortLane(lane);
         return copy;
     }
 
-    /** Removes a section unless it is the last one. */
-    removeSection(id: string): void {
-        const index = this.indexOf(id);
-        if (index === -1 || this.sections.length === 1) {
-            return;
+    removeClip(id: string): void {
+        const lane = this.laneOf(id);
+        if (lane) {
+            lane.clips.splice(lane.clips.findIndex((clip) => clip.id === id), 1);
         }
-
-        this.sections.splice(index, 1);
     }
 
-    /** Swaps a section with its right (`1`) or left (`-1`) neighbour. */
-    moveSection(id: string, direction: 1 | -1): void {
-        const index = this.indexOf(id);
-        const target = index + direction;
-        if (index === -1 || target < 0 || target >= this.sections.length) {
-            return;
-        }
-
-        [this.sections[index], this.sections[target]] = [this.sections[target]!, this.sections[index]!];
+    /** Number of clips that play the container. */
+    countClips(containerId: string): number {
+        return this.clips.filter((clip) => clip.containerId === containerId).length;
     }
 
     /** Forgets a container everywhere, e.g. after it was deleted. */
     removeContainer(containerId: string): void {
-        this.sections.forEach((section) => section.containerIds.delete(containerId));
+        for (const lane of this.lanes) {
+            for (let i = lane.clips.length - 1; i >= 0; i--) {
+                if (lane.clips[i]!.containerId === containerId) {
+                    lane.clips.splice(i, 1);
+                }
+            }
+        }
     }
 
-    private indexOf(id: string): number {
-        return this.sections.findIndex((section) => section.id === id);
+    private sortLane(lane: SongLane): void {
+        lane.clips.sort((a, b) => a.start - b.start);
     }
 }

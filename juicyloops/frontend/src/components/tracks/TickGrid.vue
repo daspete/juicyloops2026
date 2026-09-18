@@ -1,7 +1,8 @@
 <script setup lang="ts" generic="T extends BaseTick">
 import type { BaseTick } from '@/juicyloops/ticks/BaseTick';
-import { onBeforeUnmount, onMounted, ref } from 'vue';
-import { BEATS } from './steps';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { STEP_COUNT } from '@/juicyloops/constants';
+import { beatsOf } from './steps';
 
 /**
  * One row of step cells, grouped by beat.
@@ -17,7 +18,10 @@ export interface StepSpan {
 
 const props = defineProps<{
     ticks: T[];
+    /** The playhead inside this pattern (0 .. ticks.length - 1). */
     currentTick: number;
+    /** The playhead inside the section (0 .. STEP_COUNT - 1), so the ghost repeats know which one is sounding. */
+    sectionStep?: number;
     spans?: ReadonlyMap<number, StepSpan>;
 }>();
 
@@ -29,6 +33,19 @@ const emit = defineEmits<{
 defineSlots<{
     default?: (props: { tick: T; index: number }) => unknown;
 }>();
+
+const beats = computed(() => beatsOf(props.ticks.length));
+
+/*
+ * A pattern that divides the section repeats until the section is full. The repeats are drawn as ghosts,
+ * so what you see across the row is what you hear across the ruler above. Lengths that do not divide
+ * the section (12, 24) drift against it, so they get no ghosts.
+ */
+const ghostBeats = computed(() =>
+    props.ticks.length < STEP_COUNT && STEP_COUNT % props.ticks.length === 0
+        ? beatsOf(STEP_COUNT - props.ticks.length).map((beat) => beat.map((index) => index + props.ticks.length))
+        : [],
+);
 
 /** The state we are painting while the pointer is down, null when idle. */
 const painting = ref<boolean | null>(null);
@@ -84,8 +101,8 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
 </script>
 
 <template>
-    <div class="steps h-15" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
-        <div v-for="(beat, beatIndex) in BEATS" :key="beatIndex" class="beat">
+    <div class="steps track-steps" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
+        <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
             <button
                 v-for="index in beat"
                 :key="index"
@@ -107,6 +124,18 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
             >
                 <slot :tick="ticks[index]!" :index="index" />
             </button>
+        </div>
+        <div v-for="(beat, beatIndex) in ghostBeats" :key="`ghost-${beatIndex}`" class="beat" aria-hidden="true">
+            <div
+                v-for="index in beat"
+                :key="index"
+                class="tick tick--ghost"
+                :class="{
+                    'tick--downbeat': index % 4 === 0,
+                    'tick--active': ticks[index % ticks.length]!.isActive,
+                    'tick--current': sectionStep === index,
+                }"
+            ></div>
         </div>
     </div>
 </template>

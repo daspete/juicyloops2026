@@ -8,7 +8,7 @@ defineProps<{
 </script>
 
 <template>
-    <div class="preview" aria-hidden="true">
+    <div class="preview" :style="{ gridTemplateColumns: `repeat(${ticks.length}, minmax(0, 1fr))` }" aria-hidden="true">
         <span
             v-for="(tick, index) in ticks"
             :key="index"

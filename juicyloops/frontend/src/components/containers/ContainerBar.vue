@@ -35,11 +35,11 @@ const cancelRename = () => (editingId.value = null);
 
 const confirmRemove = (event: MouseEvent) => {
     const container = currentContainer.value;
-    const placed = song.value.countSections(container.id);
+    const placed = song.value.countClips(container.id);
     confirm.require({
         target: event.currentTarget as HTMLElement,
         message: placed
-            ? `Remove "${container.name}" with its ${container.tracks.length} tracks? It is used in ${placed} song ${placed === 1 ? 'section' : 'sections'}.`
+            ? `Remove "${container.name}" with its ${container.tracks.length} tracks? It is placed ${placed} ${placed === 1 ? 'time' : 'times'} in the song.`
             : `Remove "${container.name}" with its ${container.tracks.length} tracks?`,
         acceptLabel: 'Remove',
         rejectLabel: 'Keep',
@@ -52,7 +52,7 @@ const confirmRemove = (event: MouseEvent) => {
 
 <template>
     <div class="flex items-center gap-2 px-2 min-h-9">
-        <span class="text-xs font-semibold text-(--jl-muted) uppercase tracking-wider mr-1">Containers</span>
+        <span class="eyebrow mr-1">Containers</span>
 
         <div class="flex items-center gap-1.5 flex-wrap">
             <div

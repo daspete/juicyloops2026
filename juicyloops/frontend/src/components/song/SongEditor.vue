@@ -1,95 +1,413 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import { RouterLink } from 'vue-router';
+import { useConfirm } from 'primevue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { RouterLink, useRouter } from 'vue-router';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { STEP_COUNT } from '@/juicyloops/constants';
-import { BARS_PER_SECTION, BEATS_PER_BAR } from '../tracks/steps';
-import ContainerPreview from './ContainerPreview.vue';
+import { SONG_SNAP, SONG_STEPS_PER_BAR, snapStep, type SongClip, type SongLane } from '@/juicyloops/song';
+import type { TrackContainer } from '@/juicyloops/trackContainer';
+import { TRACK_META } from '../tracks/trackMeta';
+import ClipPreview from './ClipPreview.vue';
 
 /**
- * The song view: an arrangement grid with one row per track container and one column per section.
- * A lit cell means "every track of this container plays during this section".
- * Press a cell to flip it, keep the pointer down and sweep across to paint the same state onto its neighbours.
+ * The song view: an arranger like in a DAW. Lanes run left to right on a timeline measured in bars,
+ * and every clip on a lane is a track container playing for a while.
+ *
+ * Drag a container from the palette onto a lane to place it. Drag a clip to move it (also onto another lane),
+ * drag its edges to change how long it plays, and use the cut tool to split it. Click the ruler to play from there.
+ * Once a clip was selected (or a container clicked in the palette), pressing on empty lane space and dragging
+ * paints that clip again and again along the lane.
  */
-const { bpm, containers, song, currentTick, currentSection, isPlaying, playSection, selectContainer } = useJuicyLoops();
+const { bpm, containers, song, currentStep, isPlaying, playFrom, selectContainer } = useJuicyLoops();
+const confirm = useConfirm();
+const router = useRouter();
 
 const hasTracks = computed(() => containers.value.some((container) => container.tracks.length > 0));
 
-const bars = computed(() => song.value.length * BARS_PER_SECTION);
+/* ---- timeline geometry ---- */
 
-/** Length of the whole song at the current tempo, as `m:ss`. */
+const ZOOMS = [0.45, 0.7, 1.05];
+const zoom = ref(1);
+const stepRem = computed(() => ZOOMS[zoom.value]!);
+
+/** Empty bars after the last clip, so there is always room to drop the next one. */
+const TAIL_BARS = 8;
+const MIN_BARS = 16;
+
+const bars = computed(() => song.value.length / SONG_STEPS_PER_BAR);
+const totalBars = computed(() => Math.max(MIN_BARS, bars.value + TAIL_BARS));
+const totalSteps = computed(() => totalBars.value * SONG_STEPS_PER_BAR);
+
+const timelineStyle = computed(() => ({
+    '--jl-song-step': `${stepRem.value}rem`,
+    '--jl-song-steps': totalSteps.value,
+}));
+
+/** Length of the song at the current tempo, as `m:ss`. */
 const duration = computed(() => {
-    const seconds = Math.round((bars.value * BEATS_PER_BAR * 60) / bpm.value);
+    const seconds = Math.round((bars.value * 4 * 60) / bpm.value);
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 });
 
-const barRange = (index: number) => {
-    const first = index * BARS_PER_SECTION + 1;
-    return BARS_PER_SECTION === 1 ? `bar ${first}` : `bars ${first}–${first + BARS_PER_SECTION - 1}`;
+const clipStyle = (clip: { start: number; length: number }) => ({
+    left: `calc(${clip.start} * var(--jl-song-step))`,
+    width: `calc(${clip.length} * var(--jl-song-step))`,
+});
+
+/** One hue per container, so clips of the same container look the same everywhere. */
+const CLIP_HUES = [275, 315, 25, 95, 190, 345];
+const containerHue = (id: string) => CLIP_HUES[Math.max(0, containers.value.findIndex((container) => container.id === id)) % CLIP_HUES.length]!;
+const containerById = (id: string) => containers.value.find((container) => container.id === id);
+const containerName = (id: string) => containerById(id)?.name ?? 'Removed container';
+
+/** A new clip is as long as the container's longest loop. */
+const defaultLength = (container: TrackContainer) => Math.max(STEP_COUNT, ...container.tracks.map((track) => track.length));
+
+/* ---- tools and selection ---- */
+
+type Tool = 'move' | 'cut';
+const tool = ref<Tool>('move');
+const TOOLS: readonly { key: Tool; label: string; icon: string; hint: string }[] = [
+    { key: 'move', label: 'Move', icon: 'mdi:cursor-move', hint: 'Drag clips around, drag their edges to resize' },
+    { key: 'cut', label: 'Cut', icon: 'mdi:content-cut', hint: 'Click a clip to split it at that point' },
+];
+
+const selectedId = ref<string | null>(null);
+
+/** The last selected clip (or clicked container): what painting on empty lane space lays down. */
+const template = ref<{ containerId: string; length: number } | null>(null);
+
+watch(selectedId, (id) => {
+    const clip = id ? song.value.getClip(id) : undefined;
+    if (clip) {
+        template.value = { containerId: clip.containerId, length: clip.length };
+    }
+});
+
+const removeClip = (id: string) => {
+    song.value.removeClip(id);
+    if (selectedId.value === id) {
+        selectedId.value = null;
+    }
 };
 
-const isCurrent = (index: number) => isPlaying.value && currentSection.value === index;
-const sectionProgress = computed(() => `${((currentTick.value + 1) / STEP_COUNT) * 100}%`);
-
-const gridStyle = computed(() => ({
-    gridTemplateColumns: `var(--jl-track-head) repeat(${song.value.length}, var(--jl-section-width)) min-content`,
-}));
-
-/* ---- painting cells ---- */
-
-/** The state we are painting while the pointer is down, null when idle. */
-const painting = ref<boolean | null>(null);
-
-const cellAt = (event: PointerEvent): { section: number; containerId: string } | null => {
-    const cell = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-section]');
-    return cell ? { section: Number(cell.dataset.section), containerId: cell.dataset.container! } : null;
+const duplicateClip = (id: string) => {
+    const copy = song.value.duplicateClip(id);
+    if (copy) {
+        selectedId.value = copy.id;
+    }
 };
 
-const onPointerDown = (event: PointerEvent) => {
+const editContainer = (containerId: string) => {
+    selectContainer(containerId);
+    router.push({ name: 'app.index' });
+};
+
+/* ---- lanes ---- */
+
+const editingLaneId = ref<string | null>(null);
+const laneDraft = ref('');
+const laneInput = ref<HTMLInputElement[]>([]);
+
+const startRenameLane = async (lane: SongLane) => {
+    editingLaneId.value = lane.id;
+    laneDraft.value = lane.name;
+    await nextTick();
+    laneInput.value[0]?.focus();
+    laneInput.value[0]?.select();
+};
+
+const commitRenameLane = () => {
+    const lane = editingLaneId.value ? song.value.getLane(editingLaneId.value) : null;
+    if (lane && laneDraft.value.trim()) {
+        lane.name = laneDraft.value.trim();
+    }
+    editingLaneId.value = null;
+};
+
+const confirmRemoveLane = (event: MouseEvent, lane: SongLane) => {
+    if (!lane.clips.length) {
+        song.value.removeLane(lane.id);
+        return;
+    }
+    confirm.require({
+        target: event.currentTarget as HTMLElement,
+        message: `Remove "${lane.name}" with its ${lane.clips.length} ${lane.clips.length === 1 ? 'clip' : 'clips'}?`,
+        acceptLabel: 'Remove',
+        rejectLabel: 'Keep',
+        acceptProps: { severity: 'danger', size: 'small' },
+        rejectProps: { text: true, size: 'small' },
+        accept: () => song.value.removeLane(lane.id),
+    });
+};
+
+/* ---- pointer interactions ---- */
+
+type Drag =
+    | { kind: 'new'; containerId: string; length: number }
+    | { kind: 'move'; clipId: string; grab: number }
+    | { kind: 'resize'; clipId: string; edge: 'start' | 'end' }
+    | { kind: 'paint'; laneId: string; anchor: number; containerId: string; length: number; painted: string[] };
+
+/** What the pointer is doing right now, null when idle. */
+const drag = ref<Drag | null>(null);
+
+/** The clip a drop would create or move, drawn where the pointer is. */
+const ghost = ref<{ laneId: string; start: number; length: number; containerId: string; valid: boolean } | null>(null);
+const isDragging = ref(false);
+
+/** Where the cut tool would split, while hovering a clip. */
+const cutMark = ref<{ clipId: string; step: number } | null>(null);
+
+const scroller = ref<HTMLElement | null>(null);
+
+const stepInBody = (body: HTMLElement, clientX: number) => {
+    const rect = body.getBoundingClientRect();
+    return ((clientX - rect.left) / rect.width) * totalSteps.value;
+};
+
+/** The lane body under the pointer and the (unsnapped) step at that x. */
+const locate = (event: PointerEvent): { lane: SongLane; step: number } | null => {
+    const body = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-lane]');
+    const lane = body ? song.value.getLane(body.dataset.lane!) : undefined;
+    return body && lane ? { lane, step: stepInBody(body, event.clientX) } : null;
+};
+
+/** The step under the pointer on the lane of a clip, also when the pointer has left that lane. */
+const stepAt = (event: PointerEvent, clipId: string): number => {
+    const body = document.querySelector<HTMLElement>(`[data-lane="${song.value.laneOf(clipId)?.id}"]`);
+    return body ? stepInBody(body, event.clientX) : 0;
+};
+
+const capture = (event: PointerEvent) => (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+const onPaletteDown = (event: PointerEvent, container: TrackContainer) => {
     if (event.button !== 0) {
         return;
     }
+    capture(event);
+    template.value = { containerId: container.id, length: defaultLength(container) };
+    drag.value = { kind: 'new', containerId: container.id, length: defaultLength(container) };
+    isDragging.value = true;
+};
 
-    const cell = cellAt(event);
-    if (!cell) {
+/** Pressing on empty lane space: with a template, start painting it; either way drop the selection. */
+const onLaneDown = (event: PointerEvent, lane: SongLane) => {
+    if (event.button !== 0 || event.target !== event.currentTarget) {
+        return;
+    }
+    selectedId.value = null;
+    if (tool.value !== 'move' || !template.value || !containerById(template.value.containerId)) {
+        return;
+    }
+    capture(event);
+    drag.value = { kind: 'paint', laneId: lane.id, anchor: snapStep(stepInBody(event.currentTarget as HTMLElement, event.clientX)), ...template.value, painted: [] };
+};
+
+/** Lays the template down from the anchor towards the pointer, one clip after another, only where the lane is free. */
+const paintTo = (paint: Extract<Drag, { kind: 'paint' }>, pointerStep: number) => {
+    const { length, anchor } = paint;
+    const wanted: number[] = [];
+    if (pointerStep >= anchor) {
+        for (let start = anchor; start <= pointerStep; start += length) {
+            wanted.push(start);
+        }
+    } else {
+        for (let start = anchor - length; start + length > pointerStep && start >= 0; start -= length) {
+            wanted.push(start);
+        }
+    }
+
+    for (const id of [...paint.painted]) {
+        const clip = song.value.getClip(id);
+        if (!clip || !wanted.includes(clip.start)) {
+            song.value.removeClip(id);
+            paint.painted.splice(paint.painted.indexOf(id), 1);
+        }
+    }
+    for (const start of wanted) {
+        const exists = paint.painted.some((id) => song.value.getClip(id)?.start === start);
+        if (!exists) {
+            const clip = song.value.addClip(paint.laneId, paint.containerId, start, length);
+            if (clip) {
+                paint.painted.push(clip.id);
+            }
+        }
+    }
+    isDragging.value = paint.painted.length > 0;
+};
+
+const onClipDown = (event: PointerEvent, clip: SongClip) => {
+    if (event.button !== 0) {
+        return;
+    }
+    event.stopPropagation();
+    selectedId.value = clip.id;
+
+    if (tool.value === 'cut') {
+        const right = song.value.splitClip(clip.id, stepAt(event, clip.id));
+        if (right) {
+            selectedId.value = right.id;
+        }
         return;
     }
 
-    painting.value = !song.value.plays(cell.section, cell.containerId);
-    song.value.setPlays(cell.section, cell.containerId, painting.value);
+    capture(event);
+    drag.value = { kind: 'move', clipId: clip.id, grab: stepAt(event, clip.id) - clip.start };
+};
+
+const onHandleDown = (event: PointerEvent, clip: SongClip, edge: 'start' | 'end') => {
+    if (event.button !== 0 || tool.value === 'cut') {
+        return;
+    }
+    event.stopPropagation();
+    selectedId.value = clip.id;
+    capture(event);
+    drag.value = { kind: 'resize', clipId: clip.id, edge };
+    isDragging.value = true;
 };
 
 const onPointerMove = (event: PointerEvent) => {
-    if (painting.value === null) {
+    const current = drag.value;
+    if (!current) {
+        if (tool.value === 'cut') {
+            const clipEl = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-clip]');
+            const clip = clipEl ? song.value.getClip(clipEl.dataset.clip!) : undefined;
+            cutMark.value = clip ? { clipId: clip.id, step: snapStep(stepAt(event, clip.id)) } : null;
+        }
         return;
     }
 
-    const cell = cellAt(event);
-    if (cell) {
-        song.value.setPlays(cell.section, cell.containerId, painting.value);
+    if (current.kind === 'paint') {
+        const body = document.querySelector<HTMLElement>(`[data-lane="${current.laneId}"]`);
+        if (body) {
+            paintTo(current, stepInBody(body, event.clientX));
+        }
+        return;
+    }
+
+    if (current.kind === 'resize') {
+        const step = stepAt(event, current.clipId);
+        if (current.edge === 'end') {
+            song.value.setClipEnd(current.clipId, step);
+        } else {
+            song.value.setClipStart(current.clipId, step);
+        }
+        return;
+    }
+
+    const target = locate(event);
+    if (!target) {
+        ghost.value = null;
+        return;
+    }
+
+    if (current.kind === 'move') {
+        const clip = song.value.getClip(current.clipId);
+        if (!clip) {
+            return;
+        }
+        isDragging.value = true;
+        const start = snapStep(target.step - current.grab);
+        ghost.value = { laneId: target.lane.id, start, length: clip.length, containerId: clip.containerId, valid: song.value.isFree(target.lane.id, start, clip.length, clip.id) };
+        return;
+    }
+
+    const start = snapStep(target.step);
+    ghost.value = { laneId: target.lane.id, start, length: current.length, containerId: current.containerId, valid: song.value.isFree(target.lane.id, start, current.length) };
+};
+
+const onPointerUp = () => {
+    const current = drag.value;
+    if (current && ghost.value?.valid) {
+        if (current.kind === 'new') {
+            const clip = song.value.addClip(ghost.value.laneId, current.containerId, ghost.value.start, current.length);
+            selectedId.value = clip?.id ?? null;
+        } else if (current.kind === 'move') {
+            song.value.moveClip(current.clipId, ghost.value.start, ghost.value.laneId);
+        }
+    }
+    if (current?.kind === 'paint' && current.painted.length) {
+        selectedId.value = current.painted[current.painted.length - 1]!;
+    }
+    cancelDrag();
+};
+
+const cancelDrag = () => {
+    drag.value = null;
+    ghost.value = null;
+    isDragging.value = false;
+};
+
+const isLifted = (clip: SongClip) => !!ghost.value && drag.value?.kind === 'move' && drag.value.clipId === clip.id;
+
+/** Clicking the ruler plays from that beat. */
+const onRulerClick = (event: MouseEvent) => {
+    playFrom(snapStep(stepInBody(event.currentTarget as HTMLElement, event.clientX)));
+};
+
+const isTypingTarget = (target: EventTarget | null) => {
+    const element = target as HTMLElement | null;
+    return !!element && (element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable);
+};
+
+const onKeyDown = (event: KeyboardEvent) => {
+    if (isTypingTarget(event.target)) {
+        return;
+    }
+    if (event.key === 'Escape') {
+        cancelDrag();
+        selectedId.value = null;
+        return;
+    }
+    const clip = selectedId.value ? song.value.getClip(selectedId.value) : undefined;
+    if (!clip) {
+        return;
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        removeClip(clip.id);
+    } else if (event.key === 'd' && (event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        duplicateClip(clip.id);
+    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        const delta = (event.shiftKey ? SONG_STEPS_PER_BAR : SONG_SNAP) * (event.key === 'ArrowLeft' ? -1 : 1);
+        song.value.moveClip(clip.id, clip.start + delta);
     }
 };
 
-const stopPainting = () => (painting.value = null);
-
-/** Keyboard activation arrives as a click with `detail === 0`; pointer clicks were already handled on pointerdown. */
-const onCellClick = (event: MouseEvent, section: number, containerId: string) => {
-    if (event.detail === 0) {
-        song.value.toggle(section, containerId);
+/* The playhead stays in view while the song plays. */
+watch(currentStep, (step) => {
+    const element = scroller.value;
+    if (!isPlaying.value || !element) {
+        return;
     }
-};
+    const headWidth = element.querySelector<HTMLElement>('.arr-corner')?.offsetWidth ?? 0;
+    const stepPx = (element.querySelector<HTMLElement>('[data-lane]')?.offsetWidth ?? 0) / totalSteps.value;
+    const x = headWidth + step * stepPx;
+    if (x < element.scrollLeft + headWidth || x > element.scrollLeft + element.clientWidth - 24) {
+        element.scrollTo({ left: Math.max(0, x - headWidth - 24) });
+    }
+});
 
-onMounted(() => window.addEventListener('pointerup', stopPainting));
-onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
+onMounted(() => {
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerup', onPointerUp);
+});
+onBeforeUnmount(() => {
+    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('pointerup', onPointerUp);
+});
 </script>
 
 <template>
-    <div class="min-w-4xl max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3">
-        <div v-if="!hasTracks" class="flex flex-col items-center gap-6 pt-16 pb-8 text-center">
+    <div class="page gap-3">
+        <div v-if="!hasTracks" class="hero">
             <div>
-                <h2 class="font-display font-bold text-4xl tracking-tight">Nothing to arrange yet</h2>
-                <p class="mt-2 text-(--jl-muted)">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
+                <h2 class="hero-title">Nothing to <mark>arrange</mark> yet</h2>
+                <p class="mt-3 text-(--jl-muted) max-w-xl">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
             </div>
             <RouterLink :to="{ name: 'app.index' }" class="playbtn playbtn--wide">
                 <Icon icon="mdi:dots-grid" class="w-5 h-5" />
@@ -98,133 +416,193 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
         </div>
 
         <template v-else>
-            <div class="flex items-end gap-4 px-2">
+            <div class="flex flex-wrap items-end gap-4 px-2">
                 <div>
                     <h2 class="font-display font-bold text-2xl tracking-tight leading-none">Song</h2>
                     <p class="mt-1.5 text-sm text-(--jl-muted)">
-                        <span class="font-mono">{{ song.length }}</span> {{ song.length === 1 ? 'section' : 'sections' }} ·
-                        <span class="font-mono">{{ bars }}</span> bars · <span class="font-mono">{{ duration }}</span> at
-                        <span class="font-mono">{{ bpm }}</span> BPM
+                        <span class="font-mono">{{ bars }}</span> {{ bars === 1 ? 'bar' : 'bars' }} · <span class="font-mono">{{ duration }}</span> at
+                        <span class="font-mono">{{ bpm }}</span> BPM · <span class="font-mono">{{ song.lanes.length }}</span> {{ song.lanes.length === 1 ? 'lane' : 'lanes' }}
                     </p>
                 </div>
                 <div class="flex-1"></div>
-                <p v-if="song.isEmpty" class="song-hint">Tap a cell to place a container, or drag across a few. Click a section number to play from there.</p>
-                <button type="button" class="chip" @click="song.addSection()">
+                <div class="viewswitch" role="radiogroup" aria-label="Tool">
+                    <button
+                        v-for="item in TOOLS"
+                        :key="item.key"
+                        type="button"
+                        class="viewswitch-item"
+                        role="radio"
+                        :aria-checked="tool === item.key"
+                        :data-active="tool === item.key"
+                        v-tooltip.bottom="{ value: item.hint, showDelay: 500 }"
+                        @click="tool = item.key"
+                    >
+                        <Icon :icon="item.icon" class="w-4 h-4" />
+                        <span>{{ item.label }}</span>
+                    </button>
+                </div>
+                <div class="tempo" aria-label="Zoom">
+                    <button type="button" class="iconbtn" aria-label="Zoom out" v-tooltip.bottom="'Zoom out'" :disabled="zoom === 0" @click="zoom--">
+                        <Icon icon="mdi:magnify-minus-outline" class="w-4 h-4" />
+                    </button>
+                    <button type="button" class="iconbtn" aria-label="Zoom in" v-tooltip.bottom="'Zoom in'" :disabled="zoom === ZOOMS.length - 1" @click="zoom++">
+                        <Icon icon="mdi:magnify-plus-outline" class="w-4 h-4" />
+                    </button>
+                </div>
+                <button type="button" class="chip" @click="song.addLane()">
                     <Icon icon="mdi:plus" class="w-4 h-4" />
-                    <span>Add section</span>
+                    <span>Add lane</span>
                 </button>
             </div>
 
-            <div class="song">
-                <div class="song-grid" :style="gridStyle" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
-                    <div class="song-corner">
-                        <span class="text-xs font-semibold text-(--jl-muted) uppercase tracking-wider">Container</span>
-                    </div>
-                    <div v-for="(section, index) in song.sections" :key="section.id" class="section-head" :data-current="isCurrent(index)">
-                        <button
-                            type="button"
-                            class="section-num"
-                            v-tooltip.bottom="{ value: 'Play from here', showDelay: 600 }"
-                            :aria-label="`Play from section ${index + 1}`"
-                            @click="playSection(index)"
-                        >
-                            <span class="font-display font-bold text-lg leading-none">{{ index + 1 }}</span>
-                            <span class="text-[0.65rem] text-(--jl-muted)">{{ barRange(index) }}</span>
-                        </button>
-                        <div class="section-tools">
-                            <button
-                                type="button"
-                                class="iconbtn iconbtn--tiny"
-                                aria-label="Move section left"
-                                :disabled="index === 0"
-                                @click="song.moveSection(section.id, -1)"
-                            >
-                                <Icon icon="mdi:chevron-left" class="w-3.5 h-3.5" />
-                            </button>
-                            <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate section" @click="song.duplicateSection(section.id)">
-                                <Icon icon="mdi:content-copy" class="w-3 h-3" />
-                            </button>
-                            <button
-                                type="button"
-                                class="iconbtn iconbtn--tiny iconbtn--danger"
-                                aria-label="Remove section"
-                                :disabled="song.length === 1"
-                                @click="song.removeSection(section.id)"
-                            >
-                                <Icon icon="mdi:trash-can-outline" class="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                class="iconbtn iconbtn--tiny"
-                                aria-label="Move section right"
-                                :disabled="index === song.length - 1"
-                                @click="song.moveSection(section.id, 1)"
-                            >
-                                <Icon icon="mdi:chevron-right" class="w-3.5 h-3.5" />
-                            </button>
+            <div class="palette">
+                <span class="eyebrow mr-1">Containers</span>
+                <div
+                    v-for="container in containers"
+                    :key="container.id"
+                    class="palette-item"
+                    :style="{ '--jl-clip-hue': containerHue(container.id) }"
+                    :data-empty="!container.tracks.length"
+                    role="button"
+                    tabindex="0"
+                    :aria-label="`Drag ${container.name} onto a lane`"
+                    v-tooltip.bottom="{ value: container.tracks.length ? 'Drag onto a lane' : 'No tracks yet', showDelay: 500 }"
+                    @pointerdown="container.tracks.length && onPaletteDown($event, container)"
+                    @pointermove="onPointerMove"
+                    @pointercancel="cancelDrag"
+                    @dblclick="editContainer(container.id)"
+                >
+                    <span class="palette-swatch"></span>
+                    <span class="font-semibold">{{ container.name }}</span>
+                    <span class="flex items-center gap-0.5" aria-hidden="true">
+                        <span v-for="track in container.tracks.slice(0, 6)" :key="track.id" class="ctab-dot" :style="{ background: TRACK_META[track.type].accent }"></span>
+                    </span>
+                    <span class="font-mono text-xs text-(--jl-muted)">{{ defaultLength(container) / SONG_STEPS_PER_BAR }} bars</span>
+                </div>
+                <span class="text-xs text-(--jl-muted) ml-1">{{
+                    template ? 'Drag onto a lane, or press on empty lane space and drag to repeat the last clip.' : 'Drag a container onto a lane. Double-click one to edit its tracks.'
+                }}</span>
+            </div>
+
+            <div
+                ref="scroller"
+                class="arranger"
+                :class="{ 'arranger--dragging': isDragging, 'arranger--cut': tool === 'cut', 'arranger--paint': tool === 'move' && !!template }"
+                :style="timelineStyle"
+            >
+                <div class="arr-inner">
+                    <div class="arr-row arr-row--ruler">
+                        <div class="arr-corner"><span class="eyebrow">Lane</span></div>
+                        <div class="arr-ruler" v-tooltip.bottom="{ value: 'Click to play from here', showDelay: 800 }" @click="onRulerClick">
+                            <span v-for="bar in totalBars" :key="bar" class="arr-bar" :data-inside="bar <= bars">{{ bar }}</span>
                         </div>
-                        <div v-if="isCurrent(index)" class="section-progress" :style="{ width: sectionProgress }"></div>
-                    </div>
-                    <div class="song-add">
-                        <button type="button" class="iconbtn" aria-label="Add section" v-tooltip.bottom="'Add section'" @click="song.addSection()">
-                            <Icon icon="mdi:plus" class="w-4 h-4" />
-                        </button>
                     </div>
 
-                    <template v-for="container in containers" :key="container.id">
-                        <div class="song-head">
-                            <div class="flex items-center gap-2 h-6">
-                                <span class="font-semibold truncate">{{ container.name }}</span>
-                                <span class="font-mono text-xs text-(--jl-muted) shrink-0">{{ container.tracks.length }} {{ container.tracks.length === 1 ? 'track' : 'tracks' }}</span>
-                                <div class="flex-1"></div>
-                                <RouterLink
-                                    :to="{ name: 'app.index' }"
-                                    class="iconbtn iconbtn--tiny"
-                                    v-tooltip.bottom="{ value: 'Edit the tracks', showDelay: 600 }"
-                                    aria-label="Edit the tracks"
-                                    @click="selectContainer(container.id)"
-                                >
-                                    <Icon icon="mdi:pencil-outline" class="w-3.5 h-3.5" />
-                                </RouterLink>
+                    <div v-for="lane in song.lanes" :key="lane.id" class="arr-row" :class="{ 'arr-row--muted': lane.isMuted }">
+                        <div class="arr-head">
+                            <div class="flex items-center gap-1 min-w-0">
+                                <input
+                                    v-if="editingLaneId === lane.id"
+                                    ref="laneInput"
+                                    v-model="laneDraft"
+                                    class="ctab-input"
+                                    aria-label="Lane name"
+                                    @keydown.enter="commitRenameLane"
+                                    @keydown.esc="editingLaneId = null"
+                                    @blur="commitRenameLane"
+                                />
+                                <span v-else class="font-semibold truncate" @dblclick="startRenameLane(lane)">{{ lane.name }}</span>
+                                <span class="font-mono text-xs text-(--jl-muted) shrink-0">{{ lane.clips.length }}</span>
+                            </div>
+                            <div class="flex items-center">
                                 <button
                                     type="button"
                                     class="iconbtn iconbtn--tiny"
-                                    v-tooltip.bottom="{ value: 'Play in every section', showDelay: 600 }"
-                                    aria-label="Play in every section"
-                                    @click="song.setPlaysEverywhere(container.id, true)"
+                                    :data-active="lane.isMuted"
+                                    :aria-pressed="lane.isMuted"
+                                    :aria-label="lane.isMuted ? 'Unmute lane' : 'Mute lane'"
+                                    v-tooltip.bottom="lane.isMuted ? 'Unmute lane' : 'Mute lane'"
+                                    @click="lane.isMuted = !lane.isMuted"
                                 >
-                                    All
+                                    <Icon :icon="lane.isMuted ? 'mdi:volume-off' : 'mdi:volume-high'" class="w-3.5 h-3.5" />
+                                </button>
+                                <button type="button" class="iconbtn iconbtn--tiny" aria-label="Rename lane" v-tooltip.bottom="'Rename'" @click="startRenameLane(lane)">
+                                    <Icon icon="mdi:pencil-outline" class="w-3.5 h-3.5" />
+                                </button>
+                                <button type="button" class="iconbtn iconbtn--tiny" aria-label="Move lane up" :disabled="lane === song.lanes[0]" @click="song.moveLane(lane.id, -1)">
+                                    <Icon icon="mdi:chevron-up" class="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                     type="button"
                                     class="iconbtn iconbtn--tiny"
-                                    v-tooltip.bottom="{ value: 'Remove from every section', showDelay: 600 }"
-                                    aria-label="Remove from every section"
-                                    :disabled="song.countSections(container.id) === 0"
-                                    @click="song.setPlaysEverywhere(container.id, false)"
+                                    aria-label="Move lane down"
+                                    :disabled="lane === song.lanes[song.lanes.length - 1]"
+                                    @click="song.moveLane(lane.id, 1)"
                                 >
-                                    None
+                                    <Icon icon="mdi:chevron-down" class="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    type="button"
+                                    class="iconbtn iconbtn--tiny iconbtn--danger"
+                                    aria-label="Remove lane"
+                                    :disabled="song.lanes.length === 1"
+                                    v-tooltip.bottom="song.lanes.length === 1 ? 'The last lane stays' : 'Remove lane'"
+                                    @click="confirmRemoveLane($event, lane)"
+                                >
+                                    <Icon icon="mdi:trash-can-outline" class="w-3.5 h-3.5" />
                                 </button>
                             </div>
-                            <ContainerPreview :container="container" class="mt-1" />
                         </div>
-                        <button
-                            v-for="(section, index) in song.sections"
-                            :key="section.id"
-                            type="button"
-                            class="songcell"
-                            :data-on="song.plays(index, container.id)"
-                            :data-current="isCurrent(index)"
-                            :data-section="index"
-                            :data-container="container.id"
-                            :aria-label="`${container.name} in section ${index + 1}`"
-                            :aria-pressed="song.plays(index, container.id)"
-                            @click="onCellClick($event, index, container.id)"
-                        >
-                            <ContainerPreview v-if="song.plays(index, container.id)" :container="container" ink class="songcell-preview" />
-                        </button>
-                        <div></div>
-                    </template>
+
+                        <div class="arr-lane" :data-lane="lane.id" @pointermove="onPointerMove" @pointerleave="cutMark = null" @pointerdown="onLaneDown($event, lane)" @pointercancel="cancelDrag">
+                            <div
+                                v-for="clip in lane.clips"
+                                :key="clip.id"
+                                class="clip"
+                                :class="{ 'clip--selected': selectedId === clip.id, 'clip--lifted': isLifted(clip) }"
+                                :style="{ ...clipStyle(clip), '--jl-clip-hue': containerHue(clip.containerId) }"
+                                :data-clip="clip.id"
+                                role="button"
+                                tabindex="0"
+                                :aria-label="`${containerName(clip.containerId)}, bar ${clip.start / SONG_STEPS_PER_BAR + 1}, ${clip.length / SONG_STEPS_PER_BAR} bars`"
+                                @pointerdown="onClipDown($event, clip)"
+                                @pointermove="onPointerMove"
+                                @pointercancel="cancelDrag"
+                                @keydown.enter.self="selectedId = clip.id"
+                                @dblclick="editContainer(clip.containerId)"
+                            >
+                                <span class="note-handle note-handle--start" title="Drag to change the start" @pointerdown="onHandleDown($event, clip, 'start')"></span>
+                                <span class="clip-title">{{ containerName(clip.containerId) }}</span>
+                                <ClipPreview v-if="containerById(clip.containerId)" :container="containerById(clip.containerId)!" :offset="clip.offset" :length="clip.length" />
+                                <span class="note-handle note-handle--end" title="Drag to change the length" @pointerdown="onHandleDown($event, clip, 'end')"></span>
+                                <span v-if="cutMark?.clipId === clip.id" class="clip-cut" :style="{ left: `calc(${cutMark.step - clip.start} * var(--jl-song-step))` }"></span>
+                                <span v-if="selectedId === clip.id && tool === 'move'" class="clip-tools" @pointerdown.stop>
+                                    <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate clip" v-tooltip.top="'Duplicate (Ctrl+D)'" @click.stop="duplicateClip(clip.id)">
+                                        <Icon icon="mdi:content-copy" class="w-3 h-3" />
+                                    </button>
+                                    <button type="button" class="iconbtn iconbtn--tiny iconbtn--danger" aria-label="Remove clip" v-tooltip.top="'Remove (Delete)'" @click.stop="removeClip(clip.id)">
+                                        <Icon icon="mdi:close" class="w-3.5 h-3.5" />
+                                    </button>
+                                </span>
+                            </div>
+
+                            <div
+                                v-if="ghost && ghost.laneId === lane.id"
+                                class="clip clip--ghost"
+                                :data-valid="ghost.valid"
+                                :style="{ ...clipStyle(ghost), '--jl-clip-hue': containerHue(ghost.containerId) }"
+                                aria-hidden="true"
+                            >
+                                <span class="clip-title">{{ containerName(ghost.containerId) }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="song.isEmpty" class="arr-empty">
+                        <span class="song-hint">Drag a container from above onto a lane to start the song.</span>
+                    </div>
+
+                    <div v-if="isPlaying" class="arr-playhead" :style="{ left: `calc(var(--jl-lane-head) + ${currentStep} * var(--jl-song-step))` }" aria-hidden="true"></div>
                 </div>
             </div>
         </template>
