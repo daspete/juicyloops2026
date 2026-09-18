@@ -1,7 +1,7 @@
 import { getTransport, start, type TransportInstance } from 'tone';
 import { DEFAULT_BPM } from './constants';
 import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
-import type { TrackOf, TrackType } from './tracks/registry';
+import type { TrackContainer } from './trackContainer';
 
 /**
  * Facade over Tone's transport and the sequencer.
@@ -58,16 +58,28 @@ export class Engine {
         return this.sequencer.onStep(listener);
     }
 
-    addTrack<T extends TrackType>(type: T): TrackOf<T> {
-        return this.sequencer.addTrack(type);
+    get containers(): TrackContainer[] {
+        return this.sequencer.containers;
     }
 
-    removeTrack(id: string): void {
-        this.sequencer.removeTrack(id);
+    get currentContainer(): TrackContainer {
+        return this.sequencer.currentContainer;
     }
 
-    duplicateTrack(id: string) {
-        return this.sequencer.duplicateTrack(id);
+    setCurrentContainer(id: string): void {
+        this.sequencer.setCurrentContainer(id);
+    }
+
+    addContainer(name?: string): TrackContainer {
+        return this.sequencer.addContainer(name);
+    }
+
+    removeContainer(id: string): void {
+        this.sequencer.removeContainer(id);
+    }
+
+    duplicateContainer(id: string): Promise<TrackContainer | null> {
+        return this.sequencer.duplicateContainer(id);
     }
 }
 

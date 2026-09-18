@@ -1,27 +1,33 @@
 import { getDraw, getTransport } from 'tone';
 import { STEP_COUNT, STEP_SUBDIVISION } from './constants';
 import { Song } from './song';
-import type { BaseTrack } from './tracks/BaseTrack';
-import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
+import { TrackContainer } from './trackContainer';
 
 /**
- * `loop` plays every track's pattern over and over (the track editor).
- * `song` walks through the arrangement section by section and only plays the tracks placed there.
+ * `loop` plays the current container over and over (the track editor).
+ * `song` walks through the arrangement section by section and plays the containers placed there.
  */
 export type PlaybackMode = 'loop' | 'song';
 
 /** `step` is the position inside the pattern, `section` the position inside the song (always 0 in loop mode). */
 export type StepListener = (step: number, section: number) => void;
 
-/** Owns the tracks and the song, and drives them from a repeating transport event. */
+/** Owns the containers and the song, and drives them from a repeating transport event. */
 export class Sequencer {
-    readonly tracks: BaseTrack[] = [];
+    readonly containers: TrackContainer[] = [];
     readonly song = new Song();
 
     mode: PlaybackMode = 'loop';
 
+    /** The container the track editor shows and loop mode plays. */
+    currentContainer: TrackContainer;
+
     private eventId: number | null = null;
     private readonly stepListeners = new Set<StepListener>();
+
+    constructor() {
+        this.currentContainer = this.addContainer();
+    }
 
     /** Schedules the step callback on the transport. Safe to call more than once. */
     start(): void {
@@ -38,8 +44,7 @@ export class Sequencer {
 
     /** Moves the play position to the start of a section (also while playing). */
     seekToSection(index: number): void {
-        const transport = getTransport();
-        transport.ticks = index * STEP_COUNT * this.ticksPerStep;
+        getTransport().ticks = index * STEP_COUNT * this.ticksPerStep;
     }
 
     /**
@@ -51,37 +56,49 @@ export class Sequencer {
         return () => this.stepListeners.delete(listener);
     }
 
-    addTrack<T extends TrackType>(type: T): TrackOf<T> {
-        const track = createTrack(type);
-        this.tracks.push(track);
-        return track;
+    addContainer(name = `Container ${this.containers.length + 1}`): TrackContainer {
+        const container = new TrackContainer(name);
+        this.containers.push(container);
+        return container;
     }
 
-    getTrack(id: string): BaseTrack | undefined {
-        return this.tracks.find((track) => track.id === id);
+    getContainer(id: string): TrackContainer | undefined {
+        return this.containers.find((container) => container.id === id);
     }
 
-    removeTrack(id: string): void {
-        const index = this.tracks.findIndex((track) => track.id === id);
-        if (index === -1) {
+    setCurrentContainer(id: string): void {
+        const container = this.getContainer(id);
+        if (container) {
+            this.currentContainer = container;
+        }
+    }
+
+    /** Removes a container unless it is the last one. The current container falls back to a neighbour. */
+    removeContainer(id: string): void {
+        const index = this.containers.findIndex((container) => container.id === id);
+        if (index === -1 || this.containers.length === 1) {
             return;
         }
 
-        this.tracks[index]!.dispose();
-        this.tracks.splice(index, 1);
-        this.song.removeTrack(id);
+        this.containers[index]!.dispose();
+        this.containers.splice(index, 1);
+        this.song.removeContainer(id);
+
+        if (this.currentContainer.id === id) {
+            this.currentContainer = this.containers[Math.min(index, this.containers.length - 1)]!;
+        }
     }
 
-    /** Creates a new track of the same type with the same pattern, settings and place in the song. */
-    async duplicateTrack(id: string): Promise<BaseTrack | null> {
-        const source = this.getTrack(id);
+    /** Creates a container with copies of all tracks, right after the original. */
+    async duplicateContainer(id: string): Promise<TrackContainer | null> {
+        const source = this.getContainer(id);
         if (!source) {
             return null;
         }
 
-        const copy: BaseTrack = this.addTrack(source.type);
+        const copy = new TrackContainer(`${source.name} copy`);
         await copy.copyFrom(source);
-        this.song.copyTrack(source.id, copy.id);
+        this.containers.splice(this.containers.indexOf(source) + 1, 0, copy);
         return copy;
     }
 
@@ -99,9 +116,13 @@ export class Sequencer {
         const step = absoluteStep % STEP_COUNT;
         const section = this.mode === 'song' ? Math.floor(absoluteStep / STEP_COUNT) % this.song.length : 0;
 
-        for (const track of this.tracks) {
-            if (this.mode === 'loop' || this.song.plays(section, track.id)) {
-                track.play(step, time);
+        if (this.mode === 'loop') {
+            this.currentContainer.play(step, time);
+        } else {
+            for (const container of this.containers) {
+                if (this.song.plays(section, container.id)) {
+                    container.play(step, time);
+                }
             }
         }
 

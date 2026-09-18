@@ -2,9 +2,10 @@ import { engine } from '@/juicyloops/engine';
 import { DEFAULT_BPM } from '@/juicyloops/constants';
 import type { PlaybackMode } from '@/juicyloops/sequencer';
 import type { Song } from '@/juicyloops/song';
+import type { TrackContainer } from '@/juicyloops/trackContainer';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import type { TrackOf, TrackType } from '@/juicyloops/tracks/registry';
-import { ref, watch, type Ref } from 'vue';
+import { computed, ref, watch, type Ref } from 'vue';
 
 export const MIN_BPM = 10;
 export const MAX_BPM = 900;
@@ -18,8 +19,14 @@ const currentTick = ref(0);
 const currentSection = ref(0);
 const isPlaying = ref(false);
 const mode: Ref<PlaybackMode> = ref('loop');
-const tracks: Ref<BaseTrack[]> = ref([]);
-/* The same object the sequencer reads from; the UI edits it through this reactive proxy. */
+/*
+ * The same objects the sequencer reads from; the UI edits them through these reactive proxies.
+ * Tracks are not stored separately: they are whatever the current container holds.
+ */
+const containers = ref(engine.containers) as Ref<TrackContainer[]>;
+const currentContainerId = ref(engine.currentContainer.id);
+const currentContainer = computed(() => containers.value.find((container) => container.id === currentContainerId.value) ?? containers.value[0]!);
+const tracks = computed(() => currentContainer.value.tracks);
 const song = ref(engine.song) as Ref<Song>;
 
 watch(bpm, (value) => engine.setBpm(value));
@@ -90,24 +97,47 @@ const tapTempo = (): void => {
     setBpm(60000 / averageInterval);
 };
 
-const addTrack = <T extends TrackType>(type: T): TrackOf<T> => {
-    const track = engine.addTrack(type);
-    tracks.value.push(track);
-    return track;
+/* ---- containers ---- */
+
+const selectContainer = (id: string): void => {
+    engine.setCurrentContainer(id);
+    currentContainerId.value = engine.currentContainer.id;
 };
 
-const removeTrack = (id: string): void => {
-    engine.removeTrack(id);
-    tracks.value = tracks.value.filter((track) => track.id !== id);
+const addContainer = (): TrackContainer => {
+    const container = engine.addContainer();
+    selectContainer(container.id);
+    return container;
 };
 
-const duplicateTrack = async (id: string): Promise<BaseTrack | null> => {
-    const copy = await engine.duplicateTrack(id);
+const removeContainer = (id: string): void => {
+    engine.removeContainer(id);
+    currentContainerId.value = engine.currentContainer.id;
+};
+
+const duplicateContainer = async (id: string): Promise<TrackContainer | null> => {
+    const copy = await engine.duplicateContainer(id);
     if (copy) {
-        tracks.value.push(copy);
+        selectContainer(copy.id);
     }
     return copy;
 };
+
+const renameContainer = (id: string, name: string): void => {
+    const container = containers.value.find((candidate) => candidate.id === id);
+    const trimmed = name.trim();
+    if (container && trimmed) {
+        container.name = trimmed;
+    }
+};
+
+/* ---- tracks of the current container ---- */
+
+const addTrack = <T extends TrackType>(type: T): TrackOf<T> => currentContainer.value.addTrack(type);
+
+const removeTrack = (id: string): void => currentContainer.value.removeTrack(id);
+
+const duplicateTrack = (id: string): Promise<BaseTrack | null> => currentContainer.value.duplicateTrack(id);
 
 export const useJuicyLoops = () => ({
     engine,
@@ -124,6 +154,13 @@ export const useJuicyLoops = () => ({
     setMode,
     song,
     playSection,
+    containers,
+    currentContainer,
+    selectContainer,
+    addContainer,
+    removeContainer,
+    duplicateContainer,
+    renameContainer,
     tracks,
     addTrack,
     removeTrack,

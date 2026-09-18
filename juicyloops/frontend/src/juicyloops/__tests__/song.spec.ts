@@ -8,7 +8,7 @@ describe('Song', () => {
         expect(new Song().isEmpty).toBe(true);
     });
 
-    it('toggles tracks per section', () => {
+    it('toggles containers per section', () => {
         const song = new Song(2);
         song.toggle(1, 'a');
 
@@ -38,7 +38,7 @@ describe('Song', () => {
         const copy = song.duplicateSection(first!.id)!;
         expect(song.length).toBe(2);
         expect(song.plays(1, 'a')).toBe(true);
-        expect(copy.trackIds).not.toBe(first!.trackIds);
+        expect(copy.containerIds).not.toBe(first!.containerIds);
 
         const added = song.addSection(0);
         expect(song.sections[0]).toBe(added);
@@ -58,15 +58,12 @@ describe('Song', () => {
         expect(song.length).toBe(1);
     });
 
-    it('forgets deleted tracks and copies duplicated ones', () => {
+    it('forgets deleted containers', () => {
         const song = new Song(2);
         song.setPlays(1, 'a', true);
+        song.setPlays(1, 'b', true);
 
-        song.copyTrack('a', 'b');
-        expect(song.plays(1, 'b')).toBe(true);
-        expect(song.plays(0, 'b')).toBe(false);
-
-        song.removeTrack('a');
+        song.removeContainer('a');
         expect(song.countSections('a')).toBe(0);
         expect(song.countSections('b')).toBe(1);
     });

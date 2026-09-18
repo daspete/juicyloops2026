@@ -5,15 +5,16 @@ import { RouterLink } from 'vue-router';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { STEP_COUNT } from '@/juicyloops/constants';
 import { BARS_PER_SECTION, BEATS_PER_BAR } from '../tracks/steps';
-import { TRACK_META } from '../tracks/trackMeta';
-import PatternPreview from './PatternPreview.vue';
+import ContainerPreview from './ContainerPreview.vue';
 
 /**
- * The song view: an arrangement grid with one row per track and one column per section.
- * A lit cell means "this track's loop plays during this section".
+ * The song view: an arrangement grid with one row per track container and one column per section.
+ * A lit cell means "every track of this container plays during this section".
  * Press a cell to flip it, keep the pointer down and sweep across to paint the same state onto its neighbours.
  */
-const { bpm, tracks, song, currentTick, currentSection, isPlaying, playSection } = useJuicyLoops();
+const { bpm, containers, song, currentTick, currentSection, isPlaying, playSection, selectContainer } = useJuicyLoops();
+
+const hasTracks = computed(() => containers.value.some((container) => container.tracks.length > 0));
 
 const bars = computed(() => song.value.length * BARS_PER_SECTION);
 
@@ -40,9 +41,9 @@ const gridStyle = computed(() => ({
 /** The state we are painting while the pointer is down, null when idle. */
 const painting = ref<boolean | null>(null);
 
-const cellAt = (event: PointerEvent): { section: number; trackId: string } | null => {
+const cellAt = (event: PointerEvent): { section: number; containerId: string } | null => {
     const cell = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-section]');
-    return cell ? { section: Number(cell.dataset.section), trackId: cell.dataset.track! } : null;
+    return cell ? { section: Number(cell.dataset.section), containerId: cell.dataset.container! } : null;
 };
 
 const onPointerDown = (event: PointerEvent) => {
@@ -55,8 +56,8 @@ const onPointerDown = (event: PointerEvent) => {
         return;
     }
 
-    painting.value = !song.value.plays(cell.section, cell.trackId);
-    song.value.setPlays(cell.section, cell.trackId, painting.value);
+    painting.value = !song.value.plays(cell.section, cell.containerId);
+    song.value.setPlays(cell.section, cell.containerId, painting.value);
 };
 
 const onPointerMove = (event: PointerEvent) => {
@@ -66,16 +67,16 @@ const onPointerMove = (event: PointerEvent) => {
 
     const cell = cellAt(event);
     if (cell) {
-        song.value.setPlays(cell.section, cell.trackId, painting.value);
+        song.value.setPlays(cell.section, cell.containerId, painting.value);
     }
 };
 
 const stopPainting = () => (painting.value = null);
 
 /** Keyboard activation arrives as a click with `detail === 0`; pointer clicks were already handled on pointerdown. */
-const onCellClick = (event: MouseEvent, section: number, trackId: string) => {
+const onCellClick = (event: MouseEvent, section: number, containerId: string) => {
     if (event.detail === 0) {
-        song.value.toggle(section, trackId);
+        song.value.toggle(section, containerId);
     }
 };
 
@@ -85,10 +86,10 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
 
 <template>
     <div class="min-w-4xl max-w-7xl mx-auto px-4 py-4 flex flex-col gap-3">
-        <div v-if="!tracks.length" class="flex flex-col items-center gap-6 pt-16 pb-8 text-center">
+        <div v-if="!hasTracks" class="flex flex-col items-center gap-6 pt-16 pb-8 text-center">
             <div>
                 <h2 class="font-display font-bold text-4xl tracking-tight">Nothing to arrange yet</h2>
-                <p class="mt-2 text-(--jl-muted)">A song is built from tracks. Make a few loops first, then come back and lay them out.</p>
+                <p class="mt-2 text-(--jl-muted)">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
             </div>
             <RouterLink :to="{ name: 'app.index' }" class="playbtn playbtn--wide">
                 <Icon icon="mdi:dots-grid" class="w-5 h-5" />
@@ -107,7 +108,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                     </p>
                 </div>
                 <div class="flex-1"></div>
-                <p v-if="song.isEmpty" class="song-hint">Tap a cell to place a loop, or drag across a few. Click a section number to play from there.</p>
+                <p v-if="song.isEmpty" class="song-hint">Tap a cell to place a container, or drag across a few. Click a section number to play from there.</p>
                 <button type="button" class="chip" @click="song.addSection()">
                     <Icon icon="mdi:plus" class="w-4 h-4" />
                     <span>Add section</span>
@@ -117,7 +118,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
             <div class="song">
                 <div class="song-grid" :style="gridStyle" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
                     <div class="song-corner">
-                        <span class="text-xs font-semibold text-(--jl-muted) uppercase tracking-wider">Track</span>
+                        <span class="text-xs font-semibold text-(--jl-muted) uppercase tracking-wider">Container</span>
                     </div>
                     <div v-for="(section, index) in song.sections" :key="section.id" class="section-head" :data-current="isCurrent(index)">
                         <button
@@ -170,20 +171,27 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                         </button>
                     </div>
 
-                    <template v-for="(track, trackIndex) in tracks" :key="track.id">
-                        <div class="song-head" :class="{ 'song-head--muted': track.isMuted }" :style="{ '--jl-accent': TRACK_META[track.type].accent }">
+                    <template v-for="container in containers" :key="container.id">
+                        <div class="song-head">
                             <div class="flex items-center gap-2 h-6">
-                                <span class="track-dot"></span>
-                                <Icon :icon="TRACK_META[track.type].icon" class="w-4 h-4" />
-                                <span class="font-semibold">{{ TRACK_META[track.type].label }}</span>
-                                <span class="font-mono text-xs text-(--jl-muted)">{{ trackIndex + 1 }}</span>
+                                <span class="font-semibold truncate">{{ container.name }}</span>
+                                <span class="font-mono text-xs text-(--jl-muted) shrink-0">{{ container.tracks.length }} {{ container.tracks.length === 1 ? 'track' : 'tracks' }}</span>
                                 <div class="flex-1"></div>
+                                <RouterLink
+                                    :to="{ name: 'app.index' }"
+                                    class="iconbtn iconbtn--tiny"
+                                    v-tooltip.bottom="{ value: 'Edit the tracks', showDelay: 600 }"
+                                    aria-label="Edit the tracks"
+                                    @click="selectContainer(container.id)"
+                                >
+                                    <Icon icon="mdi:pencil-outline" class="w-3.5 h-3.5" />
+                                </RouterLink>
                                 <button
                                     type="button"
                                     class="iconbtn iconbtn--tiny"
                                     v-tooltip.bottom="{ value: 'Play in every section', showDelay: 600 }"
                                     aria-label="Play in every section"
-                                    @click="song.setPlaysEverywhere(track.id, true)"
+                                    @click="song.setPlaysEverywhere(container.id, true)"
                                 >
                                     All
                                 </button>
@@ -192,41 +200,28 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                                     class="iconbtn iconbtn--tiny"
                                     v-tooltip.bottom="{ value: 'Remove from every section', showDelay: 600 }"
                                     aria-label="Remove from every section"
-                                    :disabled="song.countSections(track.id) === 0"
-                                    @click="song.setPlaysEverywhere(track.id, false)"
+                                    :disabled="song.countSections(container.id) === 0"
+                                    @click="song.setPlaysEverywhere(container.id, false)"
                                 >
                                     None
                                 </button>
-                                <button
-                                    type="button"
-                                    class="iconbtn iconbtn--tiny"
-                                    :data-active="track.isMuted"
-                                    v-tooltip.bottom="track.isMuted ? 'Unmute' : 'Mute'"
-                                    :aria-label="track.isMuted ? 'Unmute' : 'Mute'"
-                                    :aria-pressed="track.isMuted"
-                                    @click="track.toggleMute()"
-                                >
-                                    <Icon :icon="track.isMuted ? 'mdi:volume-off' : 'mdi:volume-high'" class="w-3.5 h-3.5" />
-                                </button>
                             </div>
-                            <PatternPreview :ticks="track.ticks" class="mt-1" />
+                            <ContainerPreview :container="container" class="mt-1" />
                         </div>
                         <button
                             v-for="(section, index) in song.sections"
                             :key="section.id"
                             type="button"
                             class="songcell"
-                            :style="{ '--jl-accent': TRACK_META[track.type].accent }"
-                            :data-on="song.plays(index, track.id)"
+                            :data-on="song.plays(index, container.id)"
                             :data-current="isCurrent(index)"
-                            :data-muted="track.isMuted"
                             :data-section="index"
-                            :data-track="track.id"
-                            :aria-label="`${TRACK_META[track.type].label} ${trackIndex + 1} in section ${index + 1}`"
-                            :aria-pressed="song.plays(index, track.id)"
-                            @click="onCellClick($event, index, track.id)"
+                            :data-container="container.id"
+                            :aria-label="`${container.name} in section ${index + 1}`"
+                            :aria-pressed="song.plays(index, container.id)"
+                            @click="onCellClick($event, index, container.id)"
                         >
-                            <PatternPreview v-if="song.plays(index, track.id)" :ticks="track.ticks" class="songcell-preview" />
+                            <ContainerPreview v-if="song.plays(index, container.id)" :container="container" ink class="songcell-preview" />
                         </button>
                         <div></div>
                     </template>

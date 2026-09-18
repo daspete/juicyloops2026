@@ -8,9 +8,13 @@ import JuicySynthTrack from './JuicySynthTrack.vue';
 import JuicySamplerTrack from './JuicySamplerTrack.vue';
 import JuicyMicrophoneTrack from './JuicyMicrophoneTrack.vue';
 import StepRuler from './StepRuler.vue';
+import ContainerBar from '../containers/ContainerBar.vue';
 
-/** The track view: one row per track, each a loop of `STEP_COUNT` steps that can be painted, tweaked and mixed. */
-const { currentTick, tracks, addTrack } = useJuicyLoops();
+/**
+ * The track view: the tracks of the current container, one row each,
+ * every one a loop of `STEP_COUNT` steps that can be painted, tweaked and mixed.
+ */
+const { currentTick, currentContainer, tracks, addTrack } = useJuicyLoops();
 
 /** Which component renders which track type. */
 const TRACK_COMPONENTS: Record<TrackType, Component> = {
@@ -24,6 +28,7 @@ const TRACK_TYPES = Object.keys(TRACK_META) as TrackType[];
 
 <template>
     <div class="min-w-4xl max-w-7xl mx-auto px-4 py-4 flex flex-col gap-2">
+        <ContainerBar class="mb-2" />
         <template v-if="tracks.length">
             <StepRuler :current-tick="currentTick" />
             <div v-for="(track, trackIndex) in tracks" :key="track.id">
@@ -46,10 +51,13 @@ const TRACK_TYPES = Object.keys(TRACK_META) as TrackType[];
             </div>
         </template>
 
-        <div v-else class="flex flex-col items-center gap-8 pt-16 pb-8 text-center">
+        <div v-else class="flex flex-col items-center gap-8 pt-12 pb-8 text-center">
             <div>
                 <h2 class="font-display font-bold text-4xl tracking-tight">Start with a track</h2>
-                <p class="mt-2 text-(--jl-muted)">Every track is a loop of 32 steps. Mix and match as many as you like.</p>
+                <p class="mt-2 text-(--jl-muted)">
+                    Every track is a loop of 32 steps. Put as many as you like into <b class="text-(--jl-text)">{{ currentContainer.name }}</b>, then arrange your
+                    containers in the song.
+                </p>
             </div>
             <div class="flex flex-wrap justify-center gap-4">
                 <button

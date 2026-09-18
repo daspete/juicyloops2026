@@ -15,7 +15,7 @@ import JuicyLogo from './JuicyLogo.vue';
  * The application shell: transport, view switcher and the frame around the editors.
  * The track editor and the song editor are routes rendered into the main area.
  */
-const { engine, bpm, setBpm, tapTempo, currentTick, currentSection, isPlaying, togglePlay, setMode, song, tracks } = useJuicyLoops();
+const { engine, bpm, setBpm, tapTempo, currentTick, currentSection, isPlaying, togglePlay, setMode, song, containers } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
 const route = useRoute();
 
@@ -24,8 +24,8 @@ const isSongView = computed(() => route.name === 'app.song');
 watch(isSongView, (value) => setMode(value ? 'song' : 'loop'), { immediate: true });
 
 const VIEWS = [
-    { name: 'app.index', label: 'Tracks', icon: 'mdi:dots-grid', hint: 'Build loops' },
-    { name: 'app.song', label: 'Song', icon: 'mdi:view-sequential-outline', hint: 'Arrange the loops' },
+    { name: 'app.index', label: 'Tracks', icon: 'mdi:dots-grid', hint: 'Build containers of loops' },
+    { name: 'app.song', label: 'Song', icon: 'mdi:view-sequential-outline', hint: 'Arrange the containers' },
 ] as const;
 
 const isInitialized = ref(false);
@@ -142,7 +142,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                 >
                     <Icon :icon="view.icon" class="w-4 h-4" />
                     <span>{{ view.label }}</span>
-                    <span v-if="view.name === 'app.index' && tracks.length" class="viewswitch-count">{{ tracks.length }}</span>
+                    <span v-if="view.name === 'app.index' && containers.length > 1" class="viewswitch-count">{{ containers.length }}</span>
                 </RouterLink>
             </nav>
 
