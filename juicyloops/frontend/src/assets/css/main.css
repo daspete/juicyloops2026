@@ -1,4 +1,6 @@
 @import "tailwindcss";
 @import "tailwindcss-primeui";
 
-@import "./globals.css";
+@import "./fonts.css";
+@import "./base.css";
+@import "./marketing.css";

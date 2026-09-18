@@ -62,7 +62,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
     }
 
     /** Resolves once the sample the track was last given is decoded and playable (right away when there is none). */
-    whenReady(): Promise<void> {
+    override whenReady(): Promise<void> {
         return this.loading;
     }
 

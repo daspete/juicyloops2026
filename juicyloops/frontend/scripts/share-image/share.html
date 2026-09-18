@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<link href="fonts/fonts.css" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body { font-family: 'Exo 2', system-ui, sans-serif; color: #fbf7ff; background: #17092f; position: relative; }
+  .texture { position: absolute; inset: 0;
+    background-image: radial-gradient(circle, rgba(255,255,255,.10) 1.6px, transparent 1.8px);
+    background-size: 28px 28px; background-position: 14px 14px; }
+  .texture::after { content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 112px); }
+  .block { position: absolute; right: -160px; top: -120px; width: 660px; height: 900px; transform: rotate(-8deg);
+    background: linear-gradient(180deg, #2a0f5c, #4a1683 60%, #6b21a8); border-radius: 48px; box-shadow: -30px 0 80px -30px rgba(0,0,0,.7); }
+  .block::before { content: ''; position: absolute; inset: 0; border-radius: 48px;
+    background-image: radial-gradient(circle, rgba(255,255,255,.14) 1.6px, transparent 1.8px); background-size: 28px 28px; }
+  .seq { position: absolute; right: 40px; top: 118px; transform: rotate(-8deg); transform-origin: top right; display: grid; gap: 10px; }
+  .row { display: grid; grid-template-columns: repeat(12, 36px); gap: 8px; height: 36px; }
+  .row b { border-radius: 9px; background: rgba(255,255,255,.09); }
+  .row b.on { background: var(--c); box-shadow: 0 0 22px -2px var(--c); }
+  .head { position: absolute; left: 260px; top: -14px; width: 4px; height: 292px; border-radius: 3px; background: #fff; box-shadow: 0 0 20px 2px #fff; }
+  .wave { position: absolute; left: 0; right: 0; bottom: 0; height: 58px; display: flex; align-items: flex-end; gap: 6px; }
+  .wave i { flex: 1; max-height: 58px; border-radius: 4px 4px 0 0; background: linear-gradient(180deg, #ff4f8b, #e040fb 55%, #7c4dff); opacity: .85; }
+  .frame { position: absolute; inset: 0; padding: 56px 64px 0; display: flex; flex-direction: column; }
+  .brand svg { height: 52px; width: auto; color: #fbf7ff; }
+  h1 { margin-top: 34px; font-family: 'Orbitron', sans-serif; font-weight: 800; font-size: 66px; line-height: 1.06; letter-spacing: -.01em; width: 640px; }
+  h1 span { color: #ff8c1a; }
+  h1 em { font-style: normal; color: #b6f04a; }
+  p.sub { margin-top: 18px; font-size: 24px; line-height: 1.32; color: #dcd2f7; width: 560px; font-weight: 500; }
+  .cta { margin-top: 22px; display: flex; align-items: center; gap: 18px; }
+  .btn { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: .02em; padding: 16px 28px; border-radius: 14px;
+    background: #ff4f8b; color: #fff; box-shadow: 0 16px 40px -14px #ff4f8b; }
+  .free b { color: #b6f04a; display: block; font-size: 19px; }
+</style></head>
+<body>
+  <div class="texture"></div>
+  <div class="block"></div>
+  <div class="seq"><div class="head"></div><div class="row" style="--c:#ff8c1a"><b class="on"></b><b></b><b class="on"></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b><b></b></div>
+<div class="row" style="--c:#b6f04a"><b></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b><b class="on"></b></div>
+<div class="row" style="--c:#ff4f8b"><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b></b></div>
+<div class="row" style="--c:#a78bfa"><b></b><b></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b><b></b><b></b><b></b><b class="on"></b></div>
+<div class="row" style="--c:#ff8c1a"><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b></div>
+<div class="row" style="--c:#b6f04a"><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b class="on"></b><b></b><b></b><b class="on"></b><b></b><b></b><b class="on"></b></div></div>
+  <div class="wave"><i style="height:37px"></i><i style="height:46px"></i><i style="height:61px"></i><i style="height:60px"></i><i style="height:65px"></i><i style="height:56px"></i><i style="height:40px"></i><i style="height:33px"></i><i style="height:20px"></i><i style="height:24px"></i><i style="height:28px"></i><i style="height:42px"></i><i style="height:62px"></i><i style="height:81px"></i><i style="height:78px"></i><i style="height:76px"></i><i style="height:70px"></i><i style="height:58px"></i><i style="height:39px"></i><i style="height:26px"></i><i style="height:30px"></i><i style="height:22px"></i><i style="height:39px"></i><i style="height:40px"></i><i style="height:44px"></i><i style="height:45px"></i><i style="height:44px"></i><i style="height:45px"></i><i style="height:30px"></i><i style="height:30px"></i><i style="height:27px"></i><i style="height:23px"></i><i style="height:25px"></i><i style="height:19px"></i><i style="height:19px"></i><i style="height:21px"></i><i style="height:26px"></i><i style="height:23px"></i><i style="height:22px"></i><i style="height:26px"></i><i style="height:25px"></i><i style="height:23px"></i><i style="height:28px"></i><i style="height:26px"></i><i style="height:22px"></i><i style="height:30px"></i><i style="height:37px"></i><i style="height:49px"></i><i style="height:55px"></i><i style="height:54px"></i><i style="height:61px"></i><i style="height:44px"></i><i style="height:38px"></i><i style="height:33px"></i><i style="height:20px"></i><i style="height:26px"></i><i style="height:30px"></i><i style="height:53px"></i><i style="height:70px"></i><i style="height:80px"></i></div>
+  <div class="frame">
+    <div class="brand"><!--LOGO--></div>
+    <h1>Tap it.<br /><span>Hear it.</span><br /><em>Drop it.</em></h1>
+    <p class="sub">Synths, samples and your own voice on a step grid. Then arrange, mix and automate a whole track, right in your browser.</p>
+    <div class="cta"><div class="btn">Start playing free</div></div>
+  </div>
+</body></html>

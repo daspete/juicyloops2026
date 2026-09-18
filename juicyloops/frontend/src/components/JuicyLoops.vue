@@ -6,12 +6,14 @@ import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useHistory } from '@/composables/useHistory';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
+import { useExport, type ExportResult } from '@/composables/useExport';
 import { useSession, type SessionResult } from '@/composables/useSession';
 import { useTheme } from '@/composables/useTheme';
 import { useViewport } from '@/composables/useViewport';
 import { useWorkspace, type WorkspaceMode } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
 import DetailPanel from './detail/DetailPanel.vue';
+import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 import MixPanel from './mix/MixPanel.vue';
@@ -29,6 +31,7 @@ const { canUndo, canRedo, commit, undo, redo } = useHistory();
 /* On a phone the view switch and the panel toggles move to a bar at the bottom, where a thumb can reach them. */
 const { isPhone } = useViewport();
 const session = useSession();
+const exporter = useExport();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -99,6 +102,16 @@ const report = (result: SessionResult, done: string) => {
 };
 
 const save = async (as = false) => report(await session.save({ as }), 'Saved');
+
+/* ---- exporting audio ---- */
+
+const onExported = (result: ExportResult) => {
+    if (result.ok) {
+        toast.add({ severity: 'success', summary: 'Exported', detail: `${result.fileName} · ${result.seconds.toFixed(1)} s`, life: 3500 });
+    } else {
+        toast.add({ severity: 'error', summary: 'Export failed', detail: result.error, life: 6000 });
+    }
+};
 
 /** Opens a file, after asking when the session has changes that would be lost. */
 const open = (file?: File) => {
@@ -216,17 +229,20 @@ const isTypingTarget = (target: EventTarget | null) => {
 };
 
 /**
- * Space plays and stops, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where)
- * and Ctrl+O opens, like in every DAW. Saving and opening work from inside a text field too.
+ * Space plays and stops, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
+ * Ctrl+O opens and Ctrl+E exports audio, like in every DAW. The file shortcuts work from inside a text field too.
  */
 const onKeyDown = (event: KeyboardEvent) => {
     const modifier = event.ctrlKey || event.metaKey;
-    if (modifier && !event.altKey && (event.key === 's' || event.key === 'S' || event.key === 'o' || event.key === 'O')) {
+    const key = event.key.toLowerCase();
+    if (modifier && !event.altKey && (key === 's' || key === 'o' || key === 'e')) {
         event.preventDefault();
-        if (event.key === 's' || event.key === 'S') {
+        if (key === 's') {
             void save(event.shiftKey);
-        } else if (!event.shiftKey) {
+        } else if (key === 'o' && !event.shiftKey) {
             open();
+        } else if (key === 'e' && !event.shiftKey && isInitialized.value) {
+            exporter.openDialog();
         }
         return;
     }
@@ -344,6 +360,16 @@ onBeforeUnmount(() => {
                         @click="save(true)"
                     >
                         <Icon icon="mdi:content-save-edit-outline" class="w-5 h-5" />
+                    </button>
+                    <button
+                        type="button"
+                        class="iconbtn"
+                        :disabled="session.isBusy.value || exporter.isExporting.value"
+                        aria-label="Export audio"
+                        v-tooltip.bottom="'Export as WAV or MP3 (Ctrl+E)'"
+                        @click="exporter.openDialog()"
+                    >
+                        <Icon icon="mdi:export-variant" class="w-5 h-5" />
                     </button>
                 </div>
 
@@ -522,6 +548,7 @@ onBeforeUnmount(() => {
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>S</kbd> save</span>
+            <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>E</kbd> export</span>
             <span class="flex-1"></span>
             <span class="statusbar-credit">
                 Made with ❤️ in Vienna by <a href="https://daspete.at" target="_blank" rel="noopener noreferrer">Pete</a>
@@ -550,6 +577,8 @@ onBeforeUnmount(() => {
             <p class="welcome-foot">Your browser needs this one click before it is allowed to make sound.</p>
         </div>
     </div>
+
+    <ExportDialog @done="onExported" />
 
     <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
         <GiscusLoader />

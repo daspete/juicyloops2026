@@ -1,4 +1,4 @@
-import { getContext } from 'tone';
+import type { BaseContext } from 'tone';
 import { createId } from './audio';
 
 /**
@@ -79,12 +79,12 @@ export const formatValue = (param: AutomationParam, position: number): string =>
 };
 
 /** Runs `fn` at an audio-context time, or right away when no time is given. For values that cannot be scheduled. */
-export const atTime = (time: number | undefined, fn: () => void): void => {
-    const delay = time === undefined ? 0 : time - getContext().currentTime;
+export const atTime = (context: BaseContext, time: number | undefined, fn: () => void): void => {
+    const delay = time === undefined ? 0 : time - context.currentTime;
     if (delay <= 0) {
         fn();
     } else {
-        getContext().setTimeout(fn, delay);
+        context.setTimeout(fn, delay);
     }
 };
 

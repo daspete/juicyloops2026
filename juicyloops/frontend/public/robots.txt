@@ -1,2 +1,4 @@
 User-agent: *
 Allow: /
+
+Sitemap: https://juicyloops.daspete.at/sitemap.xml

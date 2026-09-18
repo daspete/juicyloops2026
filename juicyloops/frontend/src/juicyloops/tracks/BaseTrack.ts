@@ -103,6 +103,11 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         this.output.connect(destination);
     }
 
+    /** Resolves once the track can sound. A track that loads audio in the background (a sample) waits for it here. */
+    whenReady(): Promise<void> {
+        return Promise.resolve();
+    }
+
     /** Returns the tick for a step if it should sound, otherwise null. */
     protected activeTick(step: number): TTick | null {
         if (this.isMuted) {

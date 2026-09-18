@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useExport } from '@/composables/useExport';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useWorkspace } from '@/composables/useWorkspace';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
@@ -27,7 +28,8 @@ const props = defineProps<{
     hasGrid?: boolean;
 }>();
 
-const { removeTrack, duplicateTrack } = useJuicyLoops();
+const { removeTrack, duplicateTrack, currentContainer } = useJuicyLoops();
+const { openDialog: openExport } = useExport();
 const { selectedTrack, selectTrack, openTrack, isTrackShowing, toggleDetail, isPro } = useWorkspace();
 const confirm = useConfirm();
 
@@ -53,6 +55,8 @@ const toggleTweak = () => {
         openTrack(props.track.id);
     }
 };
+
+const exportTrack = () => openExport({ scope: { kind: 'track', containerId: currentContainer.value.id, trackId: props.track.id, repeats: 1 } });
 
 const confirmRemove = (event: MouseEvent) => {
     confirm.require({
@@ -80,6 +84,9 @@ const confirmRemove = (event: MouseEvent) => {
                     <span class="track-actions">
                         <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id)">
                             <Icon icon="mdi:content-copy" class="w-3.5 h-3.5" />
+                        </button>
+                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Export track as audio" v-tooltip.bottom="'Export this track as WAV or MP3'" @click="exportTrack">
+                            <Icon icon="mdi:export-variant" class="w-3.5 h-3.5" />
                         </button>
                         <button type="button" class="iconbtn iconbtn--tiny iconbtn--danger" aria-label="Remove track" v-tooltip.bottom="'Remove track'" @click="confirmRemove">
                             <Icon icon="mdi:trash-can-outline" class="w-3.5 h-3.5" />

@@ -1,0 +1,20 @@
+// Renders share.html (with the real logo inlined) to ../../public/juicyloopsshare.jpg. Run: node scripts/share-image/render.mjs
+import { chromium } from 'playwright';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const here = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(here, '../..');
+const logo = fs.readFileSync(path.join(root, 'public/juicyloopslogo.svg'), 'utf8').replace(/fill="currentColor"/g, 'fill="#fbf7ff"');
+const html = fs.readFileSync(path.join(here, 'share.html'), 'utf8').replace('<!--LOGO-->', logo);
+const out = path.join(here, 'share.out.html');
+fs.writeFileSync(out, html);
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1200, height: 630 } });
+await page.goto('file://' + out, { waitUntil: 'networkidle' });
+await page.evaluate(() => document.fonts.ready);
+console.log(await page.evaluate(() => ['Orbitron', 'Exo 2'].map((f) => f + ':' + document.fonts.check('16px "' + f + '"')).join(' ')));
+await page.screenshot({ path: path.join(here, 'share.png'), type: 'png' });
+await page.screenshot({ path: path.join(root, 'public/juicyloopsshare.jpg'), type: 'jpeg', quality: 88 });
+fs.unlinkSync(out);
+await browser.close();
