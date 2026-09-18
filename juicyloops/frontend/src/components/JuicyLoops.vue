@@ -1,23 +1,32 @@
 <script setup lang="ts">
 import { Drawer } from 'primevue';
-import { computed, onBeforeUnmount, onMounted, ref, type Component } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { RouterLink, RouterView, useRoute } from 'vue-router';
 import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useTheme } from '@/composables/useTheme';
-import type { TrackType } from '@/juicyloops/tracks/registry';
-import { TRACK_META } from './tracks/trackMeta';
 import { positionLabel } from './tracks/steps';
 import { STEP_COUNT } from '@/juicyloops/constants';
-import JuicySynthTrack from './tracks/JuicySynthTrack.vue';
-import JuicySamplerTrack from './tracks/JuicySamplerTrack.vue';
-import JuicyMicrophoneTrack from './tracks/JuicyMicrophoneTrack.vue';
-import StepRuler from './tracks/StepRuler.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 
-const { engine, bpm, setBpm, tapTempo, currentTick, isPlaying, togglePlay, tracks, addTrack } = useJuicyLoops();
+/**
+ * The application shell: transport, view switcher and the frame around the editors.
+ * The track editor and the song editor are routes rendered into the main area.
+ */
+const { engine, bpm, setBpm, tapTempo, currentTick, currentSection, isPlaying, togglePlay, setMode, song, tracks } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
+const route = useRoute();
+
+/* What you see is what you hear: the song view plays the arrangement, the track view loops every track. */
+const isSongView = computed(() => route.name === 'app.song');
+watch(isSongView, (value) => setMode(value ? 'song' : 'loop'), { immediate: true });
+
+const VIEWS = [
+    { name: 'app.index', label: 'Tracks', icon: 'mdi:dots-grid', hint: 'Build loops' },
+    { name: 'app.song', label: 'Song', icon: 'mdi:view-sequential-outline', hint: 'Arrange the loops' },
+] as const;
 
 const isInitialized = ref(false);
 const isDiscussionsOpen = ref(false);
@@ -27,17 +36,14 @@ const initializeEngine = async () => {
     isInitialized.value = true;
 };
 
-/** Which component renders which track type. */
-const TRACK_COMPONENTS: Record<TrackType, Component> = {
-    synth: JuicySynthTrack,
-    sampler: JuicySamplerTrack,
-    microphone: JuicyMicrophoneTrack,
-};
+const position = computed(() => positionLabel(currentTick.value, isSongView.value ? currentSection.value : 0));
 
-const TRACK_TYPES = Object.keys(TRACK_META) as TrackType[];
-
-const position = computed(() => positionLabel(currentTick.value));
-const loopProgress = computed(() => `${((currentTick.value + 1) / STEP_COUNT) * 100}%`);
+/** The progress bar spans one pattern in the track view and the whole song in the song view. */
+const loopProgress = computed(() => {
+    const sections = isSongView.value ? song.value.length : 1;
+    const section = isSongView.value ? currentSection.value : 0;
+    return `${((section * STEP_COUNT + currentTick.value + 1) / (sections * STEP_COUNT)) * 100}%`;
+});
 
 const onBpmInput = (event: Event) => setBpm(Number((event.target as HTMLInputElement).value));
 
@@ -125,6 +131,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
                 <JuicyLogo />
             </div>
 
+            <nav class="viewswitch shrink-0" aria-label="Editor">
+                <RouterLink
+                    v-for="view in VIEWS"
+                    :key="view.name"
+                    :to="{ name: view.name }"
+                    class="viewswitch-item"
+                    :data-active="route.name === view.name"
+                    v-tooltip.bottom="{ value: view.hint, showDelay: 600 }"
+                >
+                    <Icon :icon="view.icon" class="w-4 h-4" />
+                    <span>{{ view.label }}</span>
+                    <span v-if="view.name === 'app.index' && tracks.length" class="viewswitch-count">{{ tracks.length }}</span>
+                </RouterLink>
+            </nav>
+
             <div class="flex-1 flex items-center justify-center gap-5">
                 <div class="transport">
                     <button
@@ -211,50 +232,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeyDown));
         </div>
 
         <main class="flex-1 min-h-0 overflow-auto">
-            <div class="min-w-4xl max-w-7xl mx-auto px-4 py-4 flex flex-col gap-2">
-                <template v-if="tracks.length">
-                    <StepRuler :current-tick="currentTick" />
-                    <div v-for="(track, trackIndex) in tracks" :key="track.id">
-                        <component :is="TRACK_COMPONENTS[track.type]" :track="track" :track-index="trackIndex" />
-                    </div>
-
-                    <div class="flex items-center gap-2 px-2 pt-2">
-                        <span class="text-xs font-semibold text-(--jl-muted) uppercase tracking-wider mr-1">Add</span>
-                        <button
-                            v-for="type in TRACK_TYPES"
-                            :key="type"
-                            type="button"
-                            class="chip"
-                            :style="{ '--jl-accent': TRACK_META[type].accent }"
-                            @click="addTrack(type)"
-                        >
-                            <Icon :icon="TRACK_META[type].icon" class="w-4 h-4" :style="{ color: TRACK_META[type].accent }" />
-                            <span>{{ TRACK_META[type].label }}</span>
-                        </button>
-                    </div>
-                </template>
-
-                <div v-else class="flex flex-col items-center gap-8 pt-16 pb-8 text-center">
-                    <div>
-                        <h2 class="font-display font-bold text-4xl tracking-tight">Start with a track</h2>
-                        <p class="mt-2 text-(--jl-muted)">Every track is a loop of 32 steps. Mix and match as many as you like.</p>
-                    </div>
-                    <div class="flex flex-wrap justify-center gap-4">
-                        <button
-                            v-for="type in TRACK_TYPES"
-                            :key="type"
-                            type="button"
-                            class="addcard"
-                            :style="{ '--jl-accent': TRACK_META[type].accent }"
-                            @click="addTrack(type)"
-                        >
-                            <Icon :icon="TRACK_META[type].icon" class="w-8 h-8" :style="{ color: TRACK_META[type].accent }" />
-                            <span class="font-display font-bold text-xl">{{ TRACK_META[type].label }}</span>
-                            <span class="text-sm text-(--jl-muted) leading-snug">{{ TRACK_META[type].blurb }}</span>
-                        </button>
-                    </div>
-                </div>
-            </div>
+            <Suspense>
+                <RouterView v-slot="{ Component }">
+                    <component :is="Component" />
+                </RouterView>
+            </Suspense>
         </main>
 
         <footer class="flex justify-center py-2 text-xs text-(--jl-muted) shrink-0">

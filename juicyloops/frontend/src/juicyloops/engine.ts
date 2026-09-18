@@ -1,6 +1,6 @@
 import { getTransport, start, type TransportInstance } from 'tone';
 import { DEFAULT_BPM } from './constants';
-import { Sequencer, type StepListener } from './sequencer';
+import { Sequencer, type PlaybackMode, type StepListener } from './sequencer';
 import type { TrackOf, TrackType } from './tracks/registry';
 
 /**
@@ -40,6 +40,18 @@ export class Engine {
 
     setBpm(bpm: number): void {
         this.transport.bpm.value = bpm;
+    }
+
+    get song() {
+        return this.sequencer.song;
+    }
+
+    setMode(mode: PlaybackMode): void {
+        this.sequencer.setMode(mode);
+    }
+
+    seekToSection(index: number): void {
+        this.sequencer.seekToSection(index);
     }
 
     onStep(listener: StepListener): () => void {

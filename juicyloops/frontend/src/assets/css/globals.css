@@ -951,3 +951,280 @@ textarea {
         transition-duration: 0.01ms !important;
     }
 }
+
+/* ---------- view switcher ---------- */
+
+.viewswitch {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--jl-cell);
+}
+
+.viewswitch-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    height: 1.9rem;
+    padding: 0 0.8rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    text-decoration: none;
+    transition:
+        background-color 0.15s ease,
+        color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.viewswitch-item:hover {
+    color: var(--jl-text);
+}
+
+.viewswitch-item[data-active='true'] {
+    background: var(--jl-surface);
+    color: var(--jl-text);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+
+.viewswitch-item:focus-visible {
+    outline: 2px solid var(--jl-accent);
+    outline-offset: 1px;
+}
+
+.viewswitch-count {
+    min-width: 1.1rem;
+    padding: 0 0.3rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--jl-synth) 20%, transparent);
+    color: var(--jl-synth);
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    text-align: center;
+    line-height: 1.1rem;
+}
+
+/* ---------- song editor ---------- */
+
+:root {
+    /* Width of one section column in the song grid. */
+    --jl-section-width: 7rem;
+}
+
+.iconbtn--tiny {
+    height: 1.35rem;
+    min-width: 1.35rem;
+    padding: 0 0.3rem;
+    font-size: 0.68rem;
+    border-radius: 0.4rem;
+}
+
+.song-hint {
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    background: var(--jl-overlay);
+    border: 1px dashed color-mix(in oklab, var(--jl-synth) 60%, transparent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    animation: hintfloat 2.4s ease-in-out infinite;
+}
+
+.song {
+    border-radius: 0.9rem;
+    background: var(--jl-surface);
+    border: 1px solid var(--jl-line);
+    box-shadow: var(--jl-shadow);
+    overflow-x: auto;
+}
+
+.song-grid {
+    display: grid;
+    gap: 0.4rem 0.5rem;
+    align-items: stretch;
+    padding: 0.6rem;
+    min-width: max-content;
+    touch-action: none;
+}
+
+.song-corner,
+.song-head {
+    position: sticky;
+    left: 0.6rem;
+    z-index: 2;
+    background: var(--jl-surface);
+}
+
+.song-corner {
+    display: flex;
+    align-items: flex-end;
+    padding: 0 0.6rem 0.3rem;
+}
+
+.section-head {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    border-radius: 0.6rem;
+    background: var(--jl-cell);
+    overflow: hidden;
+    transition: background-color 0.15s ease;
+}
+
+.section-head[data-current='true'] {
+    background: color-mix(in oklab, var(--jl-text) 12%, var(--jl-cell));
+}
+
+.section-num {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.15rem;
+    padding: 0.45rem 0 0.35rem;
+    cursor: pointer;
+    transition: background-color 0.12s ease;
+}
+
+.section-num:hover {
+    background: var(--jl-cell-hover);
+}
+
+.section-num:focus-visible {
+    outline: 2px solid var(--jl-synth);
+    outline-offset: -2px;
+}
+
+.section-tools {
+    display: flex;
+    justify-content: center;
+    gap: 1px;
+    padding: 0 0.15rem 0.25rem;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.section-head:hover .section-tools,
+.section-head:focus-within .section-tools {
+    opacity: 1;
+}
+
+.section-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--jl-synth), var(--jl-mic));
+    transition: width 0.08s linear;
+}
+
+.song-add {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.3rem;
+}
+
+.song-head {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0.45rem 0.6rem;
+    border-radius: 0.6rem;
+    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 9%, var(--jl-surface)), var(--jl-surface) 70%);
+    box-shadow: inset 3px 0 0 0 var(--jl-accent);
+    transition: opacity 0.2s ease;
+}
+
+.song-head--muted {
+    opacity: 0.55;
+}
+
+.songcell {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.6rem;
+    padding: 0.5rem;
+    border-radius: 0.6rem;
+    background: var(--jl-cell);
+    cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition:
+        background-color 0.1s ease,
+        box-shadow 0.15s ease,
+        transform 0.1s ease;
+}
+
+.songcell:hover {
+    background: var(--jl-cell-hover);
+}
+
+.songcell[data-on='true'],
+.songcell[data-on='true']:hover {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--jl-accent) 78%, white), var(--jl-accent) 55%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.25),
+        0 0 12px color-mix(in oklab, var(--jl-accent) 40%, transparent);
+}
+
+.songcell[data-current='true']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-text) 55%, transparent);
+    pointer-events: none;
+}
+
+.songcell[data-current='true'][data-on='true'] {
+    transform: scale(1.03);
+    filter: brightness(1.1);
+    z-index: 1;
+}
+
+.songcell[data-muted='true'][data-on='true'] {
+    filter: saturate(0.2) brightness(0.9);
+}
+
+.songcell:focus-visible {
+    outline: 2px solid var(--jl-accent);
+    outline-offset: 2px;
+}
+
+.songcell-preview {
+    --preview-on: var(--jl-accent-ink);
+    --preview-off: rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+}
+
+/* ---------- pattern preview ---------- */
+
+.preview {
+    --preview-on: var(--jl-accent);
+    --preview-off: var(--jl-line);
+    display: grid;
+    grid-template-columns: repeat(32, minmax(0, 1fr));
+    align-items: end;
+    gap: 1.5px;
+    height: 0.9rem;
+    width: 100%;
+}
+
+.preview-step {
+    height: 30%;
+    border-radius: 1px;
+    background: var(--preview-off);
+}
+
+.preview-step[data-downbeat='true'] {
+    height: 45%;
+}
+
+.preview-step[data-on='true'] {
+    height: calc(45% + 55% * var(--level));
+    background: var(--preview-on);
+}

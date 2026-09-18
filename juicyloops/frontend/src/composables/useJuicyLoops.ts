@@ -1,5 +1,7 @@
 import { engine } from '@/juicyloops/engine';
 import { DEFAULT_BPM } from '@/juicyloops/constants';
+import type { PlaybackMode } from '@/juicyloops/sequencer';
+import type { Song } from '@/juicyloops/song';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import type { TrackOf, TrackType } from '@/juicyloops/tracks/registry';
 import { ref, watch, type Ref } from 'vue';
@@ -13,11 +15,22 @@ export const MAX_BPM = 900;
  */
 const bpm = ref(DEFAULT_BPM);
 const currentTick = ref(0);
+const currentSection = ref(0);
 const isPlaying = ref(false);
+const mode: Ref<PlaybackMode> = ref('loop');
 const tracks: Ref<BaseTrack[]> = ref([]);
+/* The same object the sequencer reads from; the UI edits it through this reactive proxy. */
+const song = ref(engine.song) as Ref<Song>;
 
 watch(bpm, (value) => engine.setBpm(value));
-engine.onStep((step) => (currentTick.value = step));
+watch(mode, (value) => engine.setMode(value));
+engine.onStep((step, section) => {
+    // Steps are scheduled ahead of time, so a few still arrive after stop; they must not undo the reset.
+    if (isPlaying.value) {
+        currentTick.value = step;
+        currentSection.value = section;
+    }
+});
 
 const clampBpm = (value: number): number => Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(value)));
 
@@ -36,6 +49,21 @@ const stop = (): void => {
     engine.stop();
     isPlaying.value = false;
     currentTick.value = 0;
+    currentSection.value = 0;
+};
+
+const setMode = (value: PlaybackMode): void => {
+    mode.value = value;
+};
+
+/** Jumps to a section. Starts playback when stopped, so a click on a section always makes sound. */
+const playSection = (index: number): void => {
+    engine.seekToSection(index);
+    currentSection.value = index;
+    currentTick.value = 0;
+    if (!isPlaying.value) {
+        play();
+    }
 };
 
 const togglePlay = (): void => (isPlaying.value ? stop() : play());
@@ -87,10 +115,15 @@ export const useJuicyLoops = () => ({
     setBpm,
     tapTempo,
     currentTick,
+    currentSection,
     isPlaying,
     play,
     stop,
     togglePlay,
+    mode,
+    setMode,
+    song,
+    playSection,
     tracks,
     addTrack,
     removeTrack,
