@@ -4,11 +4,12 @@ import { ALL_NOTES_DESCENDING, nearestNoteLength, noteLengthSteps } from '@/juic
 import type { SynthTick } from '@/juicyloops/ticks/SynthTick';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
-import { VirtualScroller } from 'primevue';
+import { Dialog, VirtualScroller } from 'primevue';
 import { computed, nextTick, onBeforeUnmount, ref, useTemplateRef } from 'vue';
 import TickGrid, { type StepSpan } from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
-import { beatsOf } from './steps';
+import { beatNumber, beatsOf } from './steps';
+import { TRACK_META } from './trackMeta';
 
 const props = defineProps<{
     track: SynthTrack;
@@ -23,9 +24,15 @@ const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
 
 const beats = computed(() => beatsOf(props.track.length));
 
-const ROW_HEIGHT = 24;
-
+/** The piano roll opens in its own window over the workspace; the row keeps just the step grid. */
 const isPianoRollExpanded = ref(false);
+const isPianoRollMaximized = ref(false);
+const accent = TRACK_META.synth.accent;
+
+/* Row height of the roll. The virtual scroller needs the number, the CSS reads the same value. Taller when the roll has the whole screen. */
+const ROW_HEIGHT = 28;
+const ROW_HEIGHT_MAX = 36;
+const rowHeight = computed(() => (isPianoRollMaximized.value ? ROW_HEIGHT_MAX : ROW_HEIGHT));
 
 /** One note bar in a piano roll row: where it starts, how many cells it covers, and how much of a cell a short note fills. */
 interface RollNote {
@@ -238,11 +245,14 @@ const scrollToPattern = async () => {
     scroller.value?.scrollToIndex(Math.max(0, index - 5));
 };
 
-const togglePianoRoll = async () => {
+const togglePianoRoll = () => {
     isPianoRollExpanded.value = !isPianoRollExpanded.value;
-    if (isPianoRollExpanded.value) {
-        await scrollToPattern();
-    }
+};
+
+/** Maximizing changes the row height, which rebuilds the scroller; bring the pattern back into view afterwards. */
+const resizeRoll = async (maximized: boolean) => {
+    isPianoRollMaximized.value = maximized;
+    await scrollToPattern();
 };
 
 const shiftOctave = async (direction: 1 | -1) => {
@@ -267,7 +277,13 @@ const shiftOctave = async (direction: 1 | -1) => {
             </button>
         </template>
 
-        <TickGrid :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" :spans="gridSpans.spans" @paint="(tick, _index, active) => (tick.isActive = active)">
+        <TickGrid
+            :ticks="props.track.ticks"
+            :current-tick="currentTick"
+            :section-step="sectionStep"
+            :spans="gridSpans.spans"
+            @paint="(tick, _index, active) => (tick.isActive = active)"
+        >
             <template #default="{ tick, index }">
                 <span class="tick-label">{{ tick.note }}</span>
                 <span
@@ -286,56 +302,96 @@ const shiftOctave = async (direction: 1 | -1) => {
                 ></span>
             </template>
         </TickGrid>
+    </TrackShell>
 
-        <template #expanded>
-            <div v-if="isPianoRollExpanded" class="pianoroll flex flex-col gap-1.5">
-                <VirtualScroller :items="ALL_NOTES_DESCENDING" :item-size="ROW_HEIGHT" class="h-72 -mr-1.5" ref="scroller">
-                    <template v-slot:item="{ item: note }">
-                        <div class="pianorow" :class="{ 'pianorow--black': isBlackKey(note), 'pianorow--c': isC(note) }" :data-note="note">
-                            <div class="pianokeys"><div class="pianokey">{{ note }}</div></div>
-                            <div class="pianolane">
-                                <div class="steps">
-                                    <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
-                                        <div
-                                            v-for="tickIndex in beat"
-                                            :key="tickIndex"
-                                            class="pianotick"
-                                            :class="{ 'pianotick--current': currentTick === tickIndex }"
-                                            :data-step="tickIndex"
-                                            :title="`Step ${tickIndex + 1}: ${note}`"
-                                            @click="placeNote(props.track.ticks[tickIndex]!, note)"
-                                        ></div>
-                                    </div>
-                                </div>
-                                <div
-                                    v-for="bar in rowNotes(note)"
-                                    :key="bar.head"
-                                    class="pianonote"
-                                    :class="{ 'pianonote--current': currentTick >= bar.head && currentTick <= bar.end }"
-                                    :style="noteStyle(bar)"
-                                    :title="`${note}, step ${bar.head + 1}. Drag to move, drag the ends to change the length.`"
-                                    @pointerdown.stop.prevent="startMove($event, bar.head)"
-                                >
-                                    <span class="note-handle note-handle--start" title="Drag to move the start" @pointerdown.stop.prevent="startResize($event, 'start', bar.head)"></span>
-                                    <span class="note-handle note-handle--end" title="Drag to change the length" @pointerdown.stop.prevent="startResize($event, 'end', bar.head)"></span>
-                                </div>
-                            </div>
+    <Dialog
+        v-model:visible="isPianoRollExpanded"
+        modal
+        maximizable
+        dismissable-mask
+        :header="`Notes · Synth ${props.trackIndex + 1}`"
+        class="pianoroll-dialog"
+        :style="{ width: '72rem' }"
+        :breakpoints="{ '1280px': '94vw', '640px': '100vw' }"
+        @show="scrollToPattern"
+        @hide="isPianoRollMaximized = false"
+        @maximize="resizeRoll(true)"
+        @unmaximize="resizeRoll(false)"
+    >
+        <div
+            class="pianoroll pianoroll--dialog flex flex-col gap-1.5"
+            :style="{ '--jl-accent': accent, '--jl-roll-beats': beats.length, '--jl-roll-row': `${rowHeight}px` }"
+        >
+            <div class="pianoroll-ruler" aria-hidden="true">
+                <div class="pianokeys"></div>
+                <div class="steps">
+                    <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
+                        <div
+                            v-for="(step, i) in beat"
+                            :key="step"
+                            class="ruler-cell"
+                            :class="{ 'ruler-cell--dot': i !== 0, 'ruler-cell--current': currentTick === step }"
+                        >
+                            <template v-if="i === 0">{{ beatNumber(beatIndex) }}</template>
                         </div>
-                    </template>
-                </VirtualScroller>
-                <div class="lane-foot">
-                    <button type="button" class="chip" @click="shiftOctave(-1)">
-                        <Icon icon="mdi:arrow-down" class="w-4 h-4" />
-                        <span>Octave down</span>
-                    </button>
-                    <button type="button" class="chip" @click="shiftOctave(1)">
-                        <Icon icon="mdi:arrow-up" class="w-4 h-4" />
-                        <span>Octave up</span>
-                    </button>
-                    <span class="lane-hint">Click a cell to place a note. Drag a note to move it, drag its ends to change its length.</span>
+                    </div>
                 </div>
             </div>
-        </template>
-
-    </TrackShell>
+            <VirtualScroller :items="ALL_NOTES_DESCENDING" :item-size="rowHeight" :key="rowHeight" class="pianoroll-scroller" ref="scroller">
+                <template v-slot:item="{ item: note }">
+                    <div class="pianorow" :class="{ 'pianorow--black': isBlackKey(note), 'pianorow--c': isC(note) }" :data-note="note">
+                        <div class="pianokeys">
+                            <div class="pianokey">{{ note }}</div>
+                        </div>
+                        <div class="pianolane">
+                            <div class="steps">
+                                <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
+                                    <div
+                                        v-for="tickIndex in beat"
+                                        :key="tickIndex"
+                                        class="pianotick"
+                                        :class="{ 'pianotick--current': currentTick === tickIndex, 'pianotick--downbeat': tickIndex % 16 === 0 }"
+                                        :data-step="tickIndex"
+                                        :title="`Step ${tickIndex + 1}: ${note}`"
+                                        @click="placeNote(props.track.ticks[tickIndex]!, note)"
+                                    ></div>
+                                </div>
+                            </div>
+                            <div
+                                v-for="bar in rowNotes(note)"
+                                :key="bar.head"
+                                class="pianonote"
+                                :class="{ 'pianonote--current': currentTick >= bar.head && currentTick <= bar.end }"
+                                :style="noteStyle(bar)"
+                                :title="`${note}, step ${bar.head + 1}. Drag to move, drag the ends to change the length.`"
+                                @pointerdown.stop.prevent="startMove($event, bar.head)"
+                            >
+                                <span
+                                    class="note-handle note-handle--start"
+                                    title="Drag to move the start"
+                                    @pointerdown.stop.prevent="startResize($event, 'start', bar.head)"
+                                ></span>
+                                <span
+                                    class="note-handle note-handle--end"
+                                    title="Drag to change the length"
+                                    @pointerdown.stop.prevent="startResize($event, 'end', bar.head)"
+                                ></span>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </VirtualScroller>
+            <div class="lane-foot">
+                <button type="button" class="chip" @click="shiftOctave(-1)">
+                    <Icon icon="mdi:arrow-down" class="w-4 h-4" />
+                    <span>Octave down</span>
+                </button>
+                <button type="button" class="chip" @click="shiftOctave(1)">
+                    <Icon icon="mdi:arrow-up" class="w-4 h-4" />
+                    <span>Octave up</span>
+                </button>
+                <span class="lane-hint">Click a cell to place a note. Drag a note to move it, drag its ends to change its length.</span>
+            </div>
+        </div>
+    </Dialog>
 </template>

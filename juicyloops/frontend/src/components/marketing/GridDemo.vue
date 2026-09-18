@@ -5,6 +5,9 @@
  * no engine needed, so the page stays light.
  */
 import { onBeforeUnmount, reactive, ref } from 'vue';
+import { useHeroPulse } from '@/composables/useHeroPulse';
+
+const { pulse } = useHeroPulse();
 
 const STEPS = 16;
 const BPM = 118;
@@ -140,6 +143,15 @@ const paint = () => {
         queue.shift();
     }
     if (queue.length && queue[0].time <= ctx.currentTime) {
+        if (currentStep.value !== queue[0].step) {
+            /* Kicks and snares hit the hero waveform harder than hats. */
+            const step = queue[0].step;
+            const heavy = rows.some((row) => (row.key === 'kick' || row.key === 'snare') && row.steps[step]);
+            const any = rows.some((row) => row.steps[step]);
+            if (any) {
+                pulse(heavy ? 1 : 0.35);
+            }
+        }
         currentStep.value = queue[0].step;
     }
     frame = requestAnimationFrame(paint);

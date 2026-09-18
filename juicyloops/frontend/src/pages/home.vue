@@ -2,6 +2,7 @@
 /** The marketing page. Prerendered at build time; the grid in the hero plays once the page is hydrated. */
 import { RouterLink } from 'vue-router';
 import GridDemo from '@/components/marketing/GridDemo.vue';
+import HeroWave from '@/components/marketing/HeroWave.vue';
 
 const JUICE = [
     {
@@ -30,25 +31,57 @@ const JUICE = [
     },
 ];
 
+/* The three moves as clips on a song timeline, each in its own colour with a small picture of what it does. */
 const FLOW = [
     {
         beat: '1',
         title: 'Loop',
+        color: 'var(--jl-synth)',
+        visual: 'grid',
         text: 'Tap steps on a one-bar grid. Give a track its own length to make polyrhythms, and the ghost steps show you where it repeats.',
     },
     {
         beat: '2',
         title: 'Arrange',
+        color: 'var(--jl-brand)',
+        visual: 'clips',
         text: 'Group tracks into containers, then drag them onto the song timeline as clips. Move them, stretch them, cut them in half.',
     },
     {
         beat: '3',
         title: 'Mix and automate',
+        color: 'var(--jl-mic)',
+        visual: 'curve',
         text: 'Effects on each track, on each group, and on the master. Any knob can ride a curve, per step inside a loop or across the whole song.',
     },
 ];
 
+/* Pictures inside the flow clips: a tiny grid, a few clips on lanes, and an automation curve. All fixed. */
+const FLOW_GRID = [
+    [1, 0, 0, 1, 0, 0, 1, 0],
+    [0, 0, 1, 0, 0, 0, 1, 0],
+    [0, 1, 0, 0, 1, 0, 0, 1],
+    [1, 0, 0, 0, 1, 0, 1, 0],
+];
+const FLOW_CLIPS = [
+    [
+        { start: 0, span: 3 },
+        { start: 4, span: 2 },
+        { start: 6, span: 2 },
+    ],
+    [
+        { start: 1, span: 2 },
+        { start: 3, span: 4 },
+    ],
+    [
+        { start: 0, span: 2 },
+        { start: 5, span: 3 },
+    ],
+];
+const FLOW_CURVE = 'M0,70 C30,70 40,20 70,20 S110,60 140,60 S180,10 210,10 S250,50 280,50';
+
 /* The rack shows each effect as a module with one knob; the knob angles are fixed so both sides draw the same. */
+const JUICE_CYCLE = ['var(--jl-synth)', 'var(--jl-sampler)', 'var(--jl-mic)', 'var(--jl-brand)'];
 const EFFECTS = [
     { label: 'AutoFilter', angle: -80 },
     { label: 'BitCrusher', angle: 35 },
@@ -62,27 +95,7 @@ const EFFECTS = [
     { label: 'Reverb', angle: 50 },
     { label: 'Tremolo', angle: -5 },
     { label: 'Vibrato', angle: 25 },
-];
-
-/*
- * Three waves behind the hero. Each path spans two screen widths and repeats exactly once per
- * width, so sliding it by half its length loops without a seam. Whole cycles per width keep it periodic.
- */
-const HERO_WAVES = [
-    { cycles: 2, amplitude: 70, phase: 0, speed: 26 },
-    { cycles: 3, amplitude: 45, phase: 1.3, speed: 19 },
-    { cycles: 1, amplitude: 90, phase: 2.6, speed: 34 },
-].map((wave) => {
-    const width = 1200;
-    const height = 400;
-    const points: string[] = [];
-    for (let x = 0; x <= width * 2; x += 10) {
-        const t = (x / width) * Math.PI * 2 * wave.cycles + wave.phase;
-        const y = height / 2 + Math.sin(t) * wave.amplitude + Math.sin(t * 2.5) * wave.amplitude * 0.25;
-        points.push(`${x},${y.toFixed(1)}`);
-    }
-    return { d: `M${points.join(' L')}`, speed: wave.speed };
-});
+].map((effect, index) => ({ ...effect, color: JUICE_CYCLE[index % JUICE_CYCLE.length] }));
 
 /* Bar heights of the waveform under the closing section, in percent; fixed so the server and the browser draw the same. */
 const WAVE = [
@@ -91,22 +104,25 @@ const WAVE = [
     63, 51,
 ];
 
+/* Six pads, like a drum pad bank: each with a colour and a short key label. */
 const DETAILS = [
-    { title: 'Quick or Pro', text: 'Start with just the grid. Switch to Pro for the arranger, mixer and automation whenever you feel like it.' },
-    { title: 'Undo everything', text: 'Every tap, drag and knob turn is one step back. Ctrl+Z as deep as you like, Ctrl+Y forward again.' },
-    { title: 'One file, all of it', text: 'Save the session to your disk as a single file: tracks, samples, recordings, automation. Open it on any machine.' },
-    { title: 'Nothing to install', text: 'No account, no download, no plugins. It runs in the browser you already have, on a phone too.' },
-    { title: 'Light or dark', text: 'Follows your system, or flip it yourself. The colours of the tracks stay the same either way.' },
-    { title: 'Keyboard first', text: 'Space plays and stops, Ctrl+S saves, Ctrl+O opens. Hold a button to repeat it, the app keeps up.' },
-];
+    { key: 'Q/P', title: 'Quick or Pro', text: 'Start with just the grid. Switch to Pro for the arranger, mixer and automation whenever you feel like it.' },
+    { key: 'Ctrl+Z', title: 'Undo everything', text: 'Every tap, drag and knob turn is one step back. Ctrl+Z as deep as you like, Ctrl+Y forward again.' },
+    {
+        key: 'Ctrl+S',
+        title: 'One file, all of it',
+        text: 'Save the session to your disk as a single file: tracks, samples, recordings, automation. Open it on any machine.',
+    },
+    { key: '0 MB', title: 'Nothing to install', text: 'No account, no download, no plugins. It runs in the browser you already have, on a phone too.' },
+    { key: '☾ / ☀', title: 'Light or dark', text: 'Follows your system, or flip it yourself. The colours of the tracks stay the same either way.' },
+    { key: 'Space', title: 'Keyboard first', text: 'Space plays and stops, Ctrl+S saves, Ctrl+O opens. Hold a button to repeat it, the app keeps up.' },
+].map((item, index) => ({ ...item, color: JUICE_CYCLE[index % JUICE_CYCLE.length] }));
 </script>
 
 <template>
     <main class="mk-home">
         <section class="mk-hero">
-            <svg class="mk-hero-wave" viewBox="0 0 2400 400" preserveAspectRatio="none" aria-hidden="true">
-                <path v-for="(wave, i) in HERO_WAVES" :key="i" :d="wave.d" :style="{ '--speed': `${wave.speed}s` }" />
-            </svg>
+            <HeroWave />
             <h1 class="mk-h1">
                 <span class="mk-h1-first">Tap it.</span>
                 <span class="mk-h1-synth">Hear it.</span>
@@ -121,7 +137,6 @@ const DETAILS = [
                 </p>
                 <div class="mk-actions">
                     <RouterLink :to="{ name: 'app.index' }" class="mk-btn mk-btn--big">Start producing now</RouterLink>
-                    <span class="mk-actions-hint">or press play on the grid</span>
                 </div>
             </div>
         </section>
@@ -144,11 +159,34 @@ const DETAILS = [
                 <p class="mk-eyebrow" data-reveal>From loop to track</p>
                 <h2 id="flow-title" class="mk-h2" data-reveal>Three moves. Same order as in every studio, minus the studio.</h2>
             </div>
+            <div class="mk-timeline" aria-hidden="true">
+                <span v-for="bar in 12" :key="bar" :data-major="bar % 4 === 1">{{ bar }}</span>
+                <i class="mk-timeline-head"></i>
+            </div>
             <ol class="mk-flow-list">
-                <li v-for="(step, index) in FLOW" :key="step.beat" class="mk-flow-step" :style="{ '--i': index }" data-reveal>
-                    <span class="mk-flow-beat" aria-hidden="true">{{ step.beat }}</span>
-                    <h3 class="mk-h3">{{ step.title }}</h3>
-                    <p>{{ step.text }}</p>
+                <li v-for="(step, index) in FLOW" :key="step.beat" class="mk-clip" :style="{ '--c': step.color, '--i': index }" data-reveal>
+                    <div class="mk-clip-bar">
+                        <span class="mk-clip-beat">{{ step.beat }}</span>
+                        <span class="mk-clip-name">Bars {{ index * 4 + 1 }}–{{ index * 4 + 4 }}</span>
+                    </div>
+                    <div class="mk-clip-body">
+                        <div class="mk-clip-visual" aria-hidden="true">
+                            <div v-if="step.visual === 'grid'" class="mk-mini-grid">
+                                <i v-for="(cell, i) in FLOW_GRID.flat()" :key="i" :data-on="cell === 1" :style="{ '--i': i % 8 }"></i>
+                            </div>
+                            <div v-else-if="step.visual === 'clips'" class="mk-mini-lanes">
+                                <div v-for="(lane, l) in FLOW_CLIPS" :key="l" class="mk-mini-lane">
+                                    <i v-for="(clip, c) in lane" :key="c" :style="{ '--start': clip.start, '--span': clip.span }"></i>
+                                </div>
+                            </div>
+                            <svg v-else class="mk-mini-curve" viewBox="0 0 280 80" preserveAspectRatio="none">
+                                <path :d="FLOW_CURVE" />
+                                <circle v-for="(x, i) in [0, 70, 140, 210, 280]" :key="i" :cx="x" :cy="[70, 20, 60, 10, 50][i]" r="4" />
+                            </svg>
+                        </div>
+                        <h3 class="mk-h3">{{ step.title }}</h3>
+                        <p>{{ step.text }}</p>
+                    </div>
                 </li>
             </ol>
         </section>
@@ -167,9 +205,10 @@ const DETAILS = [
                     v-for="(effect, index) in EFFECTS"
                     :key="effect.label"
                     class="mk-module"
-                    :style="{ '--i': index, '--angle': `${effect.angle}deg` }"
+                    :style="{ '--i': index, '--c': effect.color, '--angle': `${effect.angle}deg` }"
                     data-reveal
                 >
+                    <span class="mk-module-jack" aria-hidden="true"></span>
                     <span class="mk-knob" aria-hidden="true"><i></i></span>
                     <span class="mk-module-label">{{ effect.label }}</span>
                     <span class="mk-module-led" aria-hidden="true"></span>
@@ -182,8 +221,9 @@ const DETAILS = [
                 <p class="mk-eyebrow" data-reveal>The small things</p>
                 <h2 id="details-title" class="mk-h2" data-reveal>Built to stay out of your way.</h2>
             </div>
-            <ul class="mk-details-list">
-                <li v-for="(item, index) in DETAILS" :key="item.title" :style="{ '--i': index }" data-reveal>
+            <ul class="mk-pads">
+                <li v-for="(item, index) in DETAILS" :key="item.title" class="mk-pad" :style="{ '--i': index, '--c': item.color }" data-reveal>
+                    <span class="mk-pad-key">{{ item.key }}</span>
                     <h3 class="mk-h3">{{ item.title }}</h3>
                     <p>{{ item.text }}</p>
                 </li>
@@ -193,8 +233,8 @@ const DETAILS = [
         <section class="mk-cta" data-reveal>
             <h2 class="mk-cta-title">Your first loop<br />is a minute away.</h2>
             <div class="mk-cta-foot">
-                <p class="mk-lead mk-lead--small">Add a track, tap a few steps, press play. The rest you can find out as you go.</p>
-                <RouterLink :to="{ name: 'app.index' }" class="mk-btn mk-btn--big">Open the studio</RouterLink>
+                <p class="mk-cta-text">Add a track, tap a few steps, press play. The rest you can find out as you go.</p>
+                <RouterLink :to="{ name: 'app.index' }" class="mk-btn mk-btn--big mk-btn--ink">Open the studio</RouterLink>
             </div>
             <div class="mk-wave" aria-hidden="true"><i v-for="(h, i) in WAVE" :key="i" :style="{ '--h': h, '--i': i }"></i></div>
         </section>
