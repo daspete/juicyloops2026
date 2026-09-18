@@ -1,142 +1,81 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import { Icon } from '@iconify/vue';
-import { Button, Popover, Slider } from 'primevue';
-import { computed, onMounted, ref } from 'vue';
-import TrackWaveform from './settings/TrackWaveform.vue';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
-import type { MicrophoneTick } from '@/juicyloops/ticks/MicrophoneTick';
-import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
-import TrackPatternSettings from './settings/TrackPatternSettings.vue';
+import { Icon } from '@iconify/vue';
+import { computed, ref } from 'vue';
+import TickGrid from './TickGrid.vue';
+import TrackShell from './TrackShell.vue';
 import TrackSampleSettings from './settings/TrackSampleSettings.vue';
-import EffectRack from '../effects/EffectRack.vue';
-
-const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
+import TrackWaveform from './settings/TrackWaveform.vue';
 
 const props = defineProps<{
-    trackId: string;
+    track: MicrophoneTrack;
     trackIndex: number;
 }>();
 
-const isVolumeSettingsExpanded = ref(false);
+const { currentTick } = useJuicyLoops();
+
 const isWaveformExpanded = ref(false);
-const settingsPopover = ref();
-const volumePopover = ref();
 
-const track = computed<MicrophoneTrack>(() => tracks.value.find((t) => t.id === props.trackId) as MicrophoneTrack);
-
-onMounted(async () => {});
-
-const updateTick = (tick: MicrophoneTick) => {
-    tick.isActive = !tick.isActive;
-};
-
-const showSettings = (event: any) => {
-    settingsPopover.value.toggle(event);
-};
-
-const toggleRecording = () => {
-    if (track.value.isRecording) {
-        track.value.stopRecording();
-    } else {
-        track.value.startRecording();
+const recordLabel = computed(() => {
+    if (props.track.isRecording) {
+        return 'Stop recording';
     }
-};
+    return props.track.hasSample ? 'Record again' : 'Record';
+});
 
-const showVolumeSettings = (event: any) => {
-    volumePopover.value.toggle(event);
+const toggleRecording = async () => {
+    const wasRecording = props.track.isRecording;
+    await props.track.toggleRecording();
+    if (wasRecording) {
+        isWaveformExpanded.value = true;
+    }
 };
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
-        <div class="flex gap-2 items-start">
-            <div class="font-semibold bg-surface-900 flex h-9 rounded px-2 items-center gap-2">
-                <Icon icon="guidance:recording-studio" class="w-5 h-5" />
-                <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
-            </div>
+    <TrackShell :track="props.track" :track-index="props.trackIndex" :has-grid="props.track.hasSample">
+        <template #actions>
+            <button
+                type="button"
+                class="iconbtn"
+                :disabled="!props.track.hasSample"
+                :data-active="isWaveformExpanded"
+                v-tooltip.bottom="'Trim the part of the recording that plays'"
+                :aria-pressed="isWaveformExpanded"
+                @click="isWaveformExpanded = !isWaveformExpanded"
+            >
+                <Icon icon="mdi:waveform" class="w-4 h-4" />
+                <span>Trim</span>
+            </button>
+        </template>
 
-            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
-                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()" :title="track.isMuted ? 'Unmute' : 'Mute'">
-                    <Icon icon="fad:mute" class="w-5 h-5" />
-                </Button>
-                <Button text size="small" @click="showVolumeSettings" title="Volume">
-                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
-                </Button>
-            </div>
-
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
-                <Button size="small" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded" :title="isWaveformExpanded ? 'Close recording view' : 'Open recording view'">
-                    <Icon icon="guidance:recording-studio" class="w-5 h-5" />
-                </Button>
-                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded" title="Tick volume settings">
-                    <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="showSettings" title="Track settings">
-                    <Icon icon="ic:baseline-settings" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="duplicateTrack(track.id)" title="Duplicate track">
-                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="removeTrack(track.id)" title="Remove track">
-                    <Icon icon="mdi:trash" class="w-5 h-5" />
-                </Button>
-            </div>
-
-            <div class="flex-1 flex flex-col gap-2">
-                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.hasRecordedAudio">
-                    <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
-                        <div
-                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
-                            :class="{
-                                'tick--active': tick.isActive,
-                                'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
-                            }"
-                            @click="updateTick(tick)"
-                        ></div>
-                    </div>
-                </div>
-
-                <div v-if="!track.hasRecordedAudio">
-                    <Button size="small" @click="toggleRecording">
-                        <Icon icon="mdi:waveform" class="w-5 h-5" />
-                        <div class="font-semibold">
-                            {{ track.isRecording ? 'Is recording... press to stop' : 'Record new audio' }}
-                        </div>
-                    </Button>
-                </div>
-
-                <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />
-
-                <div v-if="isWaveformExpanded" class="flex flex-col gap-1">
-                    <div>
-                        <Button size="small" @click="toggleRecording">
-                            <Icon icon="mdi:waveform" class="w-5 h-5" />
-                            <div class="font-semibold">
-                                {{ track.isRecording ? 'Is recording... press to stop' : track.hasRecordedAudio ? 'Record new audio' : 'Record audio' }}
-                            </div>
-                        </Button>
-                    </div>
-                    <TrackWaveform v-if="track.hasRecordedAudio && !track.isRecording" :track="track" />
-                </div>
-            </div>
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <div v-else class="h-15 flex items-center gap-4 px-1">
+            <button type="button" class="recbtn" :data-recording="props.track.isRecording" @click="toggleRecording">
+                <span class="rec-dot"></span>
+                <span>{{ recordLabel }}</span>
+            </button>
+            <span class="text-sm text-(--jl-muted)">
+                {{ props.track.isRecording ? 'Listening. Press again when you are done.' : 'Your browser will ask for microphone access.' }}
+            </span>
         </div>
 
-        <Popover ref="settingsPopover">
-            <div class="flex items-center gap-1 justify-center">
-                <TrackPatternSettings :track="track" />
-                <TrackSampleSettings :track="track" />
+        <template #expanded>
+            <div v-if="props.track.hasSample && isWaveformExpanded" class="flex flex-col gap-2">
+                <TrackWaveform v-if="!props.track.isRecording" :track="props.track" />
+                <div class="flex items-center gap-3">
+                    <button type="button" class="recbtn" :data-recording="props.track.isRecording" @click="toggleRecording">
+                        <span class="rec-dot"></span>
+                        <span>{{ recordLabel }}</span>
+                    </button>
+                    <span class="text-xs text-(--jl-muted)">Drag the highlighted region to choose which part plays.</span>
+                </div>
             </div>
-            <div class="mt-2 max-w-164">
-                <EffectRack :track="track" />
-            </div>
-        </Popover>
+        </template>
 
-        <Popover ref="volumePopover">
-            <div>
-                <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
-            </div>
-        </Popover>
-    </div>
+        <template #sound>
+            <TrackSampleSettings :track="props.track" />
+        </template>
+    </TrackShell>
 </template>

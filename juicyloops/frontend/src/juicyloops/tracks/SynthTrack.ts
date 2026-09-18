@@ -1,53 +1,95 @@
 import { Synth } from 'tone';
-import type { Engine } from '../engine';
-import { BaseTrack } from './BaseTrack';
+import { markRaw } from 'vue';
+import { shiftOctave, type NoteLength, type OscillatorType } from '../notes';
 import { SynthTick } from '../ticks/SynthTick';
+import { BaseTrack, type TrackSnapshot } from './BaseTrack';
 
-export class SynthTrack extends BaseTrack {
-    type = 'synth';
+/** Amplitude envelope of the synth voice. Times are seconds, sustain is a level between 0 and 1. */
+export interface SynthEnvelope {
+    attack: number;
+    decay: number;
+    sustain: number;
+    release: number;
+}
 
-    synth: Synth;
+export type SynthEnvelopeParam = keyof SynthEnvelope;
 
-    ticks: SynthTick[] = [];
+export const DEFAULT_ENVELOPE: SynthEnvelope = { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 };
 
-    constructor(engine: Engine) {
-        super(engine);
+export interface SynthTrackSnapshot extends TrackSnapshot {
+    oscillatorType: OscillatorType;
+    envelope: SynthEnvelope;
+}
 
-        for (let i = 0; i < 32; i++) {
-            this.ticks.push(new SynthTick());
-        }
+export class SynthTrack extends BaseTrack<SynthTick> {
+    readonly type = 'synth';
 
-        this.synth = new Synth();
+    private readonly synth = markRaw(new Synth());
 
-        this.connect(this.synth);
+    oscillatorType: OscillatorType = 'sine';
+
+    envelope: SynthEnvelope = { ...DEFAULT_ENVELOPE };
+
+    constructor() {
+        super();
+        this.synth.set({ envelope: this.envelope });
+        this.connectSource(this.synth);
     }
 
-    play(step: number, time: number) {
-        if (this.isMuted) {
-            return;
-        }
+    protected createTick(): SynthTick {
+        return new SynthTick();
+    }
 
-        const tick = this.ticks[step];
-        if (tick?.isActive) {
+    play(step: number, time: number): void {
+        const tick = this.activeTick(step);
+        if (tick) {
             this.synth.triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
         }
     }
 
-    setSynthType(type: 'sine' | 'square' | 'triangle' | 'sawtooth') {
+    setOscillatorType(type: OscillatorType): void {
         this.synth.oscillator.type = type;
+        this.oscillatorType = type;
     }
 
-    async dispose() {
-        this.synth.dispose();
+    /** Applies one note length to every step of the track. Each tick keeps its own length otherwise. */
+    setAllNoteLengths(length: NoteLength): void {
+        for (const tick of this.ticks) {
+            tick.duration = length;
+        }
+    }
 
+    /** Sets one stage of the amplitude envelope, e.g. `setEnvelope('attack', 0.2)`. */
+    setEnvelope(param: SynthEnvelopeParam, value: number): void {
+        this.synth.envelope[param] = value;
+        this.envelope = { ...this.envelope, [param]: value };
+    }
+
+    /** Moves every note of the pattern up (`1`) or down (`-1`) by one octave. */
+    shiftOctave(direction: 1 | -1): void {
+        for (const tick of this.ticks) {
+            tick.note = shiftOctave(tick.note, direction);
+        }
+    }
+
+    async copyFrom(source: this): Promise<void> {
+        await super.copyFrom(source);
+        this.setOscillatorType(source.oscillatorType);
+        for (const param of Object.keys(source.envelope) as SynthEnvelopeParam[]) {
+            this.setEnvelope(param, source.envelope[param]);
+        }
+    }
+
+    dispose(): void {
+        this.synth.dispose();
         super.dispose();
     }
 
-    async serialize() {
+    async serialize(): Promise<SynthTrackSnapshot> {
         return {
             ...(await super.serialize()),
-            ticks: this.ticks.map((tick) => tick.serialize()),
-            synthType: this.synth.oscillator.type,
+            oscillatorType: this.oscillatorType,
+            envelope: { ...this.envelope },
         };
     }
 }

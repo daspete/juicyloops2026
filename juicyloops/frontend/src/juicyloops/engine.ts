@@ -1,57 +1,61 @@
-import { getContext, getTransport, start, type BaseContext, type TransportInstance } from 'tone';
-import { Sequencer } from './sequencer';
+import { getTransport, start, type TransportInstance } from 'tone';
+import { DEFAULT_BPM } from './constants';
+import { Sequencer, type StepListener } from './sequencer';
+import type { TrackOf, TrackType } from './tracks/registry';
 
+/**
+ * Facade over Tone's transport and the sequencer.
+ *
+ * This module (and everything under `src/juicyloops`) knows nothing about the UI.
+ * The Vue side talks to it through `useJuicyLoops` only.
+ */
 export class Engine {
-    transport: TransportInstance;
-    audioContext: BaseContext;
-    audioStream: MediaStreamAudioDestinationNode;
+    readonly transport: TransportInstance = getTransport();
+    readonly sequencer = new Sequencer();
 
-    sequencer: Sequencer;
+    private isInitialized = false;
 
     constructor() {
-        this.transport = getTransport();
-        this.transport.bpm.value = 136;
-        this.audioContext = getContext();
-        this.audioStream = this.audioContext.createMediaStreamDestination();
-
-        this.sequencer = new Sequencer(this);
+        this.transport.bpm.value = DEFAULT_BPM;
     }
 
-    async initialize() {
+    /** Unlocks the audio context (must be triggered by a user gesture) and starts the sequencer. */
+    async initialize(): Promise<void> {
+        if (this.isInitialized) {
+            return;
+        }
+
         await start();
-        await this.sequencer.initialize();
+        this.sequencer.start();
+        this.isInitialized = true;
     }
 
-    async play() {
+    play(): void {
         this.transport.start();
     }
 
-    async stop() {
+    stop(): void {
         this.transport.stop();
     }
 
-    async addTrack(type: string) {
-        if (type === 'synth') {
-            return await this.sequencer.addSynthTrack();
-        }
-
-        if (type === 'sampler') {
-            return await this.sequencer.addSamplerTrack();
-        }
-
-        if (type === 'microphone') {
-            return await this.sequencer.addMicrophoneTrack();
-        }
-
-        return null;
-    }
-
-    async removeTrack(id: string) {
-        return this.sequencer.removeTrack(id);
-    }
-
-    async setBPM(bpm: number) {
+    setBpm(bpm: number): void {
         this.transport.bpm.value = bpm;
+    }
+
+    onStep(listener: StepListener): () => void {
+        return this.sequencer.onStep(listener);
+    }
+
+    addTrack<T extends TrackType>(type: T): TrackOf<T> {
+        return this.sequencer.addTrack(type);
+    }
+
+    removeTrack(id: string): void {
+        this.sequencer.removeTrack(id);
+    }
+
+    duplicateTrack(id: string) {
+        return this.sequencer.duplicateTrack(id);
     }
 }
 

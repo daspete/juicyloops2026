@@ -1,126 +1,85 @@
 <script setup lang="ts">
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
+import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { Button, Popover, Slider } from 'primevue';
-import { computed, ref } from 'vue';
-import TrackWaveform from './settings/TrackWaveform.vue';
-import type { SamplerTick } from '@/juicyloops/ticks/SamplerTick';
-import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
-import TrackPatternSettings from './settings/TrackPatternSettings.vue';
+import { ref, watch } from 'vue';
+import TickGrid from './TickGrid.vue';
+import TrackShell from './TrackShell.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
 import TrackSampleSettings from './settings/TrackSampleSettings.vue';
-import EffectRack from '../effects/EffectRack.vue';
-
-const { tracks, removeTrack, currentTick, duplicateTrack } = useJuicyLoops();
+import TrackWaveform from './settings/TrackWaveform.vue';
 
 const props = defineProps<{
-    trackId: string;
+    track: SamplerTrack;
     trackIndex: number;
 }>();
 
-const track = computed<SamplerTrack>(() => tracks.value.find((t) => t.id === props.trackId) as SamplerTrack);
+const { currentTick } = useJuicyLoops();
 
-const isVolumeSettingsExpanded = ref(false);
 const isWaveformExpanded = ref(false);
-const settingsPopover = ref();
-const volumePopover = ref();
+const isDragOver = ref(false);
 
-const updateTick = (tick: SamplerTick) => {
-    tick.isActive = !tick.isActive;
-};
+/** Show the waveform as soon as the first sample lands, so the trim region is discoverable. */
+watch(
+    () => props.track.hasSample,
+    (hasSample) => hasSample && (isWaveformExpanded.value = true),
+);
 
-const showSettings = (event: any) => {
-    settingsPopover.value.toggle(event);
-};
+const onDrop = async (event: DragEvent) => {
+    isDragOver.value = false;
+    const file = event.dataTransfer?.files[0];
+    if (!file || !file.type.startsWith('audio/')) {
+        return;
+    }
 
-const onSampleUploaded = () => {
-    isWaveformExpanded.value = true;
-};
-
-const showVolumeSettings = (event: any) => {
-    volumePopover.value.toggle(event);
+    await props.track.setFile(file);
 };
 </script>
 
 <template>
-    <div class="pl-2 py-1 pr-6 flex flex-col gap-4 track">
-        <div class="flex gap-2 items-start">
-            <div class="font-semibold flex h-9 rounded px-2 items-center gap-2">
-                <Icon icon="mdi:waveform" class="w-5 h-5" />
-                <div class="text-xs w-6 text-right">#{{ props.trackIndex + 1 }}</div>
-            </div>
+    <TrackShell :track="props.track" :track-index="props.trackIndex" :has-grid="props.track.hasSample">
+        <template #actions>
+            <button
+                type="button"
+                class="iconbtn"
+                :disabled="!props.track.hasSample"
+                :data-active="isWaveformExpanded"
+                v-tooltip.bottom="'Trim the part of the sample that plays'"
+                :aria-pressed="isWaveformExpanded"
+                @click="isWaveformExpanded = !isWaveformExpanded"
+            >
+                <Icon icon="mdi:waveform" class="w-4 h-4" />
+                <span>Trim</span>
+            </button>
+        </template>
 
-            <div class="flex h-9 gap-1 items-center rounded bg-surface-800">
-                <Button :text="!track.isMuted" size="small" @click="track.toggleMute()" :title="track.isMuted ? 'Unmute' : 'Mute'">
-                    <Icon icon="fad:mute" class="w-5 h-5" />
-                </Button>
-                <Button text size="small" @click="showVolumeSettings" title="Volume">
-                    <Icon icon="ic:baseline-volume-up" class="w-5 h-5" />
-                </Button>
-            </div>
-
-            <div class="flex items-center gap-1 rounded bg-surface-800 w-49 h-9">
-                <Button size="small" :disabled="!track.sampleName" :text="!isWaveformExpanded" @click="isWaveformExpanded = !isWaveformExpanded" :title="isWaveformExpanded ? 'Hide waveform' : 'Show waveform'">
-                    <Icon icon="mdi:waveform" class="w-5 h-5" />
-                </Button>
-                <Button size="small" :text="!isVolumeSettingsExpanded" @click="isVolumeSettingsExpanded = !isVolumeSettingsExpanded" title="Tick volume settings">
-                    <Icon icon="akar-icons:settings-vertical" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="showSettings" title="Track settings">
-                    <Icon icon="ic:baseline-settings" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="duplicateTrack(track.id)" title="Duplicate track">
-                    <Icon icon="mdi:content-copy" class="w-5 h-5" />
-                </Button>
-                <Button size="small" text @click="removeTrack(track.id)" title="Remove track">
-                    <Icon icon="mdi:trash" class="w-5 h-5" />
-                </Button>
-            </div>
-
-            <div class="flex-1 flex flex-col gap-2">
-                <div class="w-full grid grid-cols-32 gap-1 justify-stretch items-stretch h-9" v-if="track.sampleName">
-                    <div v-for="(tick, tickIndex) in track.ticks" :key="tickIndex">
-                        <div
-                            class="w-full h-full rounded flex items-center justify-center cursor-pointer shadow border border-transparent tick"
-                            :class="{
-                                'tick--active': tick.isActive,
-                                'tick--inactive': !tick.isActive,
-                                'tick--current': currentTick === tickIndex,
-                            }"
-                            @click="updateTick(tick)"
-                        ></div>
-                    </div>
-                </div>
-
-                <div v-if="!track.sampleName">
-                    <SamplerFileUpload :track="track" @uploaded="onSampleUploaded" />
-                </div>
-
-                <TrackVolumeSettings :track="track" v-if="isVolumeSettingsExpanded" />
-
-                <div v-if="track.sampleName && !track.isUpdatingSample && isWaveformExpanded" class="flex flex-col gap-1">
-                    <SamplerFileUpload :track="track" label="Change current sample" />
-                    <TrackWaveform :track="track" />
-                </div>
-            </div>
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <div
+            v-else
+            class="dropzone h-15 flex items-center gap-3 px-3"
+            :data-over="isDragOver"
+            @dragover.prevent="isDragOver = true"
+            @dragleave="isDragOver = false"
+            @drop.prevent="onDrop"
+        >
+            <Icon icon="mdi:tray-arrow-down" class="w-5 h-5 shrink-0" />
+            <span class="text-sm">Drop an audio file here, or</span>
+            <SamplerFileUpload :track="props.track" label="Choose a file" />
         </div>
 
-        <Popover ref="settingsPopover">
-            <div class="flex items-center gap-1 justify-center">
-                <TrackPatternSettings :track="track" />
-                <TrackSampleSettings :track="track" />
+        <template #expanded>
+            <div v-if="props.track.hasSample && !props.track.isUpdatingSample && isWaveformExpanded" class="flex flex-col gap-2">
+                <TrackWaveform :track="props.track" />
+                <div class="flex items-center gap-3">
+                    <span class="font-mono text-xs px-2 py-1 rounded-md bg-(--jl-cell) max-w-48 truncate" :title="props.track.sampleName ?? ''">{{ props.track.sampleName }}</span>
+                    <SamplerFileUpload :track="props.track" label="Change sample" />
+                    <span class="text-xs text-(--jl-muted)">Drag the highlighted region to choose which part plays.</span>
+                </div>
             </div>
+        </template>
 
-            <div class="mt-2 max-w-164">
-                <EffectRack :track="track" />
-            </div>
-        </Popover>
-
-        <Popover ref="volumePopover">
-            <div>
-                <Slider v-model="track.volume" :min="-40" :max="6" :step="0.2" @change="track.setVolume(track.volume)" orientation="vertical" />
-            </div>
-        </Popover>
-    </div>
+        <template #sound>
+            <TrackSampleSettings :track="props.track" />
+        </template>
+    </TrackShell>
 </template>

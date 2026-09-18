@@ -1,68 +1,75 @@
-import { Sequence } from 'tone';
-import type { Engine } from './engine';
+import { getDraw, Sequence } from 'tone';
+import { STEP_COUNT, STEP_SUBDIVISION } from './constants';
 import type { BaseTrack } from './tracks/BaseTrack';
-import { SynthTrack } from './tracks/SynthTrack';
-import { SamplerTrack } from './tracks/SamplerTrack';
-import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import { MicrophoneTrack } from './tracks/MicrophoneTrack';
+import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
 
+export type StepListener = (step: number) => void;
+
+const STEPS = Array.from({ length: STEP_COUNT }, (_, i) => i);
+
+/** Owns the tracks and drives them from a Tone `Sequence` on the transport. */
 export class Sequencer {
-    engine: Engine;
+    readonly tracks: BaseTrack[] = [];
 
-    patternCount: number = 4;
-    stepCount: number = 8;
+    private sequence: Sequence<number> | null = null;
+    private readonly stepListeners = new Set<StepListener>();
 
-    sequence?: Sequence;
-
-    tracks: BaseTrack[] = [];
-
-    constructor(engine: Engine) {
-        this.engine = engine;
-    }
-
-    async initialize() {
-        const bars = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
-        const { currentTick } = useJuicyLoops();
-
-        this.sequence = new Sequence(
-            (time, step) => {
-                currentTick.value = step;
-
-                this.tracks.forEach((track) => {
-                    track.play(step, time);
-                });
-            },
-            bars,
-            '16n',
-        ).start(0);
-    }
-
-    async addSynthTrack() {
-        const track = new SynthTrack(this.engine);
-        this.tracks.push(track);
-        return track;
-    }
-
-    async addSamplerTrack() {
-        const track = new SamplerTrack(this.engine);
-        this.tracks.push(track);
-        return track;
-    }
-
-    async addMicrophoneTrack() {
-        const track = new MicrophoneTrack(this.engine);
-        this.tracks.push(track);
-        return track;
-    }
-
-    async removeTrack(id: string) {
-        const track = this.tracks.find((track) => track.id === id);
-        if (!track) {
+    /** Creates the sequence on the transport. Safe to call more than once. */
+    start(): void {
+        if (this.sequence) {
             return;
         }
 
-        await track.dispose();
+        this.sequence = new Sequence<number>((time, step) => this.playStep(time, step), STEPS, STEP_SUBDIVISION).start(0);
+    }
 
-        this.tracks = this.tracks.filter((track) => track.id !== id);
+    /**
+     * Registers a callback that runs when a step becomes audible (not when it is scheduled).
+     * Use it for UI updates. Returns a function that removes the listener again.
+     */
+    onStep(listener: StepListener): () => void {
+        this.stepListeners.add(listener);
+        return () => this.stepListeners.delete(listener);
+    }
+
+    addTrack<T extends TrackType>(type: T): TrackOf<T> {
+        const track = createTrack(type);
+        this.tracks.push(track);
+        return track;
+    }
+
+    getTrack(id: string): BaseTrack | undefined {
+        return this.tracks.find((track) => track.id === id);
+    }
+
+    removeTrack(id: string): void {
+        const index = this.tracks.findIndex((track) => track.id === id);
+        if (index === -1) {
+            return;
+        }
+
+        this.tracks[index]!.dispose();
+        this.tracks.splice(index, 1);
+    }
+
+    /** Creates a new track of the same type with the same pattern and settings. */
+    async duplicateTrack(id: string): Promise<BaseTrack | null> {
+        const source = this.getTrack(id);
+        if (!source) {
+            return null;
+        }
+
+        const copy: BaseTrack = this.addTrack(source.type);
+        await copy.copyFrom(source);
+        return copy;
+    }
+
+    private playStep(time: number, step: number): void {
+        for (const track of this.tracks) {
+            track.play(step, time);
+        }
+
+        // The callback fires ahead of time (transport look-ahead), so UI updates are deferred until the step is heard.
+        getDraw().schedule(() => this.stepListeners.forEach((listener) => listener(step)), time);
     }
 }

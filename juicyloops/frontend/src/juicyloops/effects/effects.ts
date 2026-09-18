@@ -11,215 +11,180 @@ import {
     Phaser,
     Reverb,
     Tremolo,
-    Unit,
     Vibrato,
     type ToneAudioNode,
 } from 'tone';
-import type { BaseTrack } from '../tracks/BaseTrack';
+import { EFFECT_DEFINITIONS, EFFECT_KEYS, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
 
+export type { EffectKey, EffectParamKey } from './definitions';
+
+/** Anything with a numeric `value`, i.e. a Tone `Param` or `Signal`. */
+interface ValueHolder {
+    value: number;
+    rampTo?: (value: number, rampTime: number) => unknown;
+}
+
+const isValueHolder = (target: unknown): target is ValueHolder => typeof target === 'object' && target !== null && 'value' in target;
+
+const createBitCrusher = (): BitCrusher => {
+    const bitCrusher = new BitCrusher(8);
+    bitCrusher.wet.value = 0;
+    return bitCrusher;
+};
+
+/** Signal flow order a fresh track starts with. */
+export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
+    'chorus',
+    'phaser',
+    'distortion',
+    'bitCrusher',
+    'autoFilter',
+    'tremolo',
+    'vibrato',
+    'delay',
+    'reverb',
+    'compressor',
+    'equalizer',
+    'limiter',
+];
+
+/**
+ * The per-track effect chain. All effects are always wired in series and start fully dry (`wet = 0`).
+ * Parameters are addressed by the keys declared in `EFFECT_DEFINITIONS`, so the UI can stay generic.
+ * The order of the chain can be changed at any time; the nodes are re-wired on the spot.
+ */
 export class Effects {
-    track: BaseTrack;
+    readonly nodes: Record<EffectKey, ToneAudioNode> = {
+        chorus: new Chorus({ wet: 0 }).start(),
+        phaser: new Phaser({ wet: 0 }),
+        distortion: new Distortion({ wet: 0 }),
+        bitCrusher: createBitCrusher(),
+        autoFilter: new AutoFilter({ wet: 0 }).start(),
+        tremolo: new Tremolo({ wet: 0 }).start(),
+        vibrato: new Vibrato({ wet: 0 }),
+        delay: new FeedbackDelay({ wet: 0 }),
+        reverb: new Reverb({ wet: 0 }),
+        compressor: new Compressor({ threshold: -24, ratio: 12, attack: 0.003, release: 0.25 }),
+        equalizer: new EQ3(0, 0, 0),
+        limiter: new Limiter(-1),
+    };
 
-    chorus: Chorus;
-    phaser: Phaser;
-    distortion: Distortion;
-    bitCrusher: BitCrusher;
-    autoFilter: AutoFilter;
-    tremolo: Tremolo;
-    vibrato: Vibrato;
-    delay: FeedbackDelay;
-    reverb: Reverb;
-    compressor: Compressor;
-    equalizer: EQ3;
-    limiter: Limiter;
+    /** Current signal flow order, first entry is closest to the sound source. */
+    private chain: EffectKey[] = [...DEFAULT_EFFECT_ORDER];
 
-    constructor(track: BaseTrack) {
-        this.track = track;
+    /** The values every parameter had when the chain was created, used by `reset`. */
+    private readonly defaults: Record<EffectKey, Record<string, number>>;
 
-        this.chorus = new Chorus().start();
-        this.phaser = new Phaser();
-        this.distortion = new Distortion();
-        this.bitCrusher = new BitCrusher(8);
-        this.autoFilter = new AutoFilter().start();
-        this.tremolo = new Tremolo().start();
-        this.vibrato = new Vibrato();
-        this.delay = new FeedbackDelay();
-        this.reverb = new Reverb();
-        this.compressor = new Compressor();
-        this.equalizer = new EQ3();
-        this.limiter = new Limiter(-1);
+    private source: ToneAudioNode | null = null;
+    private destination: ToneAudioNode | null = null;
 
-        this.setChorus({ wet: 0 });
-        this.setPhaser({ wet: 0 });
-        this.setDistortion({ wet: 0 });
-        this.setBitCrusher({ wet: 0 });
-        this.setAutoFilter({ wet: 0 });
-        this.setTremolo({ wet: 0 });
-        this.setVibrato({ wet: 0 });
-        this.setDelay({ wet: 0 });
-        this.setReverb({ wet: 0 });
-        this.setCompressor({ threshold: -24, ratio: 12, attack: 0.003, release: 0.25 });
-        this.setEqualizer({ low: 0, mid: 0, high: 0 });
-        this.setLimiter(-1);
+    constructor() {
+        this.defaults = Object.fromEntries(
+            EFFECT_KEYS.map((effect) => [
+                effect,
+                Object.fromEntries(EFFECT_DEFINITIONS[effect].params.map((param) => [param.key, this.getParam(effect, param.key as EffectParamKey<typeof effect>)])),
+            ]),
+        ) as Record<EffectKey, Record<string, number>>;
     }
 
-    connect(node: ToneAudioNode) {
-        this.track.audioController.disconnect();
-        node.disconnect();
-
-        connectSeries(
-            node,
-            this.chorus,
-            this.phaser,
-            this.distortion,
-            this.bitCrusher,
-            this.autoFilter,
-            this.tremolo,
-            this.vibrato,
-            this.delay,
-            this.reverb,
-            this.compressor,
-            this.equalizer,
-            this.limiter,
-            this.track.audioController,
-        );
+    get order(): readonly EffectKey[] {
+        return this.chain;
     }
 
-    setChorus(p: Partial<ChorusParams>): void {
-        if (p.frequency !== undefined) this.chorus.frequency.value = p.frequency;
-        if (p.delayTime !== undefined) this.chorus.delayTime = p.delayTime;
-        if (p.depth !== undefined) this.chorus.depth = p.depth;
-        if (p.wet !== undefined) this.chorus.wet.value = p.wet;
+    /** Routes `source -> effects -> destination`. Existing connections of both ends are dropped first. */
+    connect(source: ToneAudioNode, destination: ToneAudioNode): void {
+        destination.disconnect();
+        this.source = source;
+        this.destination = destination;
+        this.rewire();
     }
 
-    setPhaser(p: Partial<PhaserParams>): void {
-        if (p.frequency !== undefined) this.phaser.frequency.value = p.frequency;
-        if (p.octaves !== undefined) this.phaser.octaves = p.octaves;
-        if (p.baseFrequency !== undefined) this.phaser.baseFrequency = p.baseFrequency;
-        if (p.wet !== undefined) this.phaser.wet.value = p.wet;
+    /** Replaces the chain order. Keys that are missing keep their relative position at the end. */
+    setOrder(order: readonly EffectKey[]): void {
+        const unique = order.filter((key, index) => EFFECT_KEYS.includes(key) && order.indexOf(key) === index);
+        this.chain = [...unique, ...this.chain.filter((key) => !unique.includes(key))];
+        this.rewire();
     }
 
-    setDistortion(p: Partial<DistortionParams>): void {
-        if (p.distortion !== undefined) this.distortion.distortion = p.distortion;
-        if (p.wet !== undefined) this.distortion.wet.value = p.wet;
+    /** Moves one effect one position towards the source (`-1`) or towards the output (`1`). */
+    move(effect: EffectKey, direction: 1 | -1): void {
+        const from = this.chain.indexOf(effect);
+        const to = from + direction;
+        if (from === -1 || to < 0 || to >= this.chain.length) {
+            return;
+        }
+
+        const next = [...this.chain];
+        [next[from], next[to]] = [next[to]!, next[from]!];
+        this.setOrder(next);
     }
 
-    setBitCrusher(p: Partial<BitCrusherParams>): void {
-        if (p.bits !== undefined) this.bitCrusher.bits.value = p.bits;
-        if (p.wet !== undefined) this.bitCrusher.wet.value = p.wet;
+    /** Puts every parameter of one effect back to its initial value. */
+    reset(effect: EffectKey): void {
+        this.setParams(effect, this.defaults[effect] as Partial<Record<EffectParamKey<typeof effect>, number>>);
     }
 
-    setAutoFilter(p: Partial<AutoFilterParams>): void {
-        if (p.frequency !== undefined) this.autoFilter.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.autoFilter.depth.value = p.depth;
-        if (p.wet !== undefined) this.autoFilter.wet.value = p.wet;
+    /** Drops the outgoing connections of the source and every effect and wires them up again in chain order. */
+    private rewire(): void {
+        if (!this.source || !this.destination) {
+            return;
+        }
+
+        this.source.disconnect();
+        for (const node of Object.values(this.nodes)) {
+            node.disconnect();
+        }
+
+        connectSeries(this.source, ...this.chain.map((key) => this.nodes[key]), this.destination);
     }
 
-    setTremolo(p: Partial<TremoloParams>): void {
-        if (p.frequency !== undefined) this.tremolo.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.tremolo.depth.value = p.depth;
-        if (p.wet !== undefined) this.tremolo.wet.value = p.wet;
+    getParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>): number {
+        const target = this.paramTarget(effect, param);
+        return isValueHolder(target) ? target.value : (target as number);
     }
 
-    setVibrato(p: Partial<VibratoParams>): void {
-        if (p.frequency !== undefined) this.vibrato.frequency.value = p.frequency;
-        if (p.depth !== undefined) this.vibrato.depth.value = p.depth;
-        if (p.wet !== undefined) this.vibrato.wet.value = p.wet;
+    setParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>, value: number): void {
+        const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
+        const target = this.paramTarget(effect, param);
+
+        if (isValueHolder(target)) {
+            if (definition?.ramp && target.rampTo) {
+                target.rampTo(value, definition.ramp);
+            } else {
+                target.value = value;
+            }
+            return;
+        }
+
+        (this.nodes[effect] as unknown as Record<string, number>)[param] = value;
     }
 
-    setDelay(p: Partial<DelayParams>): void {
-        if (p.delayTime !== undefined) this.delay.delayTime.value = p.delayTime;
-        if (p.feedback !== undefined) this.delay.feedback.value = p.feedback;
-        if (p.wet !== undefined) this.delay.wet.value = p.wet;
+    /** Convenience for setting several parameters of one effect at once. */
+    setParams<K extends EffectKey>(effect: K, params: Partial<Record<EffectParamKey<K>, number>>): void {
+        for (const [key, value] of Object.entries(params) as [EffectParamKey<K>, number | undefined][]) {
+            if (value !== undefined) {
+                this.setParam(effect, key, value);
+            }
+        }
     }
 
-    setReverb(p: Partial<ReverbParams>): void {
-        if (p.decay !== undefined) this.reverb.decay = p.decay;
-        if (p.preDelay !== undefined) this.reverb.preDelay = p.preDelay;
-        if (p.wet !== undefined) this.reverb.wet.value = p.wet;
+    /** Copies the chain order and every parameter from another effect rack. */
+    copyFrom(other: Effects): void {
+        this.setOrder(other.order);
+        for (const effect of EFFECT_KEYS) {
+            for (const param of EFFECT_DEFINITIONS[effect].params) {
+                this.setParam(effect, param.key as EffectParamKey<typeof effect>, other.getParam(effect, param.key as EffectParamKey<typeof effect>));
+            }
+        }
     }
 
-    setCompressor(p: Partial<CompressorParams>): void {
-        if (p.threshold !== undefined) this.compressor.threshold.value = p.threshold;
-        if (p.ratio !== undefined) this.compressor.ratio.value = p.ratio;
-        if (p.attack !== undefined) this.compressor.attack.value = p.attack;
-        if (p.release !== undefined) this.compressor.release.value = p.release;
+    dispose(): void {
+        for (const node of Object.values(this.nodes)) {
+            node.dispose();
+        }
     }
 
-    setEqualizer(p: Partial<EqualizerParams>): void {
-        if (p.low !== undefined) this.equalizer.low.value = p.low;
-        if (p.mid !== undefined) this.equalizer.mid.value = p.mid;
-        if (p.high !== undefined) this.equalizer.high.value = p.high;
+    private paramTarget(effect: EffectKey, param: string): unknown {
+        return (this.nodes[effect] as unknown as Record<string, unknown>)[param];
     }
-
-    setLimiter(db: number): void {
-        this.limiter.threshold.rampTo(db, 0.05);
-    }
-}
-
-export interface ChorusParams {
-    frequency: number;
-    delayTime: number;
-    depth: number;
-    wet: number;
-}
-
-export interface PhaserParams {
-    frequency: number;
-    octaves: number;
-    baseFrequency: number;
-    wet: number;
-}
-
-export interface DistortionParams {
-    distortion: number;
-    wet: number;
-}
-
-export interface BitCrusherParams {
-    bits: number;
-    wet: number;
-}
-
-export interface AutoFilterParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
-
-export interface TremoloParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
-
-export interface VibratoParams {
-    frequency: number;
-    depth: number;
-    wet: number;
-}
-
-export interface DelayParams {
-    delayTime: Unit.Time;
-    feedback: number;
-    wet: number;
-}
-
-export interface ReverbParams {
-    decay: Unit.Time;
-    preDelay: number;
-    wet: number;
-}
-
-export interface CompressorParams {
-    threshold: number;
-    ratio: number;
-    attack: number;
-    release: number;
-}
-
-export interface EqualizerParams {
-    low: number;
-    mid: number;
-    high: number;
 }

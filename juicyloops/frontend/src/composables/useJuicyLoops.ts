@@ -1,135 +1,98 @@
 import { engine } from '@/juicyloops/engine';
-import { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
-import { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
-import { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
-import { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
-import { sleep } from '@/utils/sleep';
-import { ref, watch } from 'vue';
+import { DEFAULT_BPM } from '@/juicyloops/constants';
+import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
+import type { TrackOf, TrackType } from '@/juicyloops/tracks/registry';
+import { ref, watch, type Ref } from 'vue';
 
-const bpm = ref(136);
-const tracks = ref<BaseTrack[]>([]);
+export const MIN_BPM = 10;
+export const MAX_BPM = 900;
+
+/*
+ * Module level state: there is exactly one engine, so there is exactly one UI state for it.
+ * Everything below runs once, no matter how many components call `useJuicyLoops()`.
+ */
+const bpm = ref(DEFAULT_BPM);
 const currentTick = ref(0);
+const isPlaying = ref(false);
+const tracks: Ref<BaseTrack[]> = ref([]);
 
-export const useJuicyLoops = () => {
-    watch(bpm, (newBPM) => {
-        engine.setBPM(newBPM);
-    });
+watch(bpm, (value) => engine.setBpm(value));
+engine.onStep((step) => (currentTick.value = step));
 
-    const addSynth = async (): Promise<SynthTrack | null> => {
-        const synth = (await engine.addTrack('synth')) as SynthTrack;
+const clampBpm = (value: number): number => Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(value)));
 
-        if (!synth) {
-            return null;
-        }
-
-        tracks.value.push(synth);
-
-        return synth;
-    };
-
-    const addSampler = async () => {
-        const sampler = await engine.addTrack('sampler');
-
-        if (!sampler) {
-            return null;
-        }
-
-        tracks.value.push(sampler);
-
-        return sampler;
-    };
-
-    const addMicrophone = async () => {
-        const microphone = await engine.addTrack('microphone');
-
-        if (!microphone) {
-            return null;
-        }
-
-        tracks.value.push(microphone);
-
-        return microphone;
-    };
-
-    const removeTrack = async (id: string) => {
-        await engine.removeTrack(id);
-        tracks.value = tracks.value.filter((track) => track.id !== id);
-    };
-
-    const duplicateTrack = async (id: string) => {
-        const trackToDuplicate = tracks.value.find((track) => track.id === id);
-        if (!trackToDuplicate) {
-            return;
-        }
-
-        if (trackToDuplicate instanceof SynthTrack) {
-            const newTrack = (await engine.addTrack('synth')) as SynthTrack;
-            if (!newTrack) {
-                return;
-            }
-
-            newTrack.synth.oscillator.type = trackToDuplicate.synth.oscillator.type;
-            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
-
-            tracks.value.push(newTrack);
-        }
-
-        if (trackToDuplicate instanceof SamplerTrack) {
-            const newTrack = (await engine.addTrack('sampler')) as SamplerTrack;
-            if (!newTrack) {
-                return;
-            }
-
-            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
-            newTrack.sampleName = trackToDuplicate.sampleName;
-
-            if (trackToDuplicate.file) {
-                await newTrack.setFile(trackToDuplicate.file);
-            }
-
-            await sleep(10);
-
-            newTrack.sampleStartTime = trackToDuplicate.sampleStartTime;
-            newTrack.sampleDuration = trackToDuplicate.sampleDuration;
-
-            tracks.value.push(newTrack);
-        }
-
-        if (trackToDuplicate instanceof MicrophoneTrack) {
-            const newTrack = (await engine.addTrack('microphone')) as MicrophoneTrack;
-            if (!newTrack) {
-                return;
-            }
-
-            newTrack.ticks = trackToDuplicate.ticks.map((tick) => JSON.parse(JSON.stringify(tick)));
-            newTrack.sampleName = trackToDuplicate.sampleName;
-
-            if (trackToDuplicate.recordedAudio) {
-                newTrack.recordedAudio = trackToDuplicate.recordedAudio;
-                newTrack.recordedAudioObject = trackToDuplicate.recordedAudioObject;
-                await newTrack.player.load(newTrack.recordedAudioObject!);
-                newTrack.hasRecordedAudio = true;
-                newTrack.isRecording = false;
-            }
-
-            await sleep(10);
-
-            newTrack.sampleStartTime = trackToDuplicate.sampleStartTime;
-            newTrack.sampleDuration = trackToDuplicate.sampleDuration;
-
-            tracks.value.push(newTrack);
-        }
-    };
-
-    return {
-        bpm,
-        engine,
-        tracks,
-        currentTick,
-        addSynth,
-        addSampler,
-        addMicrophone,
-        removeTrack,
-        duplicateTrack,
-    };
+const setBpm = (value: number): void => {
+    if (Number.isFinite(value)) {
+        bpm.value = clampBpm(value);
+    }
 };
+
+const play = (): void => {
+    engine.play();
+    isPlaying.value = true;
+};
+
+const stop = (): void => {
+    engine.stop();
+    isPlaying.value = false;
+    currentTick.value = 0;
+};
+
+const togglePlay = (): void => (isPlaying.value ? stop() : play());
+
+/* Tap tempo: the average gap between the last few taps. A pause of two seconds starts a new measurement. */
+const TAP_RESET_MS = 2000;
+const TAP_WINDOW = 8;
+let taps: number[] = [];
+
+const tapTempo = (): void => {
+    const now = performance.now();
+    if (taps.length && now - taps[taps.length - 1]! > TAP_RESET_MS) {
+        taps = [];
+    }
+
+    taps.push(now);
+    taps = taps.slice(-TAP_WINDOW);
+
+    if (taps.length < 2) {
+        return;
+    }
+
+    const averageInterval = (taps[taps.length - 1]! - taps[0]!) / (taps.length - 1);
+    setBpm(60000 / averageInterval);
+};
+
+const addTrack = <T extends TrackType>(type: T): TrackOf<T> => {
+    const track = engine.addTrack(type);
+    tracks.value.push(track);
+    return track;
+};
+
+const removeTrack = (id: string): void => {
+    engine.removeTrack(id);
+    tracks.value = tracks.value.filter((track) => track.id !== id);
+};
+
+const duplicateTrack = async (id: string): Promise<BaseTrack | null> => {
+    const copy = await engine.duplicateTrack(id);
+    if (copy) {
+        tracks.value.push(copy);
+    }
+    return copy;
+};
+
+export const useJuicyLoops = () => ({
+    engine,
+    bpm,
+    setBpm,
+    tapTempo,
+    currentTick,
+    isPlaying,
+    play,
+    stop,
+    togglePlay,
+    tracks,
+    addTrack,
+    removeTrack,
+    duplicateTrack,
+});

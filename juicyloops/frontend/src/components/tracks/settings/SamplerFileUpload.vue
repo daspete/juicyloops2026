@@ -1,38 +1,30 @@
 <script setup lang="ts">
 import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
-import { FileUpload, type FileUploadSelectEvent } from 'primevue';
+import { useTemplateRef } from 'vue';
 
 const props = defineProps<{
     track: SamplerTrack;
     label?: string;
 }>();
 
-const emit = defineEmits<{
-    (e: 'uploaded'): void;
-}>();
+const input = useTemplateRef<HTMLInputElement>('input');
 
-const onFileSelect = async (event: FileUploadSelectEvent) => {
-    await props.track.setFile(Array.isArray(event.files) ? event.files[0] : event.files);
-    emit('uploaded');
+const onFileSelect = async (event: Event) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) {
+        return;
+    }
+
+    await props.track.setFile(file);
+    (event.target as HTMLInputElement).value = '';
 };
 </script>
 
 <template>
-    <div v-if="props.track" class="flex items-center gap-1">
-        <div class="flex items-center gap-1 rounded bg-surface-800">
-            <FileUpload
-                mode="basic"
-                @select="onFileSelect"
-                customUpload
-                auto
-                :chooseLabel="props.label || 'Select a sample'"
-                :chooseButtonProps="{ size: 'small' }"
-            >
-                <template #chooseicon>
-                    <Icon icon="mdi:upload" class="w-5 h-5" />
-                </template>
-            </FileUpload>
-        </div>
-    </div>
+    <button type="button" class="chip" @click="input?.click()">
+        <Icon icon="mdi:folder-music-outline" class="w-4 h-4" />
+        <span>{{ props.label || 'Choose a file' }}</span>
+    </button>
+    <input ref="input" type="file" accept="audio/*" class="hidden" @change="onFileSelect" />
 </template>

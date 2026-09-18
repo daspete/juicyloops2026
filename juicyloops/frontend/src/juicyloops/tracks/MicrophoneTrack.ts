@@ -1,116 +1,56 @@
-import { Player, Recorder, UserMedia } from 'tone';
-import type { Engine } from '../engine';
-import { BaseTrack } from './BaseTrack';
-import { MicrophoneTick } from '../ticks/MicrophoneTick';
+import { Recorder, UserMedia } from 'tone';
+import { markRaw } from 'vue';
+import { SampleTrack } from './SampleTrack';
 
-export class MicrophoneTrack extends BaseTrack {
-    type = 'microphone';
+/** Records a sample from the microphone and plays it back like a sampler. */
+export class MicrophoneTrack extends SampleTrack {
+    readonly type = 'microphone';
 
-    player: Player;
-    recorder!: Recorder;
-    microphone!: UserMedia;
+    private readonly recorder = markRaw(new Recorder());
+    private readonly microphone = markRaw(new UserMedia());
 
-    hasRecordedAudio: boolean = false;
-    isRecording: boolean = false;
+    isRecording = false;
 
-    recordedAudio: Blob | null = null;
-    recordedAudioObject: string | null = null;
+    constructor() {
+        super();
 
-    sampleName: string | null = null;
-
-    sampleStartTime: number = 0;
-    sampleDuration: number = 0;
-
-    isReversed: boolean = false;
-
-    ticks: MicrophoneTick[] = [];
-
-    constructor(engine: Engine) {
-        super(engine);
-
-        for (let i = 0; i < 32; i++) {
-            this.ticks.push(new MicrophoneTick());
-        }
-
-        this.player = new Player();
-        this.connect(this.player);
-
-        this.recorder = new Recorder();
-        this.microphone = new UserMedia();
         this.microphone.connect(this.recorder);
-        this.microphone.open();
+        this.microphone.open().catch((error) => console.warn('Could not open the microphone', error));
     }
 
-    async startRecording() {
+    async startRecording(): Promise<void> {
         if (this.isRecording) {
             return;
         }
-        this.isRecording = true;
 
+        this.isRecording = true;
         await this.recorder.start();
     }
 
-    async stopRecording() {
+    async stopRecording(): Promise<void> {
         if (!this.isRecording) {
             return;
         }
 
-        this.recordedAudio = await this.recorder.stop();
-        this.recordedAudioObject = URL.createObjectURL(this.recordedAudio);
-
-        const audioContext = new AudioContext();
-        const source = audioContext.createBufferSource();
-        source.buffer = await audioContext.decodeAudioData(await this.recordedAudio.arrayBuffer());
-
-        this.player.buffer.set(source.buffer);
-
-        this.setSampleTimes(0, source.buffer.duration);
-
-        this.hasRecordedAudio = true;
-        this.isRecording = false;
-    }
-
-    setSampleName(name: string) {
-        this.sampleName = name;
-    }
-
-    setSampleTimes(start: number, duration: number) {
-        this.sampleStartTime = start;
-        this.sampleDuration = duration;
-    }
-
-    play(step: number, time: number) {
-        console.log('Playing microphone track - not implemented yet');
-        if (this.isMuted) {
-            return;
-        }
-
-        const tick = this.ticks[step];
-
-        if (tick?.isActive && this.player.loaded) {
-            this.player.start(time, this.sampleStartTime, this.sampleDuration);
+        try {
+            const recording = await this.recorder.stop();
+            await this.loadSample(recording, 'Recording');
+        } finally {
+            this.isRecording = false;
         }
     }
 
-    toggleReverse() {
-        this.isReversed = !this.isReversed;
-        this.player.reverse = this.isReversed;
+    async toggleRecording(): Promise<void> {
+        if (this.isRecording) {
+            await this.stopRecording();
+        } else {
+            await this.startRecording();
+        }
     }
 
-    async dispose() {
-        this.player.dispose();
+    dispose(): void {
         this.recorder.dispose();
         this.microphone.dispose();
         super.dispose();
-    }
-
-    async serialize() {
-        return {
-            ...(await super.serialize()),
-            ticks: this.ticks.map((tick) => tick.serialize()),
-            sampleStartTime: this.sampleStartTime,
-            sampleDuration: this.sampleDuration,
-            buffer: await this.recordedAudio?.arrayBuffer(),
-        };
     }
 }
