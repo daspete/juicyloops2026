@@ -5,7 +5,7 @@
     "type": "module",
     "scripts": {
         "dev": "corepack enable && vite",
-        "build": "vite build",
+        "build": "vite build && vite build --ssr src/entry-server.ts && node scripts/prerender/prerender.mjs",
         "preview": "vite preview",
         "type-check": "vue-tsc --noEmit -p tsconfig.app.json && vue-tsc --noEmit -p tsconfig.vitest.json",
         "test:unit": "vitest run",

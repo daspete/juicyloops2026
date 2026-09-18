@@ -13,13 +13,17 @@ const readStored = (): ThemeName | null => {
     }
 };
 
-const systemTheme = (): ThemeName => (window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+const isBrowser = typeof window !== 'undefined' && typeof document !== 'undefined';
+
+const systemTheme = (): ThemeName => (isBrowser && window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
 
 /* One theme for the whole app: `html.dark` drives both our tokens and PrimeVue's dark palette. */
 const theme = ref<ThemeName>(readStored() ?? systemTheme());
 
 const apply = (name: ThemeName) => {
-    document.documentElement.classList.toggle('dark', name === 'dark');
+    if (isBrowser) {
+        document.documentElement.classList.toggle('dark', name === 'dark');
+    }
 };
 
 apply(theme.value);

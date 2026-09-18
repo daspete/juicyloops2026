@@ -1,0 +1,1176 @@
+/*
+ * The public pages (home, imprint). They share the app's colour tokens so the site and the studio
+ * are one thing. `.mk` is the scroll container because the studio keeps `body` from scrolling.
+ * Native CSS nesting only: this file is processed by Lightning CSS, not Sass.
+ */
+
+.mk {
+    --mk-max: 74rem;
+    --mk-pad: clamp(1rem, 4vw, 3rem);
+    height: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    user-select: text;
+    font-size: 1.07rem;
+    line-height: 1.55;
+    background-color: var(--jl-bg);
+    /* The same dot grid the share image sits on: a step grid seen from far away. */
+    background-image: radial-gradient(circle, color-mix(in oklab, var(--jl-text) 9%, transparent) 1.2px, transparent 1.5px);
+    background-size: 28px 28px;
+    background-position: 14px 14px;
+
+    & * {
+        user-select: text;
+    }
+
+    & a {
+        color: inherit;
+    }
+
+    & :focus-visible {
+        outline: 2px solid var(--jl-focus);
+        outline-offset: 3px;
+        border-radius: 4px;
+    }
+
+    & p {
+        margin: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mk {
+        scroll-behavior: auto;
+    }
+}
+
+/* ---------- header / footer ---------- */
+
+.mk-top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    background: color-mix(in oklab, var(--jl-bg) 72%, transparent);
+}
+
+.mk-top-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.9rem clamp(1rem, 4vw, 4rem);
+}
+
+.mk-brand {
+    display: block;
+    height: 2rem;
+    color: var(--jl-text);
+}
+
+.mk-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.mk-navlink {
+    padding: 0.45rem 0.7rem;
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    color: var(--jl-muted);
+    transition: color 0.15s ease, background-color 0.15s ease;
+
+    &:hover,
+    &.router-link-active {
+        color: var(--jl-text);
+        background: color-mix(in oklab, var(--jl-text) 7%, transparent);
+    }
+}
+
+.mk-theme {
+    display: grid;
+    place-items: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--jl-muted);
+    cursor: pointer;
+
+    &:hover {
+        color: var(--jl-text);
+        background: color-mix(in oklab, var(--jl-text) 7%, transparent);
+    }
+
+    & .mk-theme-moon {
+        display: none;
+    }
+}
+
+/* The icon is chosen by the html class, not by script state, so the server and the browser agree. */
+html.dark .mk-theme {
+    & .mk-theme-sun {
+        display: block;
+    }
+    & .mk-theme-moon {
+        display: none;
+    }
+}
+
+html:not(.dark) .mk-theme {
+    & .mk-theme-sun {
+        display: none;
+    }
+    & .mk-theme-moon {
+        display: block;
+    }
+}
+
+.mk-foot {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 0.75rem 1.5rem;
+    padding: 2rem clamp(1rem, 4vw, 4rem) 3rem;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    color: var(--jl-muted);
+
+    & a {
+        color: var(--jl-text);
+        text-decoration: none;
+        border-bottom: 1px solid var(--jl-line-strong);
+
+        &:hover {
+            border-color: var(--jl-brand);
+        }
+    }
+}
+
+.mk-foot-links {
+    display: flex;
+    gap: 1.25rem;
+}
+
+/* ---------- type ---------- */
+
+.mk-eyebrow {
+    margin: 0 0 0.9rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--jl-brand);
+}
+
+.mk-h1 {
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.6rem, 6.4vw, 4.6rem);
+    line-height: 1.02;
+    letter-spacing: -0.01em;
+    color: var(--jl-text);
+
+    & > span {
+        display: block;
+    }
+
+    &.mk-h1--small {
+        font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+        font-weight: 700;
+        line-height: 1.15;
+        max-width: 26ch;
+    }
+}
+
+.mk-h1-synth {
+    color: var(--jl-synth);
+}
+
+.mk-h1-sampler {
+    color: var(--jl-sampler);
+}
+
+.mk-h2 {
+    margin: 0;
+    max-width: 22ch;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.6rem, 3.4vw, 2.8rem);
+    line-height: 1.18;
+    color: var(--jl-text);
+}
+
+.mk-h3 {
+    margin: 0 0 0.5rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.05rem;
+    letter-spacing: 0.02em;
+    color: var(--jl-text);
+}
+
+.mk-lead {
+    max-width: 34rem;
+    margin-top: 1.9rem;
+    font-size: clamp(1.1rem, 1.6vw, 1.3rem);
+    line-height: 1.5;
+    color: var(--jl-muted);
+
+    &.mk-lead--small {
+        font-size: 1.05rem;
+        margin-top: 1rem;
+    }
+}
+
+/* ---------- buttons ---------- */
+
+.mk-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.2rem;
+    border-radius: 999px;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.9rem;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    color: var(--jl-brand-ink);
+    background: var(--jl-brand);
+    border: 2px solid var(--jl-brand);
+    transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+
+    &:hover {
+        transform: translateY(-2px);
+        background: transparent;
+        color: var(--jl-text);
+    }
+
+    &.mk-btn--small {
+        padding: 0.55rem 1rem;
+        font-size: 0.8rem;
+    }
+
+    &.mk-btn--big {
+        padding: 1rem 1.7rem;
+        font-size: 1.05rem;
+    }
+}
+
+/* ---------- layout (imprint) ---------- */
+
+.mk-page {
+    max-width: var(--mk-max);
+    margin: 0 auto;
+    padding: 0 var(--mk-pad);
+}
+
+/* ---------- the playable grid ---------- */
+
+.demo {
+    --demo-gap: 5px;
+    --demo-label: 3.6rem;
+    padding: 1rem;
+    border-radius: 1.4rem;
+    background: var(--jl-panel);
+    border: 1px solid var(--jl-line);
+    box-shadow: var(--jl-shadow), 0 40px 80px -50px color-mix(in oklab, var(--jl-brand) 60%, transparent);
+}
+
+.demo-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.demo-play {
+    display: grid;
+    place-items: center;
+    width: 2.9rem;
+    height: 2.9rem;
+    border: 0;
+    border-radius: 999px;
+    color: var(--jl-brand-ink);
+    background: var(--jl-brand);
+    cursor: pointer;
+    transition: transform 0.12s ease;
+
+    &:active {
+        transform: scale(0.94);
+    }
+}
+
+.demo-bpm {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    color: var(--jl-muted);
+
+    & b {
+        font-size: 1.25rem;
+        font-weight: 400;
+        color: var(--jl-text);
+    }
+}
+
+.demo-hint {
+    flex: 1;
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    letter-spacing: 0.03em;
+    color: var(--jl-muted);
+    text-align: right;
+}
+
+.demo-clear {
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--jl-line-strong);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--jl-muted);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    cursor: pointer;
+
+    &:hover {
+        color: var(--jl-text);
+    }
+}
+
+.demo-grid {
+    position: relative;
+    display: grid;
+    gap: var(--demo-gap);
+}
+
+.demo-ruler,
+.demo-row {
+    display: grid;
+    grid-template-columns: var(--demo-label) repeat(16, minmax(0, 1fr));
+    gap: var(--demo-gap);
+}
+
+.demo-ruler {
+    margin-bottom: 0.2rem;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--jl-muted);
+
+    & span:not(:first-child) {
+        grid-column: span 4;
+        padding-left: 0.25rem;
+    }
+}
+
+.demo-label {
+    align-self: center;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    color: var(--c);
+}
+
+.demo-step {
+    aspect-ratio: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: var(--jl-cell);
+    cursor: pointer;
+    transition: background-color 0.1s ease, box-shadow 0.15s ease, transform 0.1s ease;
+
+    &[data-beat='true'] {
+        background: var(--jl-cell-downbeat);
+    }
+
+    &:hover {
+        background: var(--jl-cell-hover);
+    }
+
+    &[data-on='true'] {
+        background: var(--c);
+        box-shadow: 0 0 0 0 transparent;
+    }
+
+    &[data-on='true'][data-now='true'] {
+        box-shadow: 0 0 18px 0 var(--c);
+        transform: scale(1.08);
+    }
+
+    &[data-on='false'][data-now='true'] {
+        background: color-mix(in oklab, var(--c) 30%, var(--jl-cell));
+    }
+}
+
+/* The playhead: a thin line the audio clock drives while playing; between plays it drifts on its own. */
+.demo-head {
+    /* A column is the grid minus the label column, minus the sixteen gaps, in sixteen parts. */
+    --demo-col: calc((100% - var(--demo-label) - var(--demo-gap) * 16) / 16);
+    --demo-pitch: calc(var(--demo-col) + var(--demo-gap));
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--demo-label) + var(--demo-gap));
+    width: var(--demo-col);
+    pointer-events: none;
+    border-radius: 6px;
+    opacity: 0;
+}
+
+.demo[data-playing='true'] .demo-head {
+    opacity: 1;
+    left: calc(var(--demo-label) + var(--demo-gap) + var(--step) * var(--demo-pitch));
+    background: color-mix(in oklab, var(--jl-text) 8%, transparent);
+}
+
+.demo[data-playing='false'] .demo-head {
+    opacity: 1;
+    background: linear-gradient(180deg, transparent, color-mix(in oklab, var(--jl-text) 7%, transparent), transparent);
+    animation: demo-drift 8s linear infinite;
+}
+
+@keyframes demo-drift {
+    from {
+        transform: translateX(0);
+    }
+    to {
+        transform: translateX(calc(15 * var(--demo-pitch)));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .demo[data-playing='false'] .demo-head {
+        animation: none;
+        opacity: 0;
+    }
+    .demo-step[data-on='true'][data-now='true'] {
+        transform: none;
+    }
+}
+
+@media (max-width: 30rem) {
+    .demo {
+        --demo-label: 2.6rem;
+        --demo-gap: 3px;
+        padding: 0.75rem;
+        border-radius: 1rem;
+    }
+    .demo-step {
+        border-radius: 3px;
+    }
+    .demo-hint {
+        display: none;
+    }
+}
+
+
+/* ---------- home: full-bleed sections ---------- */
+
+.mk-home {
+    --mk-gutter: clamp(1rem, 4vw, 4rem);
+}
+
+/* ---------- hero ---------- */
+
+.mk-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    grid-template-areas:
+        'title demo'
+        'foot demo';
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+    column-gap: clamp(1.5rem, 4vw, 4rem);
+    min-height: min(calc(100svh - 4.2rem), 62rem);
+    padding: clamp(1.5rem, 4vw, 3rem) var(--mk-gutter) clamp(2rem, 5vw, 4rem);
+}
+
+/* The waveform behind the hero: three lines drifting left at different speeds, like a slow oscilloscope. */
+.mk-hero-wave {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 200%;
+    height: 100%;
+    pointer-events: none;
+
+    & path {
+        fill: none;
+        stroke: var(--jl-brand);
+        stroke-width: 2;
+        opacity: 0.35;
+        animation: mk-drift var(--speed) linear infinite;
+    }
+
+    & path:nth-child(2) {
+        stroke: var(--jl-brand-2);
+        opacity: 0.25;
+    }
+
+    & path:nth-child(3) {
+        stroke-width: 3;
+        opacity: 0.18;
+    }
+}
+
+@keyframes mk-drift {
+    to {
+        transform: translateX(-1200px);
+    }
+}
+
+.mk-hero > :not(.mk-hero-wave) {
+    position: relative;
+}
+
+.mk-hero .mk-h1 {
+    grid-area: title;
+    align-self: end;
+    display: flex;
+    flex-direction: column;
+    font-size: clamp(3.2rem, 9.5vw, 10.5rem);
+    line-height: 0.92;
+    letter-spacing: -0.03em;
+}
+
+.mk-hero-demo {
+    grid-area: demo;
+    align-self: center;
+    justify-self: end;
+    width: 100%;
+    max-width: 44rem;
+}
+
+.mk-hero-foot {
+    grid-area: foot;
+    align-self: start;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 1.5rem 2rem;
+    margin-top: 2rem;
+
+    & .mk-lead {
+        margin-top: 0;
+        max-width: 30rem;
+    }
+}
+
+.mk-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.6rem;
+}
+
+.mk-actions-hint {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--jl-muted);
+}
+
+@media (max-width: 64rem) {
+    .mk-hero {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            'title'
+            'foot'
+            'demo';
+        min-height: 0;
+        row-gap: 1.5rem;
+    }
+    .mk-hero .mk-h1 {
+        font-size: clamp(3.2rem, 15vw, 8rem);
+    }
+    .mk-hero-demo {
+        justify-self: stretch;
+        max-width: none;
+    }
+    .mk-hero-foot {
+        grid-template-columns: 1fr;
+        margin-top: 0;
+    }
+}
+
+/* ---------- juice bands ---------- */
+
+.mk-band {
+    --ink: #14100c;
+    position: relative;
+    overflow: hidden;
+    color: var(--ink);
+    background: var(--c);
+}
+
+.mk-band-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: end;
+    gap: 1.5rem 3rem;
+    padding: clamp(2.5rem, 6vw, 5rem) var(--mk-gutter) clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.mk-band-title {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-display);
+    line-height: 0.95;
+}
+
+.mk-band-label {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-bottom: 0.9rem;
+}
+
+.mk-band-line {
+    font-weight: 800;
+    font-size: clamp(2.8rem, 7.5vw, 7rem);
+    letter-spacing: -0.02em;
+}
+
+.mk-band-text {
+    max-width: 30rem;
+    font-size: clamp(1.05rem, 1.4vw, 1.25rem);
+    font-weight: 500;
+    line-height: 1.5;
+}
+
+/* The band's step row runs edge to edge. */
+.mk-band-row {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 4px;
+    padding: 0 var(--mk-gutter) clamp(1.5rem, 3vw, 2.5rem);
+
+    & i {
+        height: clamp(0.9rem, 2.2vw, 1.8rem);
+        border-radius: 4px;
+        background: color-mix(in oklab, var(--ink) 14%, transparent);
+
+        &[data-on='true'] {
+            background: var(--ink);
+            animation: mk-chase-ink 2s steps(1, end) calc(var(--i) * 0.125s) infinite;
+        }
+    }
+}
+
+@keyframes mk-chase-ink {
+    0% {
+        opacity: 0.35;
+    }
+    6.25%,
+    100% {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 56rem) {
+    .mk-band-inner {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+}
+
+/* ---------- flow ---------- */
+
+.mk-flow {
+    padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
+}
+
+.mk-flow-head,
+.mk-details-head {
+    max-width: 60rem;
+}
+
+.mk-flow-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 2rem clamp(1.5rem, 4vw, 4rem);
+    margin: clamp(2rem, 4vw, 3.5rem) 0 0;
+    padding: 2rem 0 0;
+    list-style: none;
+    border-top: 1px solid var(--jl-line-strong);
+}
+
+.mk-flow-step {
+    position: relative;
+
+    & p {
+        max-width: 28rem;
+        color: var(--jl-muted);
+    }
+
+    & .mk-h3 {
+        font-size: 1.4rem;
+    }
+}
+
+/* The numbers are beat marks: the same ruler the studio draws above every grid. */
+.mk-flow-beat {
+    display: block;
+    margin-bottom: 1rem;
+    font-family: var(--font-mono);
+    font-size: clamp(3rem, 6vw, 5rem);
+    line-height: 1;
+    color: var(--jl-brand);
+
+    &::before {
+        content: '';
+        display: block;
+        width: 2px;
+        height: 1.4rem;
+        margin: -2.6rem 0 1.2rem;
+        background: var(--jl-brand);
+    }
+}
+
+/* ---------- rack ---------- */
+
+.mk-rack {
+    padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
+}
+
+.mk-rack-copy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 1rem 3rem;
+    align-items: end;
+
+    & .mk-eyebrow {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    & .mk-h2 {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    & .mk-lead {
+        grid-column: 2;
+        grid-row: 2;
+        margin-top: 0;
+    }
+}
+
+/* The chain: one signal line runs behind twelve modules, each with a knob and a power light. */
+.mk-rack-list {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: clamp(2rem, 4vw, 3.5rem) 0 0;
+    padding: 1rem 0;
+    list-style: none;
+
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 50%;
+        height: 2px;
+        background: var(--jl-line-strong);
+    }
+}
+
+.mk-module {
+    position: relative;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    justify-items: center;
+    gap: 1rem;
+    padding: 1.4rem 0.75rem 1.1rem;
+    border-radius: 1rem;
+    background: var(--jl-panel);
+    box-shadow: inset 0 0 0 1px var(--jl-line-strong);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-3px);
+        box-shadow: inset 0 0 0 1px var(--jl-brand), 0 18px 30px -22px var(--jl-brand);
+    }
+}
+
+.mk-knob {
+    position: relative;
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 50%;
+    background: var(--jl-raised);
+    box-shadow:
+        inset 0 0 0 2px var(--jl-line-strong),
+        0 6px 14px -8px rgba(0, 0, 0, 0.6);
+
+    /* The indicator line, turned to this module's setting; hovering turns it further. */
+    & i {
+        position: absolute;
+        left: 50%;
+        top: 0.35rem;
+        width: 3px;
+        height: 1.1rem;
+        margin-left: -1.5px;
+        border-radius: 2px;
+        background: var(--jl-brand);
+        transform-origin: 50% calc(1.7rem - 0.35rem);
+        transform: rotate(var(--angle));
+        transition: transform 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+
+    /* Tick ring around the knob. */
+    &::after {
+        content: '';
+        position: absolute;
+        inset: -0.55rem;
+        border-radius: 50%;
+        background: repeating-conic-gradient(from -135deg, var(--jl-line-strong) 0 2deg, transparent 2deg 30deg);
+        mask: radial-gradient(circle, transparent 60%, #000 61%, #000 68%, transparent 69%);
+        -webkit-mask: radial-gradient(circle, transparent 60%, #000 61%, #000 68%, transparent 69%);
+    }
+}
+
+.mk-module:hover .mk-knob i {
+    transform: rotate(calc(var(--angle) + 40deg));
+}
+
+.mk-module-label {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+    color: var(--jl-text);
+}
+
+.mk-module-led {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: var(--jl-line-strong);
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mk-module:hover .mk-module-led {
+    background: var(--jl-sampler);
+    box-shadow: 0 0 8px var(--jl-sampler);
+}
+
+/* ---------- details ---------- */
+
+.mk-details {
+    padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
+}
+
+.mk-details-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0 clamp(1.5rem, 4vw, 4rem);
+    margin: clamp(2rem, 4vw, 3.5rem) 0 0;
+    padding: 0;
+    list-style: none;
+
+    & li {
+        padding: 1.4rem 0 2rem;
+        border-top: 1px solid var(--jl-line-strong);
+    }
+
+    & p {
+        max-width: 26rem;
+        color: var(--jl-muted);
+    }
+}
+
+/* ---------- final call ---------- */
+
+.mk-cta {
+    position: relative;
+    overflow: hidden;
+    margin-top: clamp(3rem, 6vw, 5rem);
+    padding: clamp(3rem, 8vw, 7rem) var(--mk-gutter) 11rem;
+    border-top: 1px solid var(--jl-line-strong);
+    background: var(--jl-panel);
+}
+
+.mk-cta-title {
+    position: relative;
+    margin: 0;
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.6rem, 8vw, 8rem);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: var(--jl-text);
+}
+
+.mk-cta-foot {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem 3rem;
+    margin-top: 2.5rem;
+
+    & .mk-lead {
+        margin-top: 0;
+        max-width: 30rem;
+    }
+}
+
+/* The waveform from the logo, playing along the floor of the page. */
+.mk-wave {
+    position: absolute;
+    inset: auto 0 0;
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 7rem;
+    padding: 0 var(--mk-gutter);
+    pointer-events: none;
+
+    & i {
+        flex: 1;
+        height: calc(var(--h) * 1%);
+        border-radius: 3px 3px 0 0;
+        background: var(--jl-brand);
+        opacity: 0.4;
+        transform-origin: bottom;
+        animation: mk-wave 2.4s ease-in-out calc(var(--i) * -0.09s) infinite;
+    }
+
+    & i:nth-child(3n) {
+        background: var(--jl-brand-2);
+    }
+}
+
+@keyframes mk-wave {
+    0%,
+    100% {
+        transform: scaleY(0.35);
+    }
+    50% {
+        transform: scaleY(1);
+    }
+}
+
+@media (max-width: 56rem) {
+    .mk-flow-list,
+    .mk-details-list,
+    .mk-rack-copy {
+        grid-template-columns: 1fr;
+    }
+    .mk-rack-copy .mk-lead {
+        grid-column: 1;
+        grid-row: 3;
+    }
+    .mk-rack-list {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+    /* Stacked, every step gets its own ruler line for the beat mark to hang from. */
+    .mk-flow-step + .mk-flow-step {
+        padding-top: 1.4rem;
+        border-top: 1px solid var(--jl-line-strong);
+    }
+    .mk-details-list li {
+        padding-bottom: 1.4rem;
+    }
+}
+
+@media (max-width: 40rem) {
+    .mk-rack-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .mk-nav .mk-navlink {
+        display: none;
+    }
+    .mk-foot {
+        flex-direction: column;
+    }
+}
+
+/* ---------- motion ---------- */
+
+/* Page load: the hero comes in on the beat, one line per eighth. */
+.mk-hero-foot > * {
+    animation: mk-rise 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.mk-hero-foot > :nth-child(1) {
+    animation-delay: 0.55s;
+}
+.mk-hero-foot > :nth-child(2) {
+    animation-delay: 0.68s;
+}
+
+.mk-h1 > span {
+    animation: mk-rise 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.mk-h1 > .mk-h1-first {
+    animation-delay: 0.15s;
+}
+.mk-h1 > .mk-h1-synth {
+    animation-delay: 0.3s;
+}
+.mk-h1 > .mk-h1-sampler {
+    animation-delay: 0.45s;
+}
+
+.mk-hero-demo {
+    animation: mk-rise 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+
+/* Active steps pop in column by column, like the grid being painted. */
+.demo-step[data-on='true'] {
+    animation: mk-pop 0.35s cubic-bezier(0.3, 1.4, 0.5, 1) calc(0.7s + var(--i) * 0.045s) both;
+}
+
+@keyframes mk-rise {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}
+
+@keyframes mk-pop {
+    from {
+        transform: scale(0.2);
+        opacity: 0;
+    }
+    to {
+        transform: none;
+        opacity: 1;
+    }
+}
+
+/* Scroll: sections wait below the fold until they enter, then rise in; children stagger via --i. */
+.mk--ready [data-reveal] {
+    opacity: 0;
+    translate: 0 24px;
+    transition: opacity 0.7s ease calc(var(--i, 0) * 0.08s), translate 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--i, 0) * 0.08s);
+
+    &.is-in {
+        opacity: 1;
+        translate: none;
+    }
+}
+
+/* Beat marks count in: one, two, three. */
+.mk-flow-beat {
+    animation: mk-beat 2.4s ease-in-out calc(var(--i) * 0.8s) infinite;
+}
+
+@keyframes mk-beat {
+    0%,
+    20%,
+    100% {
+        opacity: 0.55;
+    }
+    8% {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mk-hero-foot > *,
+    .mk-hero-wave path,
+    .mk-h1 > span,
+    .mk-hero-demo,
+    .demo-step[data-on='true'],
+    .mk-wave i,
+    .mk-band-row i,
+    .mk-flow-beat {
+        animation: none;
+    }
+    .mk-module:hover .mk-knob i {
+        transition: none;
+    }
+    .mk--ready [data-reveal] {
+        opacity: 1;
+        translate: none;
+        transition: none;
+    }
+}
+
+/* ---------- imprint ---------- */
+
+.mk-imprint {
+    max-width: 46rem;
+    padding-bottom: 2rem;
+}
+
+.mk-imprint-head {
+    padding: clamp(2rem, 6vw, 4rem) 0 1rem;
+}
+
+.mk-imprint-section {
+    padding: 2rem 0 0;
+
+    & p + p {
+        margin-top: 0.8rem;
+    }
+
+    & p {
+        color: var(--jl-muted);
+    }
+}
+
+.mk-imprint-address {
+    margin: 0 0 1rem;
+    padding: 1.2rem 1.4rem;
+    border-radius: 1rem;
+    background: var(--jl-panel);
+    border: 1px solid var(--jl-line);
+    font-style: normal;
+    line-height: 1.7;
+
+    & strong {
+        color: var(--jl-text);
+    }
+
+    & a {
+        color: var(--jl-brand);
+        text-decoration: none;
+    }
+}
+
+.mk-imprint-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.9rem;
+
+    & li {
+        padding-left: 1.1rem;
+        border-left: 2px solid var(--jl-line-strong);
+        color: var(--jl-muted);
+    }
+
+    & strong {
+        color: var(--jl-text);
+    }
+}

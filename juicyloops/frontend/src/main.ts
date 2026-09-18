@@ -1,11 +1,13 @@
 import '@/assets/css/main.css';
-import { createApp } from 'vue';
-import { router } from '@/router';
+import { createJuicyApp } from '@/createApp';
 import { theme } from '@/theme';
-import App from './app.vue';
 import { createPlausible } from 'v-plausible/vue';
 
-const app = createApp(App);
+const container = document.getElementById('app')!;
+/* Prerendered pages carry their markup already; in dev, and for the studio shell, the container is empty. */
+const hasMarkup = container.firstElementChild !== null;
+
+const { app, router } = createJuicyApp(hasMarkup);
 
 const plausible = createPlausible({
     init: {
@@ -19,9 +21,15 @@ const plausible = createPlausible({
     },
 });
 
-router(app);
 theme(app);
 
 app.use(plausible);
 
-app.mount('#app');
+/* Wait for the route so hydration sees the same tree the prerenderer produced. */
+router.isReady().then(() => {
+    /* A host that falls back to /index.html for an unknown route hands us the home page's markup: drop it. */
+    if (hasMarkup && router.currentRoute.value.meta.prerender !== true) {
+        container.replaceChildren();
+    }
+    app.mount(container);
+});
