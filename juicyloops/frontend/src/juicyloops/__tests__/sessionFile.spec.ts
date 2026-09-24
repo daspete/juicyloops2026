@@ -8,7 +8,7 @@ import type { SampleTickSnapshot } from '../ticks/SampleTick';
 import type { SynthTickSnapshot } from '../ticks/SynthTick';
 
 const synthTick: SynthTickSnapshot = { isActive: true, volume: 1, note: 'C5', duration: '16n' };
-const sampleTick: SampleTickSnapshot = { isActive: true, volume: 0.8, pitch: 2 };
+const sampleTick: SampleTickSnapshot = { isActive: true, volume: 0.8, note: 'D5' };
 
 const effects = { order: [], params: {} } as unknown as TrackState['effects'];
 
@@ -39,6 +39,9 @@ const sample = (id: string, type: 'sampler' | 'microphone', blob: Blob | null, n
     sampleStartTime: 0.1,
     sampleDuration: 0.5,
     isReversed: true,
+    pitch: -3,
+    speed: 1.5,
+    cuts: [0.2, 0.4],
 });
 
 const bytes = (...values: number[]) => new Blob([new Uint8Array(values)], { type: 'audio/wav' });
@@ -78,8 +81,8 @@ describe('session file', () => {
         expect(new Uint8Array(await tracks[0]!.sampleBlob!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
         expect(new Uint8Array(await tracks[1]!.sampleBlob!.arrayBuffer())).toEqual(new Uint8Array([9, 8, 7]));
         // The slice, the direction and the pattern travel with the sample.
-        expect(tracks[0]).toMatchObject({ sampleStartTime: 0.1, sampleDuration: 0.5, isReversed: true, isMuted: true });
-        expect(tracks[0]!.ticks[0]).toEqual({ isActive: true, volume: 0.8, pitch: 2 });
+        expect(tracks[0]).toMatchObject({ sampleStartTime: 0.1, sampleDuration: 0.5, isReversed: true, isMuted: true, pitch: -3, speed: 1.5, cuts: [0.2, 0.4] });
+        expect(tracks[0]!.ticks[0]).toEqual({ isActive: true, volume: 0.8, note: 'D5' });
         expect((tracks[0] as unknown as Record<string, unknown>).sampleAsset).toBeUndefined();
     });
 

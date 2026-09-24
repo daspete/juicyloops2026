@@ -16,10 +16,4 @@ export class SamplerTrack extends SampleTrack {
             this.isUpdatingSample = false;
         }
     }
-
-    async setSampleFromUrl(url: string): Promise<void> {
-        await this.player.load(url);
-        this.setSampleTimes(0, this.player.buffer.duration);
-        this.hasSample = true;
-    }
 }

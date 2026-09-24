@@ -31,6 +31,32 @@ export const shiftOctave = (note: string, direction: number): string => {
     return `${parsed.name}${octave}`;
 };
 
+/** Semitones above C0, e.g. 60 for C5. Null for strings that are not notes. */
+export const noteIndex = (note: string): number | null => {
+    const parsed = parseNote(note);
+    const semitone = parsed ? NOTE_NAMES.indexOf(parsed.name as (typeof NOTE_NAMES)[number]) : -1;
+    return parsed && semitone >= 0 ? parsed.octave * NOTE_NAMES.length + semitone : null;
+};
+
+/** The note `index` semitones above C0, clamped to the supported range. */
+export const noteAt = (index: number): string => {
+    const clamped = Math.max(0, Math.min(NOTE_NAMES.length * (MAX_OCTAVE + 1) - 1, Math.round(index)));
+    return `${NOTE_NAMES[clamped % NOTE_NAMES.length]}${Math.floor(clamped / NOTE_NAMES.length)}`;
+};
+
+/** Semitones from `from` up to `to` (negative when `to` is lower). Unknown notes count as the same pitch. */
+export const semitonesBetween = (from: string, to: string): number => {
+    const a = noteIndex(from);
+    const b = noteIndex(to);
+    return a === null || b === null ? 0 : b - a;
+};
+
+/** Moves a note by `semitones`, clamped to the supported range. Unknown notes are returned untouched. */
+export const transpose = (note: string, semitones: number): string => {
+    const index = noteIndex(note);
+    return index === null ? note : noteAt(index + semitones);
+};
+
 export const OSCILLATOR_TYPES = ['sine', 'square', 'triangle', 'sawtooth'] as const;
 export type OscillatorType = (typeof OSCILLATOR_TYPES)[number];
 

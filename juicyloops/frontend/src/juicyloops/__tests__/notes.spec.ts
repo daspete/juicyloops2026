@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ALL_NOTES_DESCENDING, MAX_OCTAVE, MIN_OCTAVE, NOTE_NAMES, OCTAVES, parseNote, shiftOctave } from '../notes';
+import { ALL_NOTES_DESCENDING, MAX_OCTAVE, MIN_OCTAVE, NOTE_NAMES, noteAt, noteIndex, OCTAVES, parseNote, semitonesBetween, shiftOctave, transpose } from '../notes';
 
 describe('notes', () => {
     it('lists every note of every octave from high to low', () => {
@@ -23,5 +23,16 @@ describe('notes', () => {
 
     it('leaves unknown notes untouched', () => {
         expect(shiftOctave('garbage', 1)).toBe('garbage');
+    });
+
+    it('counts and moves by semitones, clamped to the supported range', () => {
+        expect(noteIndex('C0')).toBe(0);
+        expect(noteIndex('C5')).toBe(60);
+        expect(noteIndex('nope')).toBeNull();
+        expect(noteAt(61)).toBe('C#5');
+        expect(semitonesBetween('C5', 'A4')).toBe(-3);
+        expect(transpose('B4', 1)).toBe('C5');
+        expect(transpose('C0', -5)).toBe('C0');
+        expect(transpose('nope', 2)).toBe('nope');
     });
 });

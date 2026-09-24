@@ -3,10 +3,14 @@ import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import { Icon } from '@iconify/vue';
 import { computed, ref, watch } from 'vue';
+import SamplePianoRoll from './SamplePianoRoll.vue';
 import TickGrid from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
 import SamplerFileUpload from './settings/SamplerFileUpload.vue';
+import SampleSliceTools from './settings/SampleSliceTools.vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
+import { sampleTickLabel } from './sampleNotes';
+import { TRACK_META } from './trackMeta';
 
 const props = defineProps<{
     track: SamplerTrack;
@@ -20,6 +24,9 @@ const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -
 const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
 
 const isWaveformExpanded = ref(false);
+
+/** The piano roll: which slice (or pitch) every step plays. */
+const isPianoRollExpanded = ref(false);
 const isDragOver = ref(false);
 
 /** Show the waveform as soon as the first sample lands, so the trim region is discoverable. */
@@ -46,17 +53,33 @@ const onDrop = async (event: DragEvent) => {
                 type="button"
                 class="tool"
                 :disabled="!props.track.hasSample"
+                :data-active="isPianoRollExpanded"
+                v-tooltip.bottom="props.track.isSliced ? 'Pick the slice each step plays' : 'Pick the pitch of each step'"
+                :aria-pressed="isPianoRollExpanded"
+                @click="isPianoRollExpanded = !isPianoRollExpanded"
+            >
+                <Icon icon="material-symbols:piano" class="w-4 h-4" />
+                <span>Notes</span>
+            </button>
+            <button
+                type="button"
+                class="tool"
+                :disabled="!props.track.hasSample"
                 :data-active="isWaveformExpanded"
-                v-tooltip.bottom="'Trim the part of the sample that plays'"
+                v-tooltip.bottom="'Trim the part of the sample that plays and cut it into slices'"
                 :aria-pressed="isWaveformExpanded"
                 @click="isWaveformExpanded = !isWaveformExpanded"
             >
                 <Icon icon="mdi:waveform" class="w-4 h-4" />
-                <span>Trim</span>
+                <span>Slice</span>
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)">
+            <template #default="{ tick }">
+                <span class="tick-label">{{ sampleTickLabel(props.track, tick) }}</span>
+            </template>
+        </TickGrid>
         <div
             v-else
             class="dropzone track-steps"
@@ -73,6 +96,7 @@ const onDrop = async (event: DragEvent) => {
         <template #expanded>
             <div v-if="props.track.hasSample && !props.track.isUpdatingSample && isWaveformExpanded" class="lane-stack">
                 <TrackWaveform :track="props.track" />
+                <SampleSliceTools :track="props.track" />
                 <div class="lane-foot">
                     <span class="setting-file" :title="props.track.sampleName ?? ''">{{ props.track.sampleName }}</span>
                     <SamplerFileUpload :track="props.track" label="Change sample" />
@@ -82,4 +106,12 @@ const onDrop = async (event: DragEvent) => {
         </template>
 
     </TrackShell>
+
+    <SamplePianoRoll
+        v-model:visible="isPianoRollExpanded"
+        :track="props.track"
+        :current-tick="currentTick"
+        :header="`Notes · Sampler ${props.trackIndex + 1}`"
+        :accent="TRACK_META.sampler.accent"
+    />
 </template>

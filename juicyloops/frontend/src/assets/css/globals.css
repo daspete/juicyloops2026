@@ -144,6 +144,12 @@
     border-color: var(--jl-line-strong);
 }
 
+.chip:disabled {
+    opacity: 0.45;
+    cursor: default;
+    pointer-events: none;
+}
+
 .chip[data-active='true'] {
     background: color-mix(in oklab, var(--jl-accent) 18%, transparent);
     border-color: color-mix(in oklab, var(--jl-accent) 60%, transparent);
@@ -2154,10 +2160,6 @@
     50% {
         opacity: 0.2;
     }
-}
-
-.waveform--reversed ::part(canvases) {
-    transform: scaleX(-1);
 }
 
 /* ---------- container strip ---------- */

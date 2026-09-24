@@ -18,8 +18,19 @@ describe('ticks', () => {
 
     it('serializes its own fields', () => {
         const tick = new SampleTick();
-        tick.pitch = 3;
+        tick.note = 'D#5';
 
-        expect(tick.serialize()).toEqual({ isActive: false, volume: 1, pitch: 3 });
+        expect(tick.serialize()).toEqual({ isActive: false, volume: 1, note: 'D#5' });
+    });
+
+    it('turns the semitone offset of old sample snapshots into a note above the root', () => {
+        const tick = new SampleTick();
+        tick.restore({ isActive: true, volume: 0.5, pitch: 3 } as never);
+
+        expect(tick.serialize()).toEqual({ isActive: true, volume: 0.5, note: 'D#5' });
+        expect('pitch' in tick).toBe(false);
+
+        tick.restore({ isActive: true, volume: 1 } as never);
+        expect(tick.note).toBe('C5');
     });
 });

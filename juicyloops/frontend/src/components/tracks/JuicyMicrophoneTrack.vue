@@ -3,9 +3,13 @@ import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { Icon } from '@iconify/vue';
 import { computed, ref } from 'vue';
+import SamplePianoRoll from './SamplePianoRoll.vue';
 import TickGrid from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
+import SampleSliceTools from './settings/SampleSliceTools.vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
+import { sampleTickLabel } from './sampleNotes';
+import { TRACK_META } from './trackMeta';
 
 const props = defineProps<{
     track: MicrophoneTrack;
@@ -19,6 +23,9 @@ const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -
 const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
 
 const isWaveformExpanded = ref(false);
+
+/** The piano roll: which slice (or pitch) every step plays. */
+const isPianoRollExpanded = ref(false);
 
 const recordLabel = computed(() => {
     if (props.track.isRecording) {
@@ -43,17 +50,33 @@ const toggleRecording = async () => {
                 type="button"
                 class="tool"
                 :disabled="!props.track.hasSample"
+                :data-active="isPianoRollExpanded"
+                v-tooltip.bottom="props.track.isSliced ? 'Pick the slice each step plays' : 'Pick the pitch of each step'"
+                :aria-pressed="isPianoRollExpanded"
+                @click="isPianoRollExpanded = !isPianoRollExpanded"
+            >
+                <Icon icon="material-symbols:piano" class="w-4 h-4" />
+                <span>Notes</span>
+            </button>
+            <button
+                type="button"
+                class="tool"
+                :disabled="!props.track.hasSample"
                 :data-active="isWaveformExpanded"
-                v-tooltip.bottom="'Trim the part of the recording that plays'"
+                v-tooltip.bottom="'Trim the part of the recording that plays and cut it into slices'"
                 :aria-pressed="isWaveformExpanded"
                 @click="isWaveformExpanded = !isWaveformExpanded"
             >
                 <Icon icon="mdi:waveform" class="w-4 h-4" />
-                <span>Trim</span>
+                <span>Slice</span>
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)" />
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)">
+            <template #default="{ tick }">
+                <span class="tick-label">{{ sampleTickLabel(props.track, tick) }}</span>
+            </template>
+        </TickGrid>
         <div v-else class="track-steps track-empty">
             <button type="button" class="recbtn" :data-recording="props.track.isRecording" @click="toggleRecording">
                 <span class="rec-dot"></span>
@@ -67,6 +90,7 @@ const toggleRecording = async () => {
         <template #expanded>
             <div v-if="props.track.hasSample && isWaveformExpanded" class="lane-stack">
                 <TrackWaveform v-if="!props.track.isRecording" :track="props.track" />
+                <SampleSliceTools v-if="!props.track.isRecording" :track="props.track" />
                 <div class="lane-foot">
                     <button type="button" class="recbtn" :data-recording="props.track.isRecording" @click="toggleRecording">
                         <span class="rec-dot"></span>
@@ -78,4 +102,12 @@ const toggleRecording = async () => {
         </template>
 
     </TrackShell>
+
+    <SamplePianoRoll
+        v-model:visible="isPianoRollExpanded"
+        :track="props.track"
+        :current-tick="currentTick"
+        :header="`Notes · Mic ${props.trackIndex + 1}`"
+        :accent="TRACK_META.microphone.accent"
+    />
 </template>
