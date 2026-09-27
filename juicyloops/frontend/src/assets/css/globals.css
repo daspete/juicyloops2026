@@ -3630,6 +3630,221 @@
     color: var(--jl-muted);
 }
 
+/* ---------- container windows (song view) ---------- */
+
+/*
+ * Floating editors over the song: one container's tracks each. The layer covers the song view and lets clicks
+ * through to the playlist; only the windows themselves catch the pointer.
+ */
+.songpage {
+    position: relative;
+}
+
+.cwin-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.cwin {
+    --jl-clip: hsl(var(--jl-clip-hue) 80% 62%);
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-radius: 0.75rem;
+    border: 1px solid var(--jl-line-strong);
+    background: var(--jl-bg);
+    box-shadow:
+        var(--jl-shadow),
+        0 18px 50px -18px rgba(0, 0, 0, 0.45);
+    overflow: hidden;
+    pointer-events: auto;
+}
+
+.cwin--maximized {
+    inset: 0;
+    border-radius: 0;
+    border: none;
+}
+
+.cwin-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    height: 2.2rem;
+    padding: 0 0.35rem 0 0.7rem;
+    border-bottom: 1px solid var(--jl-line);
+    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-clip) 22%, var(--jl-panel)), var(--jl-panel) 60%);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.cwin--maximized .cwin-bar {
+    cursor: default;
+}
+
+.cwin--dragging,
+.cwin--dragging .cwin-bar {
+    cursor: grabbing;
+}
+
+.cwin-swatch {
+    flex-shrink: 0;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 0.2rem;
+    background: linear-gradient(135deg, hsl(var(--jl-clip-hue) 85% 66%), hsl(calc(var(--jl-clip-hue) + 25) 85% 56%));
+}
+
+.cwin-name {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--jl-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 16rem;
+}
+
+.cwin-input {
+    width: 12rem;
+    height: 1.5rem;
+    padding: 0 0.4rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--jl-focus);
+    background: var(--jl-surface);
+    color: var(--jl-text);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.cwin-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.72rem;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+.cwin-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.05rem 0.4rem;
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--jl-clip) 22%, transparent);
+    color: var(--jl-text);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.6rem;
+}
+
+.cwin-live i {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 50%;
+    background: var(--jl-clip);
+    animation: cwinlive 1s ease-in-out infinite;
+}
+
+@keyframes cwinlive {
+    50% {
+        opacity: 0.35;
+    }
+}
+
+.cwin-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* A narrow window scrolls sideways instead of shrinking the pads to nothing. */
+.cwin .timeline {
+    --jl-lane: max(
+        min(calc(100cqw - var(--jl-head-space) - 2 * var(--jl-row-pad)), calc(8 * (4 * var(--jl-cell-max) + 3 * var(--jl-cell-gap)) + 7 * var(--jl-beat-gap))),
+        34rem
+    );
+}
+
+/* Invisible grips along the sides and the bottom corners. */
+.cwin-edge {
+    position: absolute;
+    z-index: 6;
+    touch-action: none;
+}
+
+.cwin-edge--e,
+.cwin-edge--w {
+    top: 2.2rem;
+    bottom: 0.75rem;
+    width: 7px;
+    cursor: ew-resize;
+}
+
+.cwin-edge--e {
+    right: 0;
+}
+
+.cwin-edge--w {
+    left: 0;
+}
+
+.cwin-edge--s {
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0;
+    height: 7px;
+    cursor: ns-resize;
+}
+
+.cwin-edge--se,
+.cwin-edge--sw {
+    bottom: 0;
+    width: 0.9rem;
+    height: 0.9rem;
+}
+
+.cwin-edge--se {
+    right: 0;
+    cursor: nwse-resize;
+    background: linear-gradient(135deg, transparent 55%, var(--jl-line-strong) 55%, var(--jl-line-strong) 62%, transparent 62%, transparent 72%, var(--jl-line-strong) 72%, var(--jl-line-strong) 79%, transparent 79%);
+}
+
+.cwin-edge--sw {
+    left: 0;
+    cursor: nesw-resize;
+}
+
+/* The empty state of a window: the same cards, smaller. */
+.hero--compact {
+    gap: 1.1rem;
+    padding: 1rem;
+}
+
+.hero--compact .hero-title {
+    font-size: 1.6rem;
+}
+
+.hero--compact .hero-text {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.hero--compact .addcard {
+    width: 12.5rem;
+    padding: 0.9rem 1rem;
+}
+
 /* ---------- automation lanes (arranger) ---------- */
 
 .arr-row--section {

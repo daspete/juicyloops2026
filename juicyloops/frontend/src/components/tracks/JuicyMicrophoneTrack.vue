@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useTrackPlayhead } from '@/composables/useContainerView';
 import type { MicrophoneTrack } from '@/juicyloops/tracks/MicrophoneTrack';
 import { Icon } from '@iconify/vue';
 import { computed, ref } from 'vue';
@@ -16,11 +16,9 @@ const props = defineProps<{
     trackIndex: number;
 }>();
 
-const { currentTick: playingStep, trackStep, isPlaying } = useJuicyLoops();
 
-/** The playhead inside this track's own pattern; off the grid while stopped, so no pad is lit for nothing. */
-const currentTick = computed(() => (isPlaying.value ? trackStep(props.track) : -1));
-const sectionStep = computed(() => (isPlaying.value ? playingStep.value : -1));
+/** The playhead inside this track's own pattern and inside the ruler's section; off the grid while silent, so no pad is lit for nothing. */
+const { currentTick, sectionStep } = useTrackPlayhead(() => props.track);
 
 const isWaveformExpanded = ref(false);
 

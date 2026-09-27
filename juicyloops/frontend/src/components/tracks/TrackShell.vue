@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useContainerView } from '@/composables/useContainerView';
 import { useExport } from '@/composables/useExport';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useWorkspace } from '@/composables/useWorkspace';
@@ -28,7 +29,8 @@ const props = defineProps<{
     hasGrid?: boolean;
 }>();
 
-const { removeTrack, duplicateTrack, currentContainer } = useJuicyLoops();
+const { removeTrack, duplicateTrack } = useJuicyLoops();
+const { container } = useContainerView();
 const { openDialog: openExport } = useExport();
 const { selectedTrack, selectTrack, openTrack, isTrackShowing, toggleDetail, isPro } = useWorkspace();
 const confirm = useConfirm();
@@ -56,7 +58,7 @@ const toggleTweak = () => {
     }
 };
 
-const exportTrack = () => openExport({ scope: { kind: 'track', containerId: currentContainer.value.id, trackId: props.track.id, repeats: 1 } });
+const exportTrack = () => openExport({ scope: { kind: 'track', containerId: container.value.id, trackId: props.track.id, repeats: 1 } });
 
 const confirmRemove = (event: MouseEvent) => {
     confirm.require({
@@ -66,7 +68,7 @@ const confirmRemove = (event: MouseEvent) => {
         rejectLabel: 'Keep',
         acceptProps: { severity: 'danger', size: 'small' },
         rejectProps: { text: true, size: 'small' },
-        accept: () => removeTrack(props.track.id),
+        accept: () => removeTrack(props.track.id, container.value),
     });
 };
 </script>
@@ -82,7 +84,7 @@ const confirmRemove = (event: MouseEvent) => {
                     <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Pattern in the panel below.'">{{ props.track.length }}</span>
                     <div class="flex-1"></div>
                     <span class="track-actions">
-                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id)">
+                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id, container)">
                             <Icon icon="mdi:content-copy" class="w-3.5 h-3.5" />
                         </button>
                         <button type="button" class="iconbtn iconbtn--tiny" aria-label="Export track as audio" v-tooltip.bottom="'Export this track as WAV or MP3'" @click="exportTrack">

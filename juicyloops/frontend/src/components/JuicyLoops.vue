@@ -41,7 +41,6 @@ const confirm = useConfirm();
 const isSongView = computed(() => route.name === 'app.song');
 watch(isSongView, (value) => setPlaybackMode(value ? 'song' : 'loop'), { immediate: true });
 
-/* The track panel belongs to the track view: the song view hides it (and its chip) and shows it again on the way back. */
 /* Quick mode has no song view: leaving Pro while arranging brings you back to the tracks. */
 watch(
     [isPro, isSongView],
@@ -66,7 +65,7 @@ const MODES = [
 /** What the status bar suggests, depending on where you are. */
 const statusHint = computed(() => {
     if (isSongView.value) {
-        return 'Right-click deletes · Shift+drag clones · Ctrl+drag selects · Alt ignores the grid · Ctrl+wheel zooms';
+        return 'Double-click a container or clip to edit its tracks · Right-click deletes · Shift+drag clones · Ctrl+drag selects · Ctrl+wheel zooms';
     }
     return isPro.value
         ? 'Tap a pad to add a step · Drag across pads to paint · Automate on a track head opens its lanes'
@@ -464,7 +463,7 @@ onBeforeUnmount(() => {
                     </button>
                 </div>
                 <button
-                    v-if="!isSongView && !isPhone"
+                    v-if="!isPhone"
                     type="button"
                     class="chip"
                     :data-active="isDetailOpen"
@@ -504,7 +503,7 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="stage">
-            <DetailPanel v-if="isDetailOpen && !isSongView" />
+            <DetailPanel v-if="isDetailOpen" />
             <main class="workspace">
                 <Suspense>
                     <RouterView v-slot="{ Component }">
@@ -523,7 +522,6 @@ onBeforeUnmount(() => {
                 </RouterLink>
             </template>
             <button
-                v-if="!isSongView"
                 type="button"
                 class="bottombar-item"
                 :data-active="isDetailOpen"

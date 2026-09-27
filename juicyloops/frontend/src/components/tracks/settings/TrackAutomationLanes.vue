@@ -3,7 +3,7 @@ import { paramTitle, type AutomationParam, type StepAutomationLane } from '@/jui
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
 import { computed } from 'vue';
-import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useContainerView } from '@/composables/useContainerView';
 import AutomationCurve from '@/components/ui/AutomationCurve.vue';
 import AutomationLaneHead from '@/components/ui/AutomationLaneHead.vue';
 import { BEAT_SIZE } from '../steps';
@@ -22,11 +22,11 @@ const emit = defineEmits<{
     close: [];
 }>();
 
-const { trackStep, isPlaying, tracks } = useJuicyLoops();
+const { container, step } = useContainerView();
 
 const meta = computed(() => TRACK_META[props.track.type]);
-const trackName = computed(() => `${meta.value.label} ${tracks.value.indexOf(props.track) + 1}`);
-const currentStep = computed(() => (isPlaying.value ? trackStep(props.track) : null));
+const trackName = computed(() => `${meta.value.label} ${container.value.tracks.indexOf(props.track) + 1}`);
+const currentStep = computed(() => (step.value === null ? null : props.track.stepOf(step.value)));
 
 const groups = computed(() => {
     const byGroup = new Map<string, AutomationParam[]>();

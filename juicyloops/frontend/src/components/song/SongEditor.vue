@@ -3,6 +3,7 @@ import { Icon } from '@iconify/vue';
 import { useConfirm, useToast } from 'primevue';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
+import { useContainerWindows } from '@/composables/useContainerWindows';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { STEP_COUNT } from '@/juicyloops/constants';
 import type { SongAutomationLane as SongAutomationLaneModel } from '@/juicyloops/automation';
@@ -10,6 +11,8 @@ import { SONG_SNAP, SONG_STEPS_PER_BAR, snapStep, type ClipSpec, type SongClip, 
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import { TRACK_META } from '../tracks/trackMeta';
 import ClipPreview from './ClipPreview.vue';
+import ContainerWindows from './ContainerWindows.vue';
+import { containerHue as hueOf } from './containerHue';
 import SongAutomationLane from './SongAutomationLane.vue';
 import SongMenu, { type SongMenuItem } from './SongMenu.vue';
 
@@ -24,6 +27,9 @@ import SongMenu, { type SongMenuItem } from './SongMenu.vue';
  *
  * The ruler sets the song position marker (click) or the loop region (drag). Ctrl+wheel zooms, Alt+wheel
  * changes the lane height. Automation lanes below the clips draw a value over the same timeline.
+ *
+ * Containers are edited right here, in floating windows over the timeline (double-click a container or a clip),
+ * so tracks can be changed while the song plays.
  */
 const { bpm, containers, currentContainer, song, currentStep, isPlaying, songLoop, cueSong, selectContainer, duplicateContainer, addContainer, resolveTarget } = useJuicyLoops();
 const confirm = useConfirm();
@@ -136,14 +142,7 @@ const spanStyle = (span: { start: number; length: number }) => ({
 });
 
 /** One hue per container, so clips of the same container look the same everywhere. */
-const CLIP_HUES = [275, 330, 25, 95, 190, 50, 150, 230];
-const containerHue = (id: string) =>
-    CLIP_HUES[
-        Math.max(
-            0,
-            containers.value.findIndex((container) => container.id === id),
-        ) % CLIP_HUES.length
-    ]!;
+const containerHue = (id: string) => hueOf(containers.value, id);
 const containerById = (id: string) => containers.value.find((container) => container.id === id);
 const containerName = (id: string) => containerById(id)?.name ?? 'Removed container';
 
@@ -319,15 +318,25 @@ const splitAtCue = (clip: SongClip) => {
     }
 };
 
+const windowLayer = ref<InstanceType<typeof ContainerWindows> | null>(null);
+const { open: openWindow, activeId: activeWindowId } = useContainerWindows();
+
+/** Opens the container's window over the song, where its tracks can be changed while the song plays. */
 const editContainer = (containerId: string) => {
+    if (windowLayer.value) {
+        openWindow(containerId, windowLayer.value.area);
+    }
+};
+
+/** Takes the container to the track view, which loops it on its own. */
+const openInTrackView = (containerId: string) => {
     selectContainer(containerId);
     router.push({ name: 'app.index' });
 };
 
-/** A fresh container, opened in the track view to fill it. */
+/** A fresh container, opened in its window to fill it. */
 const newContainer = () => {
-    addContainer();
-    router.push({ name: 'app.index' });
+    editContainer(addContainer().id);
 };
 
 /** A new automation lane starts on the master's level; the lane's own menus change what it drives. */
@@ -411,7 +420,8 @@ const openClipMenu = (event: MouseEvent, clip: SongClip) => {
         y: event.clientY,
         title: many ? `${ids.length} clips` : containerName(clip.containerId),
         items: [
-            { label: 'Edit container', icon: 'mdi:dots-grid', action: () => editContainer(clip.containerId) },
+            { label: 'Edit container', icon: 'mdi:application-edit-outline', action: () => editContainer(clip.containerId) },
+            { label: 'Open in the track view', icon: 'mdi:dots-grid', action: () => openInTrackView(clip.containerId) },
             { label: 'Use as brush', icon: 'mdi:brush', action: () => setBrush(clip.containerId, clip.length) },
             {
                 label: `Select all "${containerName(clip.containerId)}"`,
@@ -468,7 +478,8 @@ const openPickerMenu = (event: MouseEvent, container: TrackContainer) => {
         title: container.name,
         items: [
             { label: 'Use as brush', icon: 'mdi:brush', action: () => pickBrush(container) },
-            { label: 'Edit container', icon: 'mdi:dots-grid', action: () => editContainer(container.id) },
+            { label: 'Edit container', icon: 'mdi:application-edit-outline', action: () => editContainer(container.id) },
+            { label: 'Open in the track view', icon: 'mdi:dots-grid', action: () => openInTrackView(container.id) },
             { label: 'Duplicate container', icon: 'mdi:content-duplicate', action: () => void duplicateContainer(container.id) },
             {
                 label: `Select its clips (${count})`,
@@ -1086,7 +1097,8 @@ const isTypingTarget = (target: EventTarget | null) => {
 const TOOL_KEYS: Record<string, Tool> = { p: 'draw', b: 'paint', d: 'erase', t: 'mute', c: 'slice', e: 'select' };
 
 const onKeyDown = (event: KeyboardEvent) => {
-    if (isTypingTarget(event.target) || menu.value) {
+    // While a container window has the keyboard, keys belong to its tracks, not to the playlist.
+    if (isTypingTarget(event.target) || menu.value || activeWindowId.value) {
         return;
     }
     const key = event.key.toLowerCase();
@@ -1192,16 +1204,22 @@ const statusText = computed(() => {
 </script>
 
 <template>
-    <div class="page">
+    <div class="page songpage">
         <div v-if="!hasTracks" class="hero">
             <div>
                 <h2 class="hero-title">Nothing to arrange yet</h2>
-                <p class="hero-text">A song is built from track containers. Put a few tracks into one first, then come back and lay it out.</p>
+                <p class="hero-text">A song is built from track containers. Put a few tracks into one first, then lay it out.</p>
             </div>
-            <RouterLink :to="{ name: 'app.index' }" class="playbtn playbtn--wide">
-                <Icon icon="mdi:dots-grid" class="w-5 h-5" />
-                <span>Go to tracks</span>
-            </RouterLink>
+            <div class="flex flex-wrap justify-center gap-3">
+                <button type="button" class="playbtn playbtn--wide" @click="editContainer(currentContainer.id)">
+                    <Icon icon="mdi:application-edit-outline" class="w-5 h-5" />
+                    <span>Add tracks to {{ currentContainer.name }}</span>
+                </button>
+                <RouterLink :to="{ name: 'app.index' }" class="chip">
+                    <Icon icon="mdi:dots-grid" class="w-4 h-4" />
+                    <span>Go to the track view</span>
+                </RouterLink>
+            </div>
         </div>
 
         <template v-else>
@@ -1380,7 +1398,7 @@ const statusText = computed(() => {
                             </span>
                         </div>
                     </div>
-                    <p class="picker-hint">Click to pick the brush, drag onto a lane, double-click to edit.</p>
+                    <p class="picker-hint">Click to pick the brush, drag onto a lane, double-click to edit its tracks.</p>
                 </aside>
 
                 <div
@@ -1596,5 +1614,7 @@ const statusText = computed(() => {
 
             <SongMenu v-if="menu" :items="menu.items" :x="menu.x" :y="menu.y" :title="menu.title" @close="closeMenu" />
         </template>
+
+        <ContainerWindows ref="windowLayer" />
     </div>
 </template>

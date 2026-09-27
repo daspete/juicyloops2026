@@ -52,9 +52,6 @@ engine.onStep((step) => {
     }
 });
 
-/** Where the playhead sits inside one track's own pattern. */
-const trackStep = (track: BaseTrack): number => track.stepOf(currentStep.value);
-
 const clampBpm = (value: number): number => Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(value)));
 
 const setBpm = (value: number): void => {
@@ -163,19 +160,19 @@ const renameContainer = (id: string, name: string): void => {
     }
 };
 
-/* ---- tracks of the current container ---- */
+/* ---- tracks, of the current container unless another one is named ---- */
 
-const addTrack = <T extends TrackType>(type: T): TrackOf<T> => currentContainer.value.addTrack(type);
+const addTrack = <T extends TrackType>(type: T, container: TrackContainer = currentContainer.value): TrackOf<T> => container.addTrack(type);
 
-const removeTrack = (id: string): void => {
-    currentContainer.value.removeTrack(id);
+const removeTrack = (id: string, container: TrackContainer = currentContainer.value): void => {
+    container.removeTrack(id);
     song.value.removeTrack(id);
 };
 
 /** What a song automation lane drives, or undefined when it was deleted. */
 const resolveTarget = (target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined => engine.resolveTarget(target);
 
-const duplicateTrack = (id: string): Promise<BaseTrack | null> => currentContainer.value.duplicateTrack(id);
+const duplicateTrack = (id: string, container: TrackContainer = currentContainer.value): Promise<BaseTrack | null> => container.duplicateTrack(id);
 
 export const useJuicyLoops = () => ({
     engine,
@@ -184,7 +181,6 @@ export const useJuicyLoops = () => ({
     tapTempo,
     currentTick,
     currentStep,
-    trackStep,
     isPlaying,
     play,
     stop,
