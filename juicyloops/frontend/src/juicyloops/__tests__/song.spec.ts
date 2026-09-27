@@ -119,4 +119,83 @@ describe('Song', () => {
         song.removeLane(second!.id);
         expect(song.lanes).toEqual([first]);
     });
+
+    it('silences muted clips and every lane but the soloed ones', () => {
+        const { song, lane, clip } = songWithClip();
+        const other = song.addLane();
+        song.addClip(other.id, 'b', 16, 16);
+
+        clip.isMuted = true;
+        expect(song.playingAt(20)).toEqual(new Map([['b', 4]]));
+        clip.isMuted = false;
+
+        lane.isSolo = true;
+        expect(song.playingAt(20)).toEqual(new Map([['a', 4]]));
+        lane.isMuted = true;
+        expect(song.playingAt(20)).toEqual(new Map([['a', 4]]));
+    });
+
+    it('snaps to the editing grid', () => {
+        const song = new Song();
+        const lane = song.lanes[0]!;
+        song.grid = 1;
+        expect(song.addClip(lane.id, 'a', 5, 3)).toMatchObject({ start: 5, length: 3 });
+        song.grid = SONG_STEPS_PER_BAR;
+        expect(song.addClip(lane.id, 'a', 20, 20)).toMatchObject({ start: 16, length: 16 });
+    });
+
+    it('moves and copies several clips together, all or nothing', () => {
+        const { song, lane, clip } = songWithClip();
+        const other = song.addLane();
+        const below = song.addClip(other.id, 'b', 48, 16)!;
+
+        expect(song.canMoveClips([clip.id, below.id], -16, 0)).toBe(true);
+        expect(song.canMoveClips([clip.id, below.id], -32, 0)).toBe(false);
+        expect(song.canMoveClips([clip.id, below.id], 0, 1)).toBe(false);
+
+        expect(song.moveClips([clip.id, below.id], 16, 0)).toBe(true);
+        expect(clip.start).toBe(32);
+        expect(below.start).toBe(64);
+
+        expect(song.moveClips([clip.id], 0, 1)).toBe(true);
+        expect(song.laneOf(clip.id)).toBe(other);
+        expect(lane.clips).toHaveLength(0);
+
+        expect(song.copyClips([clip.id], 0, 0)).toBeNull();
+        const copies = song.copyClips([clip.id], 0, -1)!;
+        expect(copies).toHaveLength(1);
+        expect(lane.clips[0]).toMatchObject({ start: 32, length: 32, containerId: 'a' });
+    });
+
+    it('duplicates a selection right behind itself and pastes clips where asked', () => {
+        const { song, lane, clip } = songWithClip();
+        const other = song.addLane();
+        song.addClip(other.id, 'b', 0, 16);
+        clip.isMuted = true;
+
+        const copies = song.duplicateClips(song.clips.map((candidate) => candidate.id))!;
+        expect(copies.map((copy) => copy.start).sort((a, b) => a - b)).toEqual([48, 64]);
+        expect(lane.clips.map((candidate) => candidate.start)).toEqual([16, 64]);
+        expect(lane.clips[1]!.isMuted).toBe(true);
+
+        expect(song.placeClips([{ laneId: lane.id, containerId: 'c', start: 0, length: 16 }])).toHaveLength(1);
+        expect(song.placeClips([{ laneId: lane.id, containerId: 'c', start: 90, length: 8 }, { laneId: lane.id, containerId: 'c', start: 0, length: 8 }])).toBeNull();
+        expect(song.clips.some((candidate) => candidate.start === 90)).toBe(false);
+    });
+
+    it('inserts and clears lanes, and restores solo', () => {
+        const { song, lane } = songWithClip();
+        const first = song.addLane('First', 0);
+        expect(song.lanes[0]).toBe(first);
+
+        lane.isSolo = true;
+        const state = song.capture();
+        song.clearLane(lane.id);
+        lane.isSolo = false;
+        expect(lane.clips).toHaveLength(0);
+
+        song.restore(state);
+        expect(lane.clips).toHaveLength(1);
+        expect(lane.isSolo).toBe(true);
+    });
 });

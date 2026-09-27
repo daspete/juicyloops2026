@@ -7,7 +7,7 @@ export interface SongState {
     automation: SongAutomationLane[];
 }
 
-/** Steps per bar; the song grid snaps to beats of `SONG_SNAP` steps. */
+/** Steps per bar; the song grid snaps to beats of `SONG_SNAP` steps unless the editor picks another grid. */
 export const SONG_STEPS_PER_BAR = 16;
 export const SONG_SNAP = 4;
 
@@ -22,6 +22,18 @@ export interface SongClip {
     start: number;
     length: number;
     offset: number;
+    /** A muted clip stays in place but is silent. Optional, so songs saved before it existed still load. */
+    isMuted?: boolean;
+}
+
+/** A clip to lay down: where, what, and optionally where inside its patterns it begins and whether it is muted. */
+export interface ClipSpec {
+    laneId: string;
+    containerId: string;
+    start: number;
+    length: number;
+    offset?: number;
+    isMuted?: boolean;
 }
 
 /** A horizontal lane of clips, like a track in a DAW. Clips on one lane never overlap. */
@@ -29,13 +41,15 @@ export interface SongLane {
     readonly id: string;
     name: string;
     isMuted: boolean;
+    /** While any lane is soloed, only soloed lanes play. Optional for songs saved before solo existed. */
+    isSolo?: boolean;
     readonly clips: SongClip[];
 }
 
-/** Snaps a step to the song grid. */
-export const snapStep = (step: number): number => Math.max(0, Math.round(step / SONG_SNAP) * SONG_SNAP);
+/** Snaps a step to a grid of `grid` steps (a beat unless told otherwise). */
+export const snapStep = (step: number, grid = SONG_SNAP): number => Math.max(0, Math.round(step / grid) * grid);
 
-const createLane = (name: string, id = createId()): SongLane => ({ id, name, isMuted: false, clips: [] });
+const createLane = (name: string, id = createId()): SongLane => ({ id, name, isMuted: false, isSolo: false, clips: [] });
 
 /**
  * The arrangement: lanes of clips on a shared timeline measured in steps, plus automation lanes
@@ -47,6 +61,12 @@ const createLane = (name: string, id = createId()): SongLane => ({ id, name, isM
 export class Song {
     readonly lanes: SongLane[] = [];
     readonly automation: SongAutomationLane[] = [];
+
+    /**
+     * The editing grid in steps: where clips land, how they resize and where they split. An editor setting,
+     * not part of the song, so history and files leave it alone.
+     */
+    grid = SONG_SNAP;
 
     constructor(laneCount = 1) {
         for (let i = 0; i < Math.max(1, laneCount); i++) {
@@ -72,16 +92,18 @@ export class Song {
 
     /**
      * What sounds at a step: for every container, the position inside its patterns.
-     * Muted lanes stay silent, and a container placed on several lanes at once plays once.
+     * Muted lanes and clips stay silent, soloed lanes silence every other lane,
+     * and a container placed on several lanes at once plays once.
      */
     playingAt(step: number): Map<string, number> {
         const result = new Map<string, number>();
+        const hasSolo = this.lanes.some((lane) => lane.isSolo);
         for (const lane of this.lanes) {
-            if (lane.isMuted) {
+            if (hasSolo ? !lane.isSolo : lane.isMuted) {
                 continue;
             }
             for (const clip of lane.clips) {
-                if (step >= clip.start && step < clip.start + clip.length && !result.has(clip.containerId)) {
+                if (!clip.isMuted && step >= clip.start && step < clip.start + clip.length && !result.has(clip.containerId)) {
                     result.set(clip.containerId, step - clip.start + clip.offset);
                 }
             }
@@ -91,10 +113,16 @@ export class Song {
 
     /* ---- lanes ---- */
 
-    addLane(name = `Lane ${this.lanes.length + 1}`): SongLane {
+    /** Adds a lane at the end, or at `index`. */
+    addLane(name = `Lane ${this.lanes.length + 1}`, index = this.lanes.length): SongLane {
         const lane = createLane(name);
-        this.lanes.push(lane);
+        this.lanes.splice(Math.min(Math.max(0, index), this.lanes.length), 0, lane);
         return lane;
+    }
+
+    /** Removes every clip from a lane, the lane itself stays. */
+    clearLane(id: string): void {
+        this.getLane(id)?.clips.splice(0);
     }
 
     getLane(id: string): SongLane | undefined {
@@ -130,17 +158,18 @@ export class Song {
         return this.lanes.find((lane) => lane.clips.some((clip) => clip.id === clipId));
     }
 
-    /** Whether a clip of `length` steps starting at `start` would be free of other clips on the lane (`ignoreId` excluded). */
-    isFree(laneId: string, start: number, length: number, ignoreId?: string): boolean {
+    /** Whether a clip of `length` steps starting at `start` would be free of other clips on the lane (`ignore` excluded). */
+    isFree(laneId: string, start: number, length: number, ignore?: string | ReadonlySet<string>): boolean {
         const lane = this.getLane(laneId);
-        return !!lane && lane.clips.every((clip) => clip.id === ignoreId || clip.start + clip.length <= start || clip.start >= start + length);
+        const ignored = (id: string) => (typeof ignore === 'string' ? id === ignore : !!ignore?.has(id));
+        return !!lane && start >= 0 && lane.clips.every((clip) => ignored(clip.id) || clip.start + clip.length <= start || clip.start >= start + length);
     }
 
     /** Places a container on a lane. Returns null when the spot is taken. */
     addClip(laneId: string, containerId: string, start: number, length: number): SongClip | null {
         const lane = this.getLane(laneId);
-        const snapped = snapStep(start);
-        const size = Math.max(SONG_SNAP, snapStep(length));
+        const snapped = snapStep(start, this.grid);
+        const size = Math.max(this.grid, snapStep(length, this.grid));
         if (!lane || !this.isFree(laneId, snapped, size)) {
             return null;
         }
@@ -156,7 +185,7 @@ export class Song {
         const from = this.laneOf(id);
         const clip = this.getClip(id);
         const to = laneId ? this.getLane(laneId) : from;
-        const snapped = snapStep(start);
+        const snapped = snapStep(start, this.grid);
         if (!from || !clip || !to || !this.isFree(to.id, snapped, clip.length, id)) {
             return false;
         }
@@ -180,7 +209,7 @@ export class Song {
 
         const next = lane.clips.find((other) => other.start >= clip.start + clip.length);
         const limit = next ? next.start : Number.POSITIVE_INFINITY;
-        clip.length = Math.min(limit - clip.start, Math.max(SONG_SNAP, snapStep(end) - clip.start));
+        clip.length = Math.min(limit - clip.start, Math.max(this.grid, snapStep(end, this.grid) - clip.start));
     }
 
     /** Drags the left edge: the clip starts at `start`, keeps its end, and its pattern stays where it was. */
@@ -193,7 +222,7 @@ export class Song {
 
         const previous = [...lane.clips].reverse().find((other) => other.start + other.length <= clip.start);
         const end = clip.start + clip.length;
-        const snapped = Math.min(end - SONG_SNAP, Math.max(previous ? previous.start + previous.length : 0, snapStep(start)));
+        const snapped = Math.min(end - Math.min(this.grid, clip.length), Math.max(previous ? previous.start + previous.length : 0, snapStep(start, this.grid)));
         clip.offset += snapped - clip.start;
         clip.start = snapped;
         clip.length = end - snapped;
@@ -204,7 +233,7 @@ export class Song {
     splitClip(id: string, at: number): SongClip | null {
         const lane = this.laneOf(id);
         const clip = this.getClip(id);
-        const cut = snapStep(at);
+        const cut = snapStep(at, this.grid);
         if (!lane || !clip || cut <= clip.start || cut >= clip.start + clip.length) {
             return null;
         }
@@ -239,6 +268,107 @@ export class Song {
         if (lane) {
             lane.clips.splice(lane.clips.findIndex((clip) => clip.id === id), 1);
         }
+    }
+
+    removeClips(ids: Iterable<string>): void {
+        for (const id of ids) {
+            this.removeClip(id);
+        }
+    }
+
+    /* ---- several clips at once ---- */
+
+    /**
+     * Where clips would go when shifted by `delta` steps and `laneDelta` lanes, or null when one of them would leave
+     * the timeline or the lanes. Relative positions stay, so clips that did not overlap before do not overlap after.
+     */
+    private shifted(ids: readonly string[], delta: number, laneDelta: number): { clip: SongClip; spec: ClipSpec }[] | null {
+        const specs: { clip: SongClip; spec: ClipSpec }[] = [];
+        for (const id of ids) {
+            const clip = this.getClip(id);
+            const lane = this.laneOf(id);
+            const target = lane ? this.lanes[this.lanes.indexOf(lane) + laneDelta] : undefined;
+            if (!clip || !target || clip.start + delta < 0) {
+                return null;
+            }
+            specs.push({ clip, spec: { laneId: target.id, containerId: clip.containerId, start: clip.start + delta, length: clip.length, offset: clip.offset, isMuted: clip.isMuted } });
+        }
+        return specs;
+    }
+
+    /** Whether clips can move together by `delta` steps and `laneDelta` lanes without landing on others. */
+    canMoveClips(ids: readonly string[], delta: number, laneDelta: number): boolean {
+        const moving = new Set(ids);
+        const specs = this.shifted(ids, delta, laneDelta);
+        return !!specs && specs.every(({ spec }) => this.isFree(spec.laneId, spec.start, spec.length, moving));
+    }
+
+    /** Moves clips together, keeping their spacing. All or nothing: refused when one of them would not fit. */
+    moveClips(ids: readonly string[], delta: number, laneDelta: number): boolean {
+        const specs = this.shifted(ids, delta, laneDelta);
+        if (!specs || !this.canMoveClips(ids, delta, laneDelta)) {
+            return false;
+        }
+        for (const { clip, spec } of specs) {
+            const from = this.laneOf(clip.id)!;
+            const to = this.getLane(spec.laneId)!;
+            if (from !== to) {
+                from.clips.splice(from.clips.indexOf(clip), 1);
+                to.clips.push(clip);
+            }
+            clip.start = spec.start;
+        }
+        this.lanes.forEach((lane) => this.sortLane(lane));
+        return true;
+    }
+
+    /** Whether copies of clips shifted by `delta` steps and `laneDelta` lanes would all fit. */
+    canCopyClips(ids: readonly string[], delta: number, laneDelta: number): boolean {
+        const specs = this.shifted(ids, delta, laneDelta);
+        return !!specs && specs.every(({ spec }) => this.isFree(spec.laneId, spec.start, spec.length));
+    }
+
+    /** Copies clips, shifted by `delta` steps and `laneDelta` lanes. Returns the copies, or null when they do not all fit. */
+    copyClips(ids: readonly string[], delta: number, laneDelta: number): SongClip[] | null {
+        const specs = this.shifted(ids, delta, laneDelta);
+        return specs ? this.placeClips(specs.map(({ spec }) => spec)) : null;
+    }
+
+    /** Copies clips right behind the stretch of time they cover, like Ctrl+B in a DAW. */
+    duplicateClips(ids: readonly string[]): SongClip[] | null {
+        const clips = ids.map((id) => this.getClip(id)).filter((clip): clip is SongClip => !!clip);
+        if (!clips.length) {
+            return null;
+        }
+        const start = Math.min(...clips.map((clip) => clip.start));
+        const end = Math.max(...clips.map((clip) => clip.start + clip.length));
+        return this.copyClips(ids, end - start, 0);
+    }
+
+    /**
+     * Lays down several clips at once, exactly where they are asked for (no snapping). All or nothing:
+     * when one of them lands on an existing clip, nothing is placed and the result is null.
+     */
+    placeClips(specs: readonly ClipSpec[]): SongClip[] | null {
+        const fits = specs.every(
+            (spec, index) =>
+                spec.length > 0 &&
+                this.isFree(spec.laneId, spec.start, spec.length) &&
+                specs.every((other, otherIndex) => otherIndex === index || other.laneId !== spec.laneId || other.start + other.length <= spec.start || other.start >= spec.start + spec.length),
+        );
+        if (!fits) {
+            return null;
+        }
+        const placed = specs.map((spec) => {
+            const clip: SongClip = { id: createId(), containerId: spec.containerId, start: spec.start, length: spec.length, offset: spec.offset ?? 0 };
+            if (spec.isMuted) {
+                clip.isMuted = true;
+            }
+            this.getLane(spec.laneId)!.clips.push(clip);
+            return clip;
+        });
+        this.lanes.forEach((lane) => this.sortLane(lane));
+        return placed;
     }
 
     /** Number of clips that play the container. */
@@ -302,6 +432,7 @@ export class Song {
             const lane = this.getLane(laneState.id) ?? createLane(laneState.name, laneState.id);
             lane.name = laneState.name;
             lane.isMuted = laneState.isMuted;
+            lane.isSolo = laneState.isSolo ?? false;
             lane.clips.splice(0, lane.clips.length, ...laneState.clips.map((clip) => ({ ...clip })));
             return lane;
         });

@@ -2685,7 +2685,7 @@
 
 :root {
     /* Width of the lane-name column on the left of the arranger. */
-    --jl-lane-head: 13rem;
+    --jl-lane-head: 11rem;
     /* Height of one lane. */
     --jl-lane-h: 4.6rem;
 }
@@ -2745,83 +2745,262 @@
     animation: hintfloat 2.4s ease-in-out infinite;
 }
 
-/* The containers you can drop onto lanes. Each has its own hue, the same one its clips get. */
-.palette {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
-    min-height: 2.75rem;
-    padding: 0.3rem 0.9rem;
-    flex-shrink: 0;
-    border-bottom: 1px solid var(--jl-line);
+/* ---- the song editor's own toolbar ---- */
+
+.songbar {
+    --jl-accent: var(--jl-brand);
+    gap: 0.35rem;
+    padding: 0.3rem 0.6rem;
 }
 
-.palette .eyebrow {
-    margin-right: 0.35rem;
+/* The tool palette: square buttons with their shortcut letter in the corner, like a DAW's toolbar. */
+.songtools {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: 0.55rem;
+    background: var(--jl-bg);
+    border: 1px solid var(--jl-line);
 }
 
-.palette-item {
+.songtool {
+    position: relative;
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    height: 2rem;
-    padding: 0 0.75rem 0 0.6rem;
-    border-radius: 0.55rem;
-    border: 1px solid color-mix(in oklab, hsl(var(--jl-clip-hue) 80% 60%) 45%, var(--jl-line));
-    background: var(--jl-panel);
-    font-size: 0.82rem;
-    color: var(--jl-text);
-    cursor: grab;
-    touch-action: none;
+    justify-content: center;
+    width: 2rem;
+    height: 1.75rem;
+    border-radius: 0.4rem;
+    color: var(--jl-muted);
+    cursor: pointer;
     transition:
-        box-shadow 0.12s ease,
-        transform 0.12s ease;
+        background-color 0.12s ease,
+        color 0.12s ease;
 }
 
-.palette-item:hover {
-    box-shadow: 0 0 0 3px color-mix(in oklab, hsl(var(--jl-clip-hue) 80% 60%) 20%, transparent);
+.songtool:hover {
+    color: var(--jl-text);
+    background: var(--jl-cell-hover);
 }
 
-.palette-item:active {
-    cursor: grabbing;
-    transform: scale(0.98);
+.songtool[data-active='true'] {
+    color: var(--jl-brand-ink);
+    background: var(--jl-brand-gradient);
+    box-shadow: 0 4px 12px -6px color-mix(in oklab, var(--jl-brand-2) 80%, transparent);
 }
 
-.palette-item[data-empty='true'] {
-    opacity: 0.5;
-    cursor: not-allowed;
+.songtool[data-active='true'][data-tool='erase'] {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    color: #fff;
 }
 
-.palette-item:focus-visible {
-    outline: 2px solid var(--jl-brand);
+.songtool:focus-visible {
+    outline: 2px solid var(--jl-accent);
     outline-offset: 2px;
 }
 
-.palette-name {
-    font-family: var(--font-display);
-    font-weight: 700;
+.songtool-key {
+    position: absolute;
+    right: 2px;
+    bottom: 0;
+    font-family: var(--font-mono);
+    font-size: 0.55rem;
+    line-height: 1;
+    opacity: 0.6;
 }
 
-.palette-swatch {
-    width: 0.75rem;
-    height: 0.75rem;
-    border-radius: 0.25rem;
-    background: linear-gradient(135deg, hsl(var(--jl-clip-hue) 85% 66%), hsl(calc(var(--jl-clip-hue) + 25) 85% 56%));
-}
-
-.palette-hint {
-    font-size: 0.74rem;
+.songfield {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
     color: var(--jl-muted);
 }
 
-/* The arrangement itself: one scrolling area, lane names stay put on the left. */
+.songfield .select {
+    width: 5rem;
+    flex: 0 0 auto;
+}
+
+.songzoom {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+}
+
+.songzoom-range {
+    width: 5.5rem;
+    accent-color: var(--jl-brand);
+    cursor: pointer;
+}
+
+.songbar-meta {
+    margin-right: 0.35rem;
+}
+
+.chip--small {
+    height: 1.55rem;
+    padding: 0 0.55rem;
+    font-size: 0.74rem;
+}
+
+/* ---- the body: picker on the left, the playlist on the right ---- */
+
+.songbody {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+
+/* The containers you can draw with. Each has its own hue, the same one its clips get. */
+.picker {
+    flex: 0 0 11.5rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--jl-panel);
+    border-right: 1px solid var(--jl-line);
+}
+
+.picker-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 1.9rem;
+    padding: 0 0.4rem 0 0.75rem;
+    border-bottom: 1px solid var(--jl-line);
+    flex-shrink: 0;
+}
+
+.picker-list {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0.35rem;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.picker-item {
+    --jl-clip: hsl(var(--jl-clip-hue) 80% 62%);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.4rem;
+    border: 1px solid transparent;
+    color: var(--jl-text);
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+    transition:
+        background-color 0.12s ease,
+        border-color 0.12s ease;
+}
+
+.picker-item:hover {
+    background: var(--jl-cell-hover);
+}
+
+.picker-item:active {
+    cursor: grabbing;
+}
+
+.picker-item[data-brush='true'] {
+    background: color-mix(in oklab, var(--jl-clip) 18%, transparent);
+    border-color: color-mix(in oklab, var(--jl-clip) 65%, transparent);
+}
+
+.picker-item[data-empty='true'] .picker-name {
+    color: var(--jl-muted);
+}
+
+.picker-item:focus-visible {
+    outline: 2px solid var(--jl-brand);
+    outline-offset: 1px;
+}
+
+.picker-swatch {
+    flex-shrink: 0;
+    display: inline-block;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 0.2rem;
+    background: linear-gradient(135deg, hsl(var(--jl-clip-hue) 85% 66%), hsl(calc(var(--jl-clip-hue) + 25) 85% 56%));
+}
+
+.picker-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.picker-name {
+    font-family: var(--font-display);
+    font-size: 0.76rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.picker-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--font-mono);
+    font-size: 0.66rem;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+.picker-hint {
+    padding: 0.5rem 0.75rem 0.6rem;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    color: var(--jl-muted);
+    border-top: 1px solid var(--jl-line);
+}
+
+/* The status line under the playlist: what the tool does, the brush, the loop. */
+.songstatus {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: 1.6rem;
+    padding: 0 0.75rem;
+    flex-shrink: 0;
+    font-size: 0.72rem;
+    color: var(--jl-muted);
+    background: var(--jl-panel);
+    border-top: 1px solid var(--jl-line);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.songstatus-brush,
+.songstatus-loop {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-family: var(--font-mono);
+    color: var(--jl-text);
+}
+
+.songstatus-loop {
+    color: var(--jl-brand);
+}
+
+/* ---- the playlist: one scrolling area, lane names stay put on the left, the ruler on top ---- */
+
 .arranger {
     position: relative;
     flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
     overflow: auto;
     background: var(--jl-bg);
+    user-select: none;
 }
 
 .arranger--dragging,
@@ -2829,13 +3008,36 @@
     cursor: grabbing !important;
 }
 
-.arranger--cut .clip {
-    cursor: crosshair;
+.arranger--draw .arr-lane,
+.arranger--paint .arr-lane {
+    cursor: copy;
 }
 
-/* With a clip to repeat, empty lane space is a canvas: press and drag to lay it down again and again. */
 .arranger--paint .arr-lane {
     cursor: cell;
+}
+
+.arranger--erase .arr-lane,
+.arranger--erase .clip {
+    cursor: not-allowed;
+}
+
+.arranger--erase .clip:hover {
+    filter: saturate(0.4) brightness(0.8);
+    outline: 2px solid #ef4444;
+    outline-offset: -2px;
+}
+
+.arranger--mute .clip {
+    cursor: pointer;
+}
+
+.arranger--slice .clip {
+    cursor: col-resize;
+}
+
+.arranger--select .arr-lane {
+    cursor: crosshair;
 }
 
 .arr-inner {
@@ -2845,7 +3047,6 @@
     width: max-content;
     min-width: 100%;
     min-height: 100%;
-    padding-bottom: 0.6rem;
 }
 
 .arr-row {
@@ -2856,70 +3057,146 @@
 .arr-row--ruler {
     position: sticky;
     top: 0;
-    z-index: 5;
+    z-index: 6;
     background: var(--jl-panel);
-    border-bottom: 1px solid var(--jl-line);
+    border-bottom: 1px solid var(--jl-line-strong);
 }
 
 .arr-corner,
 .arr-head {
     position: sticky;
     left: 0;
-    z-index: 4;
+    z-index: 5;
     flex: 0 0 var(--jl-lane-head);
     width: var(--jl-lane-head);
     min-width: 0;
     overflow: hidden;
     background: var(--jl-panel);
-    border-right: 1px solid var(--jl-line);
+    border-right: 1px solid var(--jl-line-strong);
 }
 
 .arr-corner {
     display: flex;
-    align-items: flex-end;
-    padding: 0 0.9rem 0.4rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    padding: 0 0.6rem;
 }
 
 .arr-row--ruler .arr-corner {
-    z-index: 6;
+    z-index: 7;
 }
 
-/* Bar numbers. Bars inside the song are bright, the empty tail after it is dim. */
+.arr-pos {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--jl-text);
+}
+
+.arr-grid {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+/* Bar numbers over beat ticks. Bars inside the song are bright, the empty tail after it is dim. */
 .arr-ruler {
+    position: relative;
     display: flex;
     width: calc(var(--jl-song-steps) * var(--jl-song-step));
-    height: 2rem;
+    height: 1.9rem;
     cursor: pointer;
+    touch-action: none;
+    background: repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(4 * var(--jl-song-step))) bottom / 100% 0.3rem no-repeat;
 }
 
 .arr-bar {
     flex: 0 0 calc(16 * var(--jl-song-step));
     display: flex;
-    align-items: flex-end;
-    padding: 0 0 0.3rem 0.4rem;
+    align-items: flex-start;
+    padding: 0.3rem 0 0 0.3rem;
     border-left: 1px solid var(--jl-line-strong);
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     font-weight: 700;
-    color: var(--jl-line-strong);
+    color: var(--jl-bar);
+    overflow: hidden;
+    pointer-events: none;
+}
+
+.arr-bar[data-label='false'] {
+    border-left-color: var(--jl-line);
 }
 
 .arr-bar[data-inside='true'] {
     color: var(--jl-muted);
 }
 
-.arr-ruler:hover .arr-bar {
+.arr-ruler:hover .arr-bar[data-inside='true'] {
     color: var(--jl-text);
 }
 
+/* The loop region: a band over the ruler with grab handles on both ends. */
+.arr-loop {
+    position: absolute;
+    top: 0;
+    height: 0.4rem;
+    background: var(--jl-brand-gradient);
+    border-radius: 0 0 0.2rem 0.2rem;
+    box-shadow: 0 0 10px -2px color-mix(in oklab, var(--jl-brand) 70%, transparent);
+}
+
+.arr-loop-edge {
+    position: absolute;
+    top: 0;
+    width: 10px;
+    height: 1.9rem;
+    cursor: ew-resize;
+}
+
+.arr-loop-edge--start {
+    left: -5px;
+}
+
+.arr-loop-edge--end {
+    right: -5px;
+}
+
+/* The song position marker: a triangle on the ruler where the playhead is (or rests). */
+.arr-marker {
+    position: absolute;
+    bottom: 0;
+    width: 0;
+    height: 0;
+    margin-left: -6px;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 9px solid var(--jl-brand-2);
+    filter: drop-shadow(0 0 4px color-mix(in oklab, var(--jl-brand-2) 70%, transparent));
+    pointer-events: none;
+}
+
+/* A lane head: the mute light, the name, solo and the lane menu. */
 .arr-head {
     display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 0.25rem;
-    padding: 0.4rem 0.4rem 0.4rem 0.9rem;
+    align-items: center;
+    gap: 0.35rem;
+    height: var(--jl-lane-h);
+    padding: 0 0.25rem 0 0.5rem;
     border-bottom: 1px solid var(--jl-line);
     transition: opacity 0.2s ease;
+}
+
+.arr-head-main {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.arr-head-main .ctab-input {
+    width: 100%;
 }
 
 .arr-head-title {
@@ -2930,24 +3207,75 @@
 }
 
 .arr-head-name {
+    display: block;
     font-family: var(--font-display);
+    font-size: 0.78rem;
     font-weight: 700;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    cursor: text;
 }
 
-.arr-head-tools {
-    display: flex;
-    align-items: center;
+/* The mute light: lit green while the lane plays, dark when muted, like FL Studio's track switch. */
+.lane-led {
+    flex-shrink: 0;
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 999px;
+    background: var(--jl-cell);
+    border: 1px solid var(--jl-line-strong);
+    cursor: pointer;
+    transition:
+        background-color 0.12s ease,
+        box-shadow 0.12s ease;
 }
 
-.arr-row--muted .arr-head,
-.arr-row--muted .clip {
-    opacity: 0.5;
+.lane-led[data-on='true'] {
+    background: radial-gradient(circle at 35% 35%, #d9ffb0, #65d10a 60%);
+    border-color: #4a9c07;
+    box-shadow: 0 0 8px rgba(120, 230, 30, 0.55);
 }
 
-/* The lane body: beat and bar lines, clips laid on top. */
+.lane-led:focus-visible,
+.lane-solo:focus-visible {
+    outline: 2px solid var(--jl-accent);
+    outline-offset: 2px;
+}
+
+.lane-solo {
+    flex-shrink: 0;
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 0.3rem;
+    border: 1px solid var(--jl-line-strong);
+    font-family: var(--font-sans);
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--jl-muted);
+    cursor: pointer;
+}
+
+.lane-solo:hover {
+    color: var(--jl-text);
+}
+
+.lane-solo[data-on='true'] {
+    background: #facc15;
+    border-color: #ca8a04;
+    color: #1c1500;
+}
+
+.arr-row--muted .arr-head-name {
+    opacity: 0.45;
+}
+
+.arr-row--muted .arr-lane .clip {
+    opacity: 0.4;
+    filter: saturate(0.3);
+}
+
+/* The lane body: alternating bars, bar and beat lines (and step lines when zoomed in), clips on top. */
 .arr-lane {
     position: relative;
     flex: 0 0 calc(var(--jl-song-steps) * var(--jl-song-step));
@@ -2955,115 +3283,236 @@
     border-bottom: 1px solid var(--jl-line);
     background:
         repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(16 * var(--jl-song-step))),
-        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--jl-song-step)));
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--jl-song-step))),
+        repeating-linear-gradient(90deg, transparent 0 calc(16 * var(--jl-song-step)), color-mix(in oklab, var(--jl-cell) 45%, transparent) calc(16 * var(--jl-song-step)) calc(32 * var(--jl-song-step)));
     touch-action: none;
 }
 
-.arr-empty {
-    position: sticky;
-    left: 0;
-    display: flex;
-    justify-content: center;
-    padding: 1rem;
-    width: 100cqw;
+.arranger--zoomed .arr-lane:not(.arr-lane--auto, .arr-lane--add) {
+    background:
+        repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(16 * var(--jl-song-step))),
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--jl-song-step))),
+        repeating-linear-gradient(90deg, color-mix(in oklab, var(--jl-line) 50%, transparent) 0 1px, transparent 1px var(--jl-song-step)),
+        repeating-linear-gradient(90deg, transparent 0 calc(16 * var(--jl-song-step)), color-mix(in oklab, var(--jl-cell) 45%, transparent) calc(16 * var(--jl-song-step)) calc(32 * var(--jl-song-step)));
 }
 
-/* One clip: a container playing for a while. Coloured by its container. */
-.clip {
-    --jl-clip: hsl(var(--jl-clip-hue) 85% 62%);
-    --jl-clip-2: hsl(calc(var(--jl-clip-hue) + 25) 85% 54%);
+.arr-row--add .arr-head {
+    height: 2.1rem;
+    border-bottom: none;
+}
+
+.arr-lane--add {
+    height: 2.1rem;
+    border-bottom: none;
+    background: none;
+}
+
+.arr-empty {
     position: absolute;
-    top: 0.4rem;
-    bottom: 0.4rem;
+    top: 4.5rem;
+    left: var(--jl-lane-head);
+    right: 0;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 3;
+}
+
+/* Everything drawn over the whole timeline: the song end, the loop zone, the playhead. */
+.arr-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--jl-lane-head);
+    right: 0;
+    pointer-events: none;
+    z-index: 4;
+}
+
+.arr-end {
+    position: absolute;
+    top: 1.9rem;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: color-mix(in oklab, var(--jl-brand) 45%, transparent);
+}
+
+.arr-loopzone {
+    position: absolute;
+    top: 1.9rem;
+    bottom: 0;
+    background: color-mix(in oklab, var(--jl-brand) 7%, transparent);
+    border-left: 1px solid color-mix(in oklab, var(--jl-brand) 50%, transparent);
+    border-right: 1px solid color-mix(in oklab, var(--jl-brand) 50%, transparent);
+}
+
+.arr-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    margin-left: -1px;
+    background: color-mix(in oklab, var(--jl-brand-2) 60%, transparent);
+}
+
+.arr-playhead[data-playing='true'] {
+    background: linear-gradient(180deg, var(--jl-brand), var(--jl-brand-2));
+    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-brand-2) 70%, transparent);
+}
+
+.arr-marquee {
+    position: absolute;
+    z-index: 8;
+    border: 1px solid var(--jl-brand);
+    background: color-mix(in oklab, var(--jl-brand) 14%, transparent);
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+/* One clip: a container playing for a while. A solid title strip on a tinted body, coloured by its container. */
+.clip {
+    --jl-clip: hsl(var(--jl-clip-hue) 80% 62%);
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    padding: 0.35rem 0.75rem 0.4rem;
-    border-radius: 0.5rem;
-    background:
-        radial-gradient(120% 90% at 50% 0%, rgba(255, 255, 255, 0.25), transparent 60%),
-        linear-gradient(135deg, var(--jl-clip), var(--jl-clip-2));
+    min-width: 4px;
+    border-radius: 3px;
+    border: 1px solid color-mix(in oklab, var(--jl-clip) 75%, var(--jl-bg));
+    background: color-mix(in oklab, var(--jl-clip) 26%, var(--jl-bg));
     color: #14092b;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        0 6px 16px -8px color-mix(in oklab, var(--jl-clip) 80%, transparent);
     cursor: grab;
     overflow: hidden;
     user-select: none;
     touch-action: none;
-    transition:
-        box-shadow 0.12s ease,
-        opacity 0.12s ease;
-}
-
-.clip:active {
-    cursor: grabbing;
+    z-index: 1;
 }
 
 .clip:focus-visible {
     outline: 2px solid var(--jl-text);
-    outline-offset: 2px;
+    outline-offset: 1px;
 }
 
-.clip--selected {
-    box-shadow:
-        inset 0 0 0 2px var(--jl-text),
-        inset 0 1px 0 rgba(255, 255, 255, 0.3),
-        0 8px 20px -8px color-mix(in oklab, var(--jl-clip) 80%, transparent);
-    z-index: 2;
+.clip-head {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    flex: 0 0 auto;
+    height: 0.95rem;
+    padding-right: 0.3rem;
+    background: var(--jl-clip);
+    overflow: hidden;
 }
 
-.clip--lifted {
-    opacity: 0.35;
+.clip-menu {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.95rem;
+    height: 0.95rem;
+    color: rgba(20, 9, 43, 0.75);
+    cursor: pointer;
 }
 
-.clip--ghost {
-    opacity: 0.75;
-    pointer-events: none;
-    z-index: 3;
-    outline: 2px dashed rgba(255, 255, 255, 0.8);
-    outline-offset: -2px;
-}
-
-.clip--ghost[data-valid='false'] {
-    --jl-clip: #ef4444;
-    --jl-clip-2: #b91c1c;
-    color: white;
+.clip-menu:hover {
+    background: rgba(20, 9, 43, 0.2);
+    color: #14092b;
 }
 
 .clip-title {
-    font-family: var(--font-display);
-    font-size: 0.8rem;
+    min-width: 0;
+    font-family: var(--font-sans);
+    font-size: 0.68rem;
     font-weight: 700;
-    line-height: 1.1;
+    line-height: 1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
+.clip--ghost .clip-title {
+    padding-left: 0.3rem;
+}
+
+.clip-flag {
+    flex-shrink: 0;
+    width: 0.7rem;
+    height: 0.7rem;
+    margin-left: auto;
+}
+
+.clip--selected {
+    --jl-clip: hsl(var(--jl-clip-hue) 95% 74%);
+    border-color: var(--jl-text);
+    box-shadow:
+        0 0 0 1px var(--jl-text),
+        0 4px 14px -4px color-mix(in oklab, var(--jl-clip) 80%, transparent);
+    z-index: 2;
+}
+
+.clip--muted {
+    --jl-clip: hsl(var(--jl-clip-hue) 12% 55%);
+    background: repeating-linear-gradient(135deg, color-mix(in oklab, var(--jl-clip) 16%, var(--jl-bg)) 0 6px, color-mix(in oklab, var(--jl-clip) 26%, var(--jl-bg)) 6px 12px);
+}
+
+.clip--lifted {
+    opacity: 0.3;
+}
+
+.clip--ghost {
+    opacity: 0.8;
+    pointer-events: none;
+    z-index: 3;
+    border: 1px dashed var(--jl-text);
+}
+
+.clip--ghost[data-valid='false'],
+.clip--hover[data-valid='false'] {
+    --jl-clip: #ef4444;
+}
+
+/* Where the brush would land: an outline only, so it never hides what is there. */
+.clip--hover {
+    pointer-events: none;
+    background: color-mix(in oklab, var(--jl-clip) 12%, transparent);
+    border: 1px dashed color-mix(in oklab, var(--jl-clip) 80%, transparent);
+    z-index: 0;
+}
+
 .clip-preview {
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    justify-content: center;
+    gap: 1px;
+    min-height: 0;
+    padding: 2px 0;
     width: 100%;
     overflow: hidden;
     pointer-events: none;
 }
 
 .clip-preview .preview {
-    --preview-on: rgba(20, 9, 43, 0.85);
-    --preview-off: rgba(20, 9, 43, 0.14);
-    height: 0.45rem;
+    --preview-on: color-mix(in oklab, var(--jl-clip) 88%, var(--jl-text));
+    --preview-off: transparent;
+    flex: 1 1 0;
+    min-height: 2px;
+    max-height: 0.5rem;
     width: max-content;
 }
 
 .clip .note-handle {
     top: 0;
     bottom: 0;
-    width: 8px;
+    width: 6px;
     border-radius: 0;
-    background: rgba(20, 9, 43, 0.25);
+    background: transparent;
+    cursor: ew-resize;
     opacity: 1;
+    z-index: 1;
 }
 
 .clip .note-handle--start {
@@ -3074,8 +3523,14 @@
     right: 0;
 }
 
-.clip .note-handle:hover {
-    background: rgba(20, 9, 43, 0.5);
+.clip:hover .note-handle:hover {
+    background: color-mix(in oklab, var(--jl-text) 30%, transparent);
+}
+
+.arranger--erase .note-handle,
+.arranger--mute .note-handle,
+.arranger--slice .note-handle {
+    display: none;
 }
 
 .clip-cut {
@@ -3087,34 +3542,92 @@
     background: var(--jl-text);
     box-shadow: 0 0 6px var(--jl-text);
     pointer-events: none;
+    z-index: 2;
 }
 
-.clip-tools {
-    position: absolute;
-    top: 0.2rem;
-    right: 0.3rem;
-    display: flex;
-    gap: 1px;
-    padding: 1px;
-    border-radius: 0.45rem;
-    background: var(--jl-panel);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
-}
+/* ---- context menu ---- */
 
-.clip-tools .iconbtn {
+.songmenu {
+    position: fixed;
+    z-index: 1200;
+    min-width: 13rem;
+    max-width: 20rem;
+    padding: 0.3rem;
+    border-radius: 0.6rem;
+    background: var(--jl-raised);
+    border: 1px solid var(--jl-line-strong);
+    box-shadow: var(--jl-shadow), 0 2px 8px rgba(0, 0, 0, 0.2);
     color: var(--jl-text);
+    font-size: 0.8rem;
 }
 
-.arr-playhead {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    margin-left: -1px;
-    background: linear-gradient(180deg, var(--jl-brand), var(--jl-brand-2));
-    box-shadow: 0 0 10px color-mix(in oklab, var(--jl-brand-2) 70%, transparent);
-    pointer-events: none;
-    z-index: 3;
+.songmenu-title {
+    padding: 0.3rem 0.55rem 0.35rem;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.songmenu-sep {
+    height: 1px;
+    margin: 0.25rem 0.35rem;
+    background: var(--jl-line);
+}
+
+.songmenu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    width: 100%;
+    height: 1.85rem;
+    padding: 0 0.55rem;
+    border-radius: 0.4rem;
+    text-align: left;
+    cursor: pointer;
+}
+
+.songmenu-item:hover:not(:disabled),
+.songmenu-item:focus-visible {
+    background: var(--jl-cell-hover);
+    outline: none;
+}
+
+.songmenu-item:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.songmenu-item[data-danger='true'] {
+    color: #e5484d;
+}
+
+.songmenu-icon {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    color: var(--jl-muted);
+}
+
+.songmenu-item[data-danger='true'] .songmenu-icon {
+    color: inherit;
+}
+
+.songmenu-label {
+    flex: 1 1 auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.songmenu-key {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    color: var(--jl-muted);
 }
 
 /* ---------- automation lanes (arranger) ---------- */
@@ -3139,8 +3652,12 @@
 }
 
 .arr-head--auto {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: center;
+    height: auto;
     gap: 0.35rem;
-    padding-right: 0.5rem;
+    padding: 0.4rem 0.5rem 0.4rem 0.6rem;
 }
 
 .arr-head--auto .arr-head-title {
@@ -3690,21 +4207,44 @@
         padding: 0 0.6rem;
     }
 
-    .palette {
-        padding: 0.4rem 0.6rem;
+    /* The picker turns into a strip above the playlist. */
+    .songbody {
+        flex-direction: column;
     }
 
-    .palette-hint,
-    .song-hint {
+    .picker {
+        flex: 0 0 auto;
+        border-right: none;
+        border-bottom: 1px solid var(--jl-line);
+    }
+
+    .picker-head,
+    .picker-hint,
+    .song-hint,
+    .songzoom-range,
+    .songbar-meta,
+    .songstatus-brush {
         display: none;
     }
 
-    .arr-head {
-        padding-left: 0.6rem;
+    .picker-list {
+        flex-direction: row;
+        overflow-x: auto;
+        overflow-y: hidden;
     }
 
-    .arr-corner {
-        padding-left: 0.6rem;
+    .picker-item {
+        flex: 0 0 auto;
+    }
+
+    .arr-pos {
+        font-size: 0.8rem;
+    }
+
+    .arr-grid,
+    .lane-solo:not([data-on='true']),
+    .songbar .vrule {
+        display: none;
     }
 }
 

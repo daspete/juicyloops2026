@@ -32,8 +32,19 @@ const currentContainer = computed(() => containers.value.find((container) => con
 const tracks = computed(() => currentContainer.value.tracks);
 const song = ref(engine.song) as Ref<Song>;
 
+/** The song position marker: where song playback starts, and where the playhead rests while stopped. */
+const songCue = ref(0);
+/** The loop region of the song timeline, null to play the whole song. */
+const songLoop = ref<{ start: number; end: number } | null>(null);
+
 watch(bpm, (value) => engine.setBpm(value));
-watch(mode, (value) => engine.setMode(value));
+watch(mode, (value) => {
+    engine.setMode(value);
+    if (!isPlaying.value) {
+        currentStep.value = value === 'song' ? songCue.value : 0;
+    }
+});
+watch(songLoop, (value) => engine.setLoop(value ? { ...value } : null), { deep: true });
 engine.onStep((step) => {
     // Steps are scheduled ahead of time, so a few still arrive after stop; they must not undo the reset.
     if (isPlaying.value) {
@@ -52,15 +63,21 @@ const setBpm = (value: number): void => {
     }
 };
 
+/** Song playback starts at the position marker, loop playback at the top. */
 const play = (): void => {
+    if (mode.value === 'song') {
+        engine.seekToStep(songCue.value);
+        currentStep.value = songCue.value;
+    }
     engine.play();
     isPlaying.value = true;
 };
 
+/** Stopping puts the playhead back where playback started, like a DAW does. */
 const stop = (): void => {
     engine.stop();
     isPlaying.value = false;
-    currentStep.value = 0;
+    currentStep.value = mode.value === 'song' ? songCue.value : 0;
 };
 
 const setMode = (value: PlaybackMode): void => {
@@ -69,11 +86,23 @@ const setMode = (value: PlaybackMode): void => {
 
 /** Jumps to a step of the song. Starts playback when stopped, so a click on the timeline always makes sound. */
 const playFrom = (step: number): void => {
+    if (mode.value === 'song') {
+        songCue.value = step;
+    }
     engine.seekToStep(step);
     currentStep.value = step;
     if (!isPlaying.value) {
         play();
     }
+};
+
+/** Moves the song position marker. While playing, playback jumps there right away. */
+const cueSong = (step: number): void => {
+    songCue.value = Math.max(0, Math.round(step));
+    if (isPlaying.value) {
+        engine.seekToStep(songCue.value);
+    }
+    currentStep.value = songCue.value;
 };
 
 const togglePlay = (): void => (isPlaying.value ? stop() : play());
@@ -164,6 +193,9 @@ export const useJuicyLoops = () => ({
     setMode,
     song,
     playFrom,
+    songCue,
+    songLoop,
+    cueSong,
     containers,
     currentContainer,
     selectContainer,

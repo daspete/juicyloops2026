@@ -72,6 +72,11 @@ export class Engine {
         this.sequencer.seekToStep(step);
     }
 
+    /** The loop region of the song, or null to play it all. */
+    setLoop(loop: { start: number; end: number } | null): void {
+        this.sequencer.setLoop(loop);
+    }
+
     /** What a song automation lane drives, or undefined when it was deleted. */
     resolveTarget(target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined {
         return this.sequencer.resolveTarget(target);

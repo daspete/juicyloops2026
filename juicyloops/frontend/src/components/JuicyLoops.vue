@@ -66,7 +66,7 @@ const MODES = [
 /** What the status bar suggests, depending on where you are. */
 const statusHint = computed(() => {
     if (isSongView.value) {
-        return 'Drag a container onto a lane · Drag clip edges to resize · Click an automation lane to draw';
+        return 'Right-click deletes · Shift+drag clones · Ctrl+drag selects · Alt ignores the grid · Ctrl+wheel zooms';
     }
     return isPro.value
         ? 'Tap a pad to add a step · Drag across pads to paint · Automate on a track head opens its lanes'

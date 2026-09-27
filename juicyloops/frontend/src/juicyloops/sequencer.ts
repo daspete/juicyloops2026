@@ -48,6 +48,12 @@ export class Sequencer {
 
     mode: PlaybackMode = 'loop';
 
+    /**
+     * A stretch of the song that repeats in song mode, the loop region of a DAW's timeline. Playback reaching its
+     * end jumps back to its start. Null plays the whole song and wraps at its end. Not part of the session.
+     */
+    loop: { start: number; end: number } | null = null;
+
     /** The container the track editor shows and loop mode plays. */
     currentContainer: TrackContainer;
 
@@ -70,6 +76,10 @@ export class Sequencer {
 
     setMode(mode: PlaybackMode): void {
         this.mode = mode;
+    }
+
+    setLoop(loop: { start: number; end: number } | null): void {
+        this.loop = loop && loop.end > loop.start ? { ...loop } : null;
     }
 
     /** Moves the play position to a step (also while playing). */
@@ -240,6 +250,15 @@ export class Sequencer {
         return this.transport.PPQ / 4;
     }
 
+    /** The song step for a running transport step: inside the loop region once it was reached, else wrapped at the song's end. */
+    private songStep(absoluteStep: number, songLength: number): number {
+        const loop = this.loop;
+        if (loop) {
+            return absoluteStep < loop.end ? absoluteStep : loop.start + ((absoluteStep - loop.start) % (loop.end - loop.start));
+        }
+        return songLength ? absoluteStep % songLength : 0;
+    }
+
     private playStep(time: number): void {
         /*
          * The transport runs freely; the play position is derived from its tick count.
@@ -250,7 +269,7 @@ export class Sequencer {
         const absoluteStep = Math.round(this.transport.getTicksAtTime(time) / this.ticksPerStep);
         const song = toRaw(this.song);
         const songLength = song.length;
-        const step = this.mode === 'song' ? (songLength ? absoluteStep % songLength : 0) : absoluteStep;
+        const step = this.mode === 'song' ? this.songStep(absoluteStep, songLength) : absoluteStep;
 
         if (this.mode === 'loop') {
             this.currentContainer.play(step, time);
