@@ -23,7 +23,7 @@ import SongMenu, { type SongMenuItem } from './SongMenu.vue';
  * Tools (with their FL Studio keys): Draw (P) places the brush clip with a click and moves or resizes clips,
  * Paint (B) lays the brush down again and again, Delete (D) sweeps clips away, Mute (T) silences clips,
  * Slice (C) cuts them and Select (E) draws a selection box. Right-click deletes with the drawing tools,
- * Ctrl+drag selects with any tool, Shift+drag clones, Alt ignores the grid.
+ * Ctrl+drag selects with any tool, starting on a clip or on empty space (Ctrl+click toggles one clip), Shift+drag clones, Alt ignores the grid.
  *
  * The ruler sets the song position marker (click) or the loop region (drag). Ctrl+wheel zooms, Alt+wheel
  * changes the lane height. Automation lanes below the clips draw a value over the same timeline.
@@ -507,13 +507,13 @@ type Drag =
           x: number;
           y: number;
           placed: boolean;
-          toggle: boolean;
       }
     | { kind: 'resize'; clipId: string; edge: 'start' | 'end' }
     | { kind: 'paint'; laneId: string; anchor: number; containerId: string; length: number; painted: string[] }
     | { kind: 'erase' }
     | { kind: 'mute'; value: boolean; touched: Set<string> }
-    | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number; base: string[] }
+    /* `clickId`: the clip a Ctrl+press started on; if the pointer never moves, that was a click, which toggles the clip. */
+    | { kind: 'marquee'; x0: number; y0: number; x1: number; y1: number; base: string[]; clickId: string | null; moved: boolean }
     | { kind: 'ruler'; from: number; x: number; moved: boolean }
     | { kind: 'loop-edge'; edge: 'start' | 'end' };
 
@@ -577,13 +577,7 @@ const onPickerDown = (event: PointerEvent, container: TrackContainer) => {
 
 const startMove = (event: PointerEvent, clip: SongClip, placed: boolean) => {
     const lane = song.value.laneOf(clip.id)!;
-    const toggle = event.ctrlKey || event.metaKey;
-    if (toggle) {
-        selectClips(isSelected(clip.id) ? selectedIds.value.filter((id) => id !== clip.id) : [...selectedIds.value, clip.id]);
-        if (!isSelected(clip.id)) {
-            return;
-        }
-    } else if (!isSelected(clip.id)) {
+    if (!isSelected(clip.id)) {
         selectClips([clip.id]);
     }
     setBrush(clip.containerId, clip.length);
@@ -599,7 +593,6 @@ const startMove = (event: PointerEvent, clip: SongClip, placed: boolean) => {
         x: event.clientX,
         y: event.clientY,
         placed,
-        toggle,
     });
 };
 
@@ -621,6 +614,11 @@ const onClipDown = (event: PointerEvent, clip: SongClip) => {
         return;
     }
     if (event.button !== 0) {
+        return;
+    }
+    // Ctrl selects with every tool, starting on a clip as well as on empty space: a drag draws the box, a click toggles the clip.
+    if (event.ctrlKey || event.metaKey) {
+        startMarquee(event, true, clip.id);
         return;
     }
 
@@ -664,11 +662,14 @@ const onHandleDown = (event: PointerEvent, clip: SongClip, edge: 'start' | 'end'
     beginDrag({ kind: 'resize', clipId: clip.id, edge });
 };
 
-const startMarquee = (event: PointerEvent, additive: boolean) => {
+/** How far (px) a Ctrl+press has to travel before it draws a box instead of toggling the clip it started on. */
+const MARQUEE_THRESHOLD = 4;
+
+const startMarquee = (event: PointerEvent, additive: boolean, clickId: string | null = null) => {
     const inner = scroller.value!.querySelector<HTMLElement>('.arr-inner')!.getBoundingClientRect();
     const x = event.clientX - inner.left;
     const y = event.clientY - inner.top;
-    beginDrag({ kind: 'marquee', x0: x, y0: y, x1: x, y1: y, base: additive ? [...selectedIds.value] : [] });
+    beginDrag({ kind: 'marquee', x0: x, y0: y, x1: x, y1: y, base: additive ? [...selectedIds.value] : [], clickId, moved: false });
     if (!additive) {
         selectClips([]);
     }
@@ -801,6 +802,10 @@ const updateDrag = (event: PointerEvent) => {
             const inner = scroller.value!.querySelector<HTMLElement>('.arr-inner')!.getBoundingClientRect();
             current.x1 = event.clientX - inner.left;
             current.y1 = event.clientY - inner.top;
+            if (!current.moved && Math.hypot(current.x1 - current.x0, current.y1 - current.y0) < MARQUEE_THRESHOLD) {
+                return;
+            }
+            current.moved = true;
             const left = inner.left + Math.min(current.x0, current.x1);
             const right = inner.left + Math.max(current.x0, current.x1);
             const top = inner.top + Math.min(current.y0, current.y1);
@@ -916,7 +921,7 @@ const onDragEnd = (event: PointerEvent) => {
     } else if (current?.kind === 'move') {
         if (!current.moved) {
             // A plain click on a clip that was part of a bigger selection selects just that clip.
-            if (!current.placed && !current.toggle && selectedIds.value.length > 1) {
+            if (!current.placed && selectedIds.value.length > 1) {
                 selectClips([current.anchorId]);
             }
         } else if (current.delta !== 0 || current.laneDelta !== 0) {
@@ -929,6 +934,9 @@ const onDragEnd = (event: PointerEvent) => {
                 song.value.moveClips(selectedIds.value, current.delta, current.laneDelta);
             }
         }
+    } else if (current?.kind === 'marquee' && !current.moved && current.clickId) {
+        const id = current.clickId;
+        selectClips(isSelected(id) ? selectedIds.value.filter((other) => other !== id) : [...selectedIds.value, id]);
     } else if (current?.kind === 'ruler' && !current.moved) {
         cueSong(snapTo(current.from, event.altKey));
     }
