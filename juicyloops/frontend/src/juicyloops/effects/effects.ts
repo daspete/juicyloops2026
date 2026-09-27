@@ -5,7 +5,6 @@ import {
     Compressor,
     connectSeries,
     Distortion,
-    EQ3,
     FeedbackDelay,
     Limiter,
     Phaser,
@@ -15,6 +14,7 @@ import {
     type ToneAudioNode,
 } from 'tone';
 import { atTime, type AutomationParam } from '../automation';
+import { Equalizer } from './equalizer';
 import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
 
 export type { EffectKey, EffectParamKey } from './definitions';
@@ -51,7 +51,7 @@ const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
     delay: () => new FeedbackDelay(),
     reverb: () => new Reverb(),
     compressor: () => new Compressor(),
-    equalizer: () => new EQ3(),
+    equalizer: () => new Equalizer(),
     limiter: () => new Limiter(),
 };
 

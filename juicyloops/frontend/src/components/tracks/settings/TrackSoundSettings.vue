@@ -8,6 +8,7 @@ import SamplerFileUpload from './SamplerFileUpload.vue';
 import SynthEnvelopeSettings from './SynthEnvelopeSettings.vue';
 import SynthSettings from './SynthSettings.vue';
 import TrackSampleSettings from './TrackSampleSettings.vue';
+import TrackVoiceSettings from './TrackVoiceSettings.vue';
 
 /** The Sound page of the detail panel: whatever this kind of track lets you shape about every step it plays. */
 const props = defineProps<{
@@ -23,9 +24,11 @@ const sampler = computed(() => (props.track.type === 'sampler' ? (props.track as
     <template v-if="synth">
         <SynthSettings :track="synth" />
         <SynthEnvelopeSettings :track="synth" />
+        <TrackVoiceSettings :track="synth" />
     </template>
     <template v-else-if="sample">
         <TrackSampleSettings :track="sample" />
+        <TrackVoiceSettings :track="sample" />
         <div v-if="sampler" class="setting">
             <div class="setting-label">Sample</div>
             <div class="setting-row setting-row--loose">

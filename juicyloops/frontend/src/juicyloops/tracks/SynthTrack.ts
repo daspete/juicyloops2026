@@ -1,4 +1,4 @@
-import { Synth } from 'tone';
+import { Gain, PolySynth, Synth } from 'tone';
 import { markRaw } from 'vue';
 import { atTime, type AutomationParam } from '../automation';
 import { shiftOctave, type NoteLength, type OscillatorType } from '../notes';
@@ -41,10 +41,21 @@ export interface SynthTrackState extends TrackState {
     envelope: SynthEnvelope;
 }
 
+/**
+ * Plays a note on every active tick. Cutting notes (the default) plays them on one voice, so a new note takes over
+ * from the one before; overlapping plays every note on a voice of its own, so long notes and release tails ring on.
+ */
 export class SynthTrack extends BaseTrack<SynthTick> {
     readonly type = 'synth';
 
+    override cutsNotes = true;
+
+    /** Where both synths go; the effect chain starts here. */
+    private readonly input = markRaw(new Gain());
+    /** One voice, for cutting notes. */
     private readonly synth = markRaw(new Synth());
+    /** A voice per note, for overlapping ones. Voices are only made while notes play. */
+    private readonly polySynth = markRaw(new PolySynth(Synth));
 
     oscillatorType: OscillatorType = 'sine';
 
@@ -53,7 +64,10 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     constructor(id?: string) {
         super(id);
         this.synth.set({ envelope: this.envelope });
-        this.connectSource(this.synth);
+        this.polySynth.set({ envelope: this.envelope });
+        this.synth.connect(this.input);
+        this.polySynth.connect(this.input);
+        this.connectSource(this.input);
     }
 
     protected createTick(): SynthTick {
@@ -63,12 +77,13 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     protected trigger(step: number, time: number): void {
         const tick = this.activeTick(step);
         if (tick) {
-            this.synth.triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
+            (this.cutsNotes ? this.synth : this.polySynth).triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
         }
     }
 
     setOscillatorType(type: OscillatorType): void {
         this.synth.oscillator.type = type;
+        this.polySynth.set({ oscillator: { type } });
         this.oscillatorType = type;
     }
 
@@ -83,6 +98,7 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void {
         atTime(this.synth.context, time, () => {
             this.synth.envelope[param] = value;
+            this.polySynth.set({ envelope: { [param]: value } });
         });
         if (time === undefined) {
             this.envelope = { ...this.envelope, [param]: value };
@@ -124,6 +140,8 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     dispose(): void {
         this.synth.dispose();
+        this.polySynth.dispose();
+        this.input.dispose();
         super.dispose();
     }
 

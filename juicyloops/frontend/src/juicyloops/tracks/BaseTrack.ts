@@ -14,6 +14,8 @@ export interface TrackSnapshot {
     volume: number;
     pan: number;
     automation: StepAutomationSnapshot[];
+    /** Missing in states saved before the setting existed; the track type's default applies then. */
+    cutsNotes?: boolean;
 }
 
 /** Everything about a track that history keeps: what `serialize` gives, minus decoded audio, plus what the user can change. */
@@ -54,6 +56,9 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
     volume = 0;
     pan = 0;
     isMuted = false;
+
+    /** Whether a new note stops the one still sounding (cut) or plays on top of it (overlap). */
+    cutsNotes = false;
 
     constructor(id = createId()) {
         this.id = id;
@@ -135,6 +140,10 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
 
     toggleMute(): void {
         this.isMuted = !this.isMuted;
+    }
+
+    setCutsNotes(cuts: boolean): void {
+        this.cutsNotes = cuts;
     }
 
     /* ---- parameters and automation ---- */
@@ -239,6 +248,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         this.automation.copyFrom(source.automation);
         this.setVolume(source.volume);
         this.setPan(source.pan);
+        this.setCutsNotes(source.cutsNotes);
     }
 
     dispose(): void {
@@ -259,6 +269,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
             isMuted: this.isMuted,
             effects: this.effects.capture(),
             automation: this.automation.serialize(),
+            cutsNotes: this.cutsNotes,
         };
     }
 
@@ -269,6 +280,9 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         this.setVolume(state.volume);
         this.setPan(state.pan);
         this.isMuted = state.isMuted;
+        if (state.cutsNotes !== undefined) {
+            this.setCutsNotes(state.cutsNotes);
+        }
         this.effects.restore(state.effects);
         this.automation.restore(state.automation);
     }
@@ -281,6 +295,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
             volume: this.volume,
             pan: this.pan,
             automation: this.automation.serialize(),
+            cutsNotes: this.cutsNotes,
         };
     }
 }

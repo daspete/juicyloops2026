@@ -63,8 +63,9 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
  * Pitch and speed are independent: the played region is time-stretched so that, played back at the pitch
  * ratio, it lasts exactly as long as the speed says. With neither turned, the sample plays untouched.
  *
- * Every step starts a voice of its own, so a long slice rings on under the next one, the step's velocity sets
- * its level and its note decides what it plays (see `SampleTick`).
+ * Every step starts a voice of its own, the step's velocity sets its level and its note decides what it plays
+ * (see `SampleTick`). A long slice rings on under the next one, unless the track cuts notes: then a new step
+ * stops whatever is still sounding.
  */
 export abstract class SampleTrack extends BaseTrack<SampleTick> {
     /** Where every voice goes; the effect chain starts here. */
@@ -93,7 +94,8 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
     private buffer: AudioBuffer | null = null;
     private rendition: Rendition | null = null;
     private renderTimer: ReturnType<typeof setTimeout> | null = null;
-    private readonly voices = new Set<ToneBufferSource>();
+    /** Every voice still sounding, with the time (seconds) it ends by itself. */
+    private readonly voices = new Map<ToneBufferSource, number>();
 
     /** The last sample load that was started; `whenReady` waits for it. */
     private loading: Promise<void> = Promise.resolve();
@@ -312,6 +314,10 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
             offset = clamp(buffer.duration - offset - length, 0, buffer.duration);
         }
 
+        if (this.cutsNotes) {
+            this.cutVoices(time);
+        }
+
         const rate = semitoneRatio(rendition.pitch + voice.semitones);
         const duration = Math.min(length, buffer.duration - offset) / rate;
         const source: ToneBufferSource = new ToneBufferSource({
@@ -324,8 +330,19 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
             // Tone disposes a finished source itself when online. Offline it must not: the clock runs ahead of the render there.
             onended: () => this.voices.delete(source),
         }).connect(this.input);
-        this.voices.add(source);
-        source.start(time, offset, Math.max(0, duration - VOICE_FADE), tick.volume);
+        const playFor = Math.max(0, duration - VOICE_FADE);
+        this.voices.set(source, time + playFor);
+        source.start(time, offset, playFor, tick.volume);
+    }
+
+    /** Fades out every voice that would still sound at `time`. Voices that end before it are left alone. */
+    private cutVoices(time: number): void {
+        for (const [voice, end] of this.voices) {
+            if (end > time) {
+                voice.stop(time);
+                this.voices.set(voice, time);
+            }
+        }
     }
 
     private reverse(buffer: AudioBuffer): AudioBuffer {
@@ -337,7 +354,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
     }
 
     private stopVoices(): void {
-        for (const voice of this.voices) {
+        for (const voice of this.voices.keys()) {
             voice.dispose();
         }
         this.voices.clear();
