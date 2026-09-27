@@ -99,7 +99,7 @@ const hue = (index: number) => 200 + index * 47;
             </div>
             <div class="lane-foot">
                 <span class="lane-hint">{{
-                    props.track.automation.lanes.length ? 'Click the lane to add a point, drag it to move, double-click to remove. The curve loops with the pattern.' : 'Pick a value to draw over the loop: level, pan, an effect knob, the envelope.'
+                    props.track.automation.lanes.length ? 'Click to add a point, drag it to move, double-click to remove. Drag the small ring between two points to bend the curve, right-click it for S-curve or hold. The curve loops with the pattern.' : 'Pick a value to draw over the loop: level, pan, an effect knob, the envelope.'
                 }}</span>
                 <button v-if="!props.track.automation.lanes.length" type="button" class="iconbtn iconbtn--tiny" aria-label="Close" @click="emit('close')">
                     <Icon icon="mdi:close" class="w-3.5 h-3.5" />

@@ -39,7 +39,7 @@ const measure = () => {
 };
 
 const onPointerDown = (event: PointerEvent) => {
-    if (!(event.target as HTMLElement | null)?.closest('.cwin')) {
+    if (!(event.target as HTMLElement | null)?.closest('.fwin')) {
         setActive(null);
     }
 };

@@ -90,10 +90,28 @@ export const atTime = (context: BaseContext, time: number | undefined, fn: () =>
 
 /* ---- points: the same curve in both views ---- */
 
+/**
+ * How a segment travels from one point to the next:
+ * - `curve` bends towards either end: slow start and fast finish, or the other way round (a straight line at tension 0)
+ * - `s-curve` shapes both ends at once: easing in and out, or rushing at both ends with a flat middle
+ * - `hold` keeps the value until the next point, then jumps
+ */
+export type CurveShape = 'curve' | 's-curve' | 'hold';
+
+export const CURVE_SHAPES: readonly { key: CurveShape; label: string; icon: string }[] = [
+    { key: 'curve', label: 'Curve', icon: 'mdi:vector-curve' },
+    { key: 's-curve', label: 'S-curve', icon: 'mdi:sine-wave' },
+    { key: 'hold', label: 'Hold', icon: 'mdi:stairs' },
+];
+
 export interface AutomationPoint {
     step: number;
     /** 0..1 */
     value: number;
+    /** The shape of the segment from this point to the next. Missing means `curve`. */
+    shape?: CurveShape;
+    /** How strongly that segment bends, -1..1. Missing or 0 is straight (for `curve` and `s-curve`). */
+    tension?: number;
 }
 
 /** Anything that carries a curve: a track's step lane or a song lane. */
@@ -102,7 +120,42 @@ export interface AutomationCurve {
     readonly points: AutomationPoint[];
 }
 
-/** The curve's value at a step (straight lines between points, flat before the first and after the last), or null without points. */
+/** The strongest bend: at tension ±1 a segment follows t^8. */
+const MAX_EXPONENT = 8;
+
+/**
+ * Where a segment is (0..1 of the way from its start value to its end value) at `t`, 0..1 of the way along it.
+ * Positive tension holds back at the start (curve) or at both ends (s-curve); negative tension rushes there instead.
+ */
+export const segmentProgress = (t: number, shape: CurveShape = 'curve', tension = 0): number => {
+    const x = Math.min(1, Math.max(0, t));
+    if (shape === 'hold') {
+        return x < 1 ? 0 : 1;
+    }
+    const k = Math.max(-1, Math.min(1, tension));
+    if (k === 0) {
+        return x;
+    }
+    const e = Math.pow(MAX_EXPONENT, Math.abs(k));
+    if (shape === 's-curve') {
+        if (k > 0) {
+            return x < 0.5 ? 0.5 * Math.pow(2 * x, e) : 1 - 0.5 * Math.pow(2 - 2 * x, e);
+        }
+        return x < 0.5 ? 0.5 * (1 - Math.pow(1 - 2 * x, e)) : 0.5 + 0.5 * Math.pow(2 * x - 1, e);
+    }
+    return k > 0 ? Math.pow(x, e) : 1 - Math.pow(1 - x, e);
+};
+
+/** The value of the segment that starts at `from` and ends at `to`, at a step between them. */
+export const segmentValue = (from: AutomationPoint, to: AutomationPoint, step: number): number => {
+    const span = to.step - from.step;
+    if (span <= 0) {
+        return to.value;
+    }
+    return from.value + segmentProgress((step - from.step) / span, from.shape, from.tension) * (to.value - from.value);
+};
+
+/** The curve's value at a step (each segment shaped by its start point, flat before the first and after the last), or null without points. */
 export const valueAt = (points: readonly AutomationPoint[], step: number): number | null => {
     if (!points.length) {
         return null;
@@ -114,12 +167,29 @@ export const valueAt = (points: readonly AutomationPoint[], step: number): numbe
     for (let i = 1; i < points.length; i++) {
         const next = points[i]!;
         if (step <= next.step) {
-            const previous = points[i - 1]!;
-            const span = next.step - previous.step;
-            return span === 0 ? next.value : previous.value + ((step - previous.step) / span) * (next.value - previous.value);
+            return segmentValue(points[i - 1]!, next, step);
         }
     }
     return points[points.length - 1]!.value;
+};
+
+/** Sets the shape and tension of the segment that starts at a point. Tension 0 on a curve is stored as nothing, a plain line. */
+export const setSegment = (curve: AutomationCurve, index: number, shape: CurveShape, tension: number): void => {
+    const point = curve.points[index];
+    if (!point) {
+        return;
+    }
+    const k = Math.round(Math.max(-1, Math.min(1, tension)) * 100) / 100;
+    if (shape === 'curve') {
+        delete point.shape;
+    } else {
+        point.shape = shape;
+    }
+    if (k === 0 || shape === 'hold') {
+        delete point.tension;
+    } else {
+        point.tension = k;
+    }
 };
 
 const sortPoints = (curve: AutomationCurve): void => {
@@ -134,7 +204,15 @@ export const setPoint = (curve: AutomationCurve, step: number, value: number): n
     if (existing) {
         existing.value = clamped;
     } else {
-        curve.points.push({ step: at, value: clamped });
+        // A point dropped into a shaped segment splits it: both halves keep the segment's shape.
+        const before = [...curve.points].reverse().find((point) => point.step < at);
+        const splits = before && curve.points.some((point) => point.step > at);
+        curve.points.push({
+            step: at,
+            value: clamped,
+            ...(splits && before.shape ? { shape: before.shape } : {}),
+            ...(splits && before.tension ? { tension: before.tension } : {}),
+        });
         sortPoints(curve);
     }
     return curve.points.findIndex((point) => point.step === at);

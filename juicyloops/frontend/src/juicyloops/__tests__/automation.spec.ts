@@ -5,7 +5,9 @@ import {
     movePoint,
     removePoint,
     sameTarget,
+    segmentProgress,
     setPoint,
+    setSegment,
     toNormalized,
     toValue,
     TrackAutomation,
@@ -128,5 +130,73 @@ describe('song automation lanes', () => {
         expect(song.automation.map((lane) => lane.target.kind)).toEqual(['master']);
         song.removeAutomation(song.automation[0]!.id);
         expect(song.automation).toHaveLength(0);
+    });
+});
+
+describe('curve shapes', () => {
+    const rising = () => ({ points: [{ step: 0, value: 0 }, { step: 8, value: 1 }] as { step: number; value: number; shape?: 'curve' | 's-curve' | 'hold'; tension?: number }[] });
+
+    it('is a straight line without tension', () => {
+        expect(segmentProgress(0.25)).toBe(0.25);
+        expect(segmentProgress(0.25, 's-curve', 0)).toBe(0.25);
+        expect(valueAt(rising().points, 4)).toBe(0.5);
+    });
+
+    it('bends a curve towards either end and keeps its ends', () => {
+        const late = segmentProgress(0.5, 'curve', 1);
+        const early = segmentProgress(0.5, 'curve', -1);
+        expect(late).toBeCloseTo(1 / 256);
+        expect(early).toBeCloseTo(1 - 1 / 256);
+        for (const tension of [-1, -0.4, 0.4, 1]) {
+            expect(segmentProgress(0, 'curve', tension)).toBe(0);
+            expect(segmentProgress(1, 'curve', tension)).toBe(1);
+        }
+    });
+
+    it('shapes both ends of an S-curve, which always passes the middle at half way', () => {
+        expect(segmentProgress(0.5, 's-curve', 0.8)).toBeCloseTo(0.5);
+        expect(segmentProgress(0.5, 's-curve', -0.8)).toBeCloseTo(0.5);
+        // Easing in and out: slow at both ends.
+        expect(segmentProgress(0.1, 's-curve', 1)).toBeLessThan(0.1);
+        expect(segmentProgress(0.9, 's-curve', 1)).toBeGreaterThan(0.9);
+        // The other way: fast at both ends.
+        expect(segmentProgress(0.1, 's-curve', -1)).toBeGreaterThan(0.1);
+        expect(segmentProgress(0.9, 's-curve', -1)).toBeLessThan(0.9);
+    });
+
+    it('holds the value until the next point', () => {
+        const curve = rising();
+        setSegment(curve, 0, 'hold', 0.5);
+        expect(curve.points[0]).toEqual({ step: 0, value: 0, shape: 'hold' });
+        expect(valueAt(curve.points, 7)).toBe(0);
+        expect(valueAt(curve.points, 8)).toBe(1);
+    });
+
+    it('drives the value between points with the segment start point', () => {
+        const curve = rising();
+        setSegment(curve, 0, 'curve', 1);
+        expect(valueAt(curve.points, 4)).toBeCloseTo(1 / 256);
+        setSegment(curve, 0, 'curve', 0);
+        expect(curve.points[0]).toEqual({ step: 0, value: 0 });
+    });
+
+    it('keeps the shape on both halves when a point splits a shaped segment', () => {
+        const curve = rising();
+        setSegment(curve, 0, 's-curve', -0.5);
+        setPoint(curve, 4, 0.3);
+        expect(curve.points[1]).toMatchObject({ step: 4, value: 0.3, shape: 's-curve', tension: -0.5 });
+        // A point after the last one starts nothing, so it gets no shape.
+        setPoint(curve, 12, 0.2);
+        expect(curve.points[3]).toEqual({ step: 12, value: 0.2 });
+    });
+
+    it('survives serialization of a step lane', () => {
+        const automation = new TrackAutomation(16);
+        const lane = automation.add('volume', 0);
+        setPoint(lane, 8, 1);
+        setSegment(lane, 0, 's-curve', 0.6);
+        const copy = new TrackAutomation(16);
+        copy.restore(automation.serialize());
+        expect(copy.lanes[0]!.points[0]).toEqual({ step: 0, value: 0, shape: 's-curve', tension: 0.6 });
     });
 });

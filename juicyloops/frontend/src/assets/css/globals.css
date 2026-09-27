@@ -1406,23 +1406,21 @@
     gap: 0.5rem;
 }
 
-.pianoroll-dialog .p-dialog-content {
-    display: flex;
-    flex-direction: column;
-    padding-top: 0.25rem;
-}
-
+/* The piano roll inside its floating window: the rows take whatever height the window has. */
 .pianoroll--dialog {
     container-type: inline-size;
     flex: 1 1 auto;
     min-height: 0;
     margin-left: 0;
+    padding: 0.5rem 0.75rem 0.6rem;
     --jl-lane: calc(100cqw - var(--jl-key-width) - 0.75rem);
     --jl-beat-w: calc((var(--jl-lane) - (var(--jl-roll-beats, 8) - 1) * var(--jl-beat-gap)) / var(--jl-roll-beats, 8));
     --jl-cell-w: calc((var(--jl-beat-w) - 3 * var(--jl-cell-gap)) / 4);
 
     & .pianoroll-scroller {
-        height: min(62vh, 36rem);
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
     }
 
     & .pianorow {
@@ -1485,12 +1483,6 @@
     }
 }
 
-/* Maximized: the roll takes all the height the window has. */
-.p-dialog-maximized .pianoroll--dialog .pianoroll-scroller {
-    flex: 1 1 auto;
-    height: auto;
-}
-
 /* On a phone the roll keeps finger-sized cells and scrolls sideways; the keys stay pinned on the left. */
 @media (max-width: 640px) {
     .pianoroll--dialog {
@@ -1501,10 +1493,6 @@
             left: 0;
             z-index: 2;
             background: var(--jl-panel);
-        }
-
-        & .pianoroll-scroller {
-            height: min(55vh, 34rem);
         }
     }
 
@@ -3668,11 +3656,11 @@
     color: var(--jl-muted);
 }
 
-/* ---------- container windows (song view) ---------- */
+/* ---------- floating windows (container windows, piano roll) ---------- */
 
 /*
- * Floating editors over the song: one container's tracks each. The layer covers the song view and lets clicks
- * through to the playlist; only the windows themselves catch the pointer.
+ * Floating editors: a container's tracks over the song, a track's piano roll over the screen. The container layer
+ * covers the song view and lets clicks through to the playlist; only the windows themselves catch the pointer.
  */
 .songpage {
     position: relative;
@@ -3686,8 +3674,7 @@
     pointer-events: none;
 }
 
-.cwin {
-    --jl-clip: hsl(var(--jl-clip-hue) 80% 62%);
+.fwin {
     position: absolute;
     display: flex;
     flex-direction: column;
@@ -3702,13 +3689,17 @@
     pointer-events: auto;
 }
 
-.cwin--maximized {
+.fwin--fixed {
+    position: fixed;
+}
+
+.fwin--maximized {
     inset: 0;
     border-radius: 0;
     border: none;
 }
 
-.cwin-bar {
+.fwin-bar {
     display: flex;
     align-items: center;
     gap: 0.45rem;
@@ -3716,30 +3707,30 @@
     height: 2.2rem;
     padding: 0 0.35rem 0 0.7rem;
     border-bottom: 1px solid var(--jl-line);
-    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-clip) 22%, var(--jl-panel)), var(--jl-panel) 60%);
+    background: linear-gradient(90deg, color-mix(in oklab, var(--jl-win-accent) 22%, var(--jl-panel)), var(--jl-panel) 60%);
     cursor: grab;
     touch-action: none;
     user-select: none;
 }
 
-.cwin--maximized .cwin-bar {
+.fwin--maximized .fwin-bar {
     cursor: default;
 }
 
-.cwin--dragging,
-.cwin--dragging .cwin-bar {
+.fwin--dragging,
+.fwin--dragging .fwin-bar {
     cursor: grabbing;
 }
 
-.cwin-swatch {
+.fwin-swatch {
     flex-shrink: 0;
     width: 0.75rem;
     height: 0.75rem;
     border-radius: 0.2rem;
-    background: linear-gradient(135deg, hsl(var(--jl-clip-hue) 85% 66%), hsl(calc(var(--jl-clip-hue) + 25) 85% 56%));
+    background: linear-gradient(135deg, color-mix(in oklab, var(--jl-win-accent) 80%, white), var(--jl-win-accent));
 }
 
-.cwin-name {
+.fwin-title {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 0.85rem;
@@ -3750,7 +3741,7 @@
     max-width: 16rem;
 }
 
-.cwin-input {
+.fwin-input {
     width: 12rem;
     height: 1.5rem;
     padding: 0 0.4rem;
@@ -3762,7 +3753,7 @@
     font-weight: 600;
 }
 
-.cwin-meta {
+.fwin-meta {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
@@ -3771,13 +3762,13 @@
     white-space: nowrap;
 }
 
-.cwin-live {
+.fwin-live {
     display: inline-flex;
     align-items: center;
     gap: 0.3rem;
     padding: 0.05rem 0.4rem;
     border-radius: 999px;
-    background: color-mix(in oklab, var(--jl-clip) 22%, transparent);
+    background: color-mix(in oklab, var(--jl-win-accent) 22%, transparent);
     color: var(--jl-text);
     font-weight: 700;
     text-transform: uppercase;
@@ -3785,21 +3776,21 @@
     font-size: 0.6rem;
 }
 
-.cwin-live i {
+.fwin-live i {
     width: 0.4rem;
     height: 0.4rem;
     border-radius: 50%;
-    background: var(--jl-clip);
-    animation: cwinlive 1s ease-in-out infinite;
+    background: var(--jl-win-accent);
+    animation: fwinlive 1s ease-in-out infinite;
 }
 
-@keyframes cwinlive {
+@keyframes fwinlive {
     50% {
         opacity: 0.35;
     }
 }
 
-.cwin-body {
+.fwin-body {
     flex: 1 1 auto;
     min-height: 0;
     display: flex;
@@ -3807,7 +3798,7 @@
 }
 
 /* A narrow window scrolls sideways instead of shrinking the pads to nothing. */
-.cwin .timeline {
+.fwin .timeline {
     --jl-lane: max(
         min(calc(100cqw - var(--jl-head-space) - 2 * var(--jl-row-pad)), calc(8 * (4 * var(--jl-cell-max) + 3 * var(--jl-cell-gap)) + 7 * var(--jl-beat-gap))),
         34rem
@@ -3815,29 +3806,29 @@
 }
 
 /* Invisible grips along the sides and the bottom corners. */
-.cwin-edge {
+.fwin-edge {
     position: absolute;
     z-index: 6;
     touch-action: none;
 }
 
-.cwin-edge--e,
-.cwin-edge--w {
+.fwin-edge--e,
+.fwin-edge--w {
     top: 2.2rem;
     bottom: 0.75rem;
     width: 7px;
     cursor: ew-resize;
 }
 
-.cwin-edge--e {
+.fwin-edge--e {
     right: 0;
 }
 
-.cwin-edge--w {
+.fwin-edge--w {
     left: 0;
 }
 
-.cwin-edge--s {
+.fwin-edge--s {
     left: 0.75rem;
     right: 0.75rem;
     bottom: 0;
@@ -3845,20 +3836,20 @@
     cursor: ns-resize;
 }
 
-.cwin-edge--se,
-.cwin-edge--sw {
+.fwin-edge--se,
+.fwin-edge--sw {
     bottom: 0;
     width: 0.9rem;
     height: 0.9rem;
 }
 
-.cwin-edge--se {
+.fwin-edge--se {
     right: 0;
     cursor: nwse-resize;
     background: linear-gradient(135deg, transparent 55%, var(--jl-line-strong) 55%, var(--jl-line-strong) 62%, transparent 62%, transparent 72%, var(--jl-line-strong) 72%, var(--jl-line-strong) 79%, transparent 79%);
 }
 
-.cwin-edge--sw {
+.fwin-edge--sw {
     left: 0;
     cursor: nesw-resize;
 }
@@ -3993,6 +3984,42 @@
 
 .auto-point[data-active='true'] {
     cursor: grabbing;
+}
+
+/* The bend handle in the middle of a segment: smaller and quieter than a point, a ring you can pull up or down. */
+.auto-handle {
+    position: absolute;
+    z-index: 1;
+    width: 0.6rem;
+    height: 0.6rem;
+    margin: -0.3rem 0 0 -0.3rem;
+    border-radius: 999px;
+    background: var(--jl-panel);
+    box-shadow: inset 0 0 0 1.5px color-mix(in oklab, var(--jl-auto) 70%, transparent);
+    opacity: 0.7;
+    cursor: ns-resize;
+    touch-action: none;
+    transition:
+        transform 0.1s ease,
+        opacity 0.1s ease;
+}
+
+.auto-handle[data-shape='hold'] {
+    border-radius: 0.1rem;
+    cursor: context-menu;
+}
+
+.auto-body:hover .auto-handle {
+    opacity: 1;
+}
+
+.auto-handle:hover,
+.auto-handle[data-active='true'] {
+    opacity: 1;
+    transform: scale(1.35);
+    box-shadow:
+        inset 0 0 0 2px var(--jl-auto),
+        0 0 8px color-mix(in oklab, var(--jl-auto) 50%, transparent);
 }
 
 .auto-tag {
