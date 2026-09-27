@@ -7,18 +7,21 @@ import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
 import { Slider, useConfirm } from 'primevue';
 import { computed, ref } from 'vue';
+import SongMenu, { type SongMenuItem } from '../song/SongMenu.vue';
 import TrackAutomationLanes from './settings/TrackAutomationLanes.vue';
 import TrackVolumeSettings from './settings/TrackVolumeSettings.vue';
 import { TRACK_META } from './trackMeta';
 
 /**
- * Everything every track row has in common: the coloured channel head (name, mute, volume, tools)
+ * Everything every track row has in common: the coloured channel head and the lanes under the step grid.
+ * The head has three rows: who the track is (name, length, the ⋯ menu with duplicate, export and remove),
+ * its mix (mute, volume) and its tools (icon toggles for what opens under the grid, then Tweak).
  * and the lanes that can open under the step grid (velocity, automation, piano roll, waveform).
- * Clicking the head selects the track; its sound, pattern tools and effects then live in the detail panel below the workspace.
+ * Clicking the head selects the track; its sound, pattern tools and effects then live in the Tweak panel.
  * The row is a two-row grid: head and step grid side by side, everything that opens below them across the full width.
  *
  * Slots:
- *  - `actions`  extra tool buttons (before the shared ones)
+ *  - `actions`  extra tool toggles, before the shared ones (an icon and a label; the label is read out, not shown)
  *  - default    main content (usually the tick grid)
  *  - `expanded` content shown below the grid (piano roll, waveform, ...)
  */
@@ -60,9 +63,33 @@ const toggleTweak = () => {
 
 const exportTrack = () => openExport({ scope: { kind: 'track', containerId: container.value.id, trackId: props.track.id, repeats: 1 } });
 
-const confirmRemove = (event: MouseEvent) => {
+/* The track menu: behind the ⋯ button, and on a right-click anywhere on the head. */
+const menu = ref<{ x: number; y: number; anchor: HTMLElement } | null>(null);
+
+const openMenu = (event: MouseEvent) => {
+    const head = (event.currentTarget as HTMLElement).closest('.track-head') as HTMLElement;
+    if (event.type === 'click') {
+        const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+        menu.value = { x: rect.left, y: rect.bottom + 4, anchor: head };
+    } else {
+        menu.value = { x: event.clientX, y: event.clientY, anchor: head };
+    }
+};
+
+/* The menu closes before its action runs, so the confirmation's anchor is taken while it is still open. */
+const menuItems = computed<SongMenuItem[]>(() => {
+    const anchor = menu.value?.anchor;
+    return [
+        { label: 'Duplicate track', icon: 'mdi:content-copy', action: () => void duplicateTrack(props.track.id, container.value) },
+        { label: 'Export as audio', icon: 'mdi:export-variant', action: exportTrack },
+        {},
+        { label: 'Remove track', icon: 'mdi:trash-can-outline', danger: true, action: () => confirmRemove(anchor) },
+    ];
+});
+
+const confirmRemove = (target?: HTMLElement) => {
     confirm.require({
-        target: event.currentTarget as HTMLElement,
+        target,
         message: `Remove this ${meta.value.label} track?`,
         acceptLabel: 'Remove',
         rejectLabel: 'Keep',
@@ -76,24 +103,24 @@ const confirmRemove = (event: MouseEvent) => {
 <template>
     <div class="track" :class="{ 'track--muted': props.track.isMuted, 'track--selected': isSelected }" :style="{ '--jl-accent': meta.accent }">
         <div class="track-inner">
-            <div class="track-head" @pointerdown="select">
+            <div class="track-head" @pointerdown="select" @contextmenu.prevent="openMenu">
                 <div class="track-title">
-                    <span class="track-badge"><Icon :icon="meta.icon" class="w-4 h-4" /></span>
-                    <span class="track-name">{{ meta.label }}</span>
-                    <span class="track-index">{{ props.trackIndex + 1 }}</span>
-                    <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Pattern in the panel below.'">{{ props.track.length }}</span>
-                    <div class="flex-1"></div>
-                    <span class="track-actions">
-                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Duplicate track" v-tooltip.bottom="'Duplicate track'" @click="duplicateTrack(props.track.id, container)">
-                            <Icon icon="mdi:content-copy" class="w-3.5 h-3.5" />
-                        </button>
-                        <button type="button" class="iconbtn iconbtn--tiny" aria-label="Export track as audio" v-tooltip.bottom="'Export this track as WAV or MP3'" @click="exportTrack">
-                            <Icon icon="mdi:export-variant" class="w-3.5 h-3.5" />
-                        </button>
-                        <button type="button" class="iconbtn iconbtn--tiny iconbtn--danger" aria-label="Remove track" v-tooltip.bottom="'Remove track'" @click="confirmRemove">
-                            <Icon icon="mdi:trash-can-outline" class="w-3.5 h-3.5" />
-                        </button>
+                    <span class="track-badge"><Icon :icon="meta.icon" class="w-3.5 h-3.5" /></span>
+                    <span class="track-name">
+                        {{ meta.label }}<span class="track-index">{{ props.trackIndex + 1 }}</span>
                     </span>
+                    <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Tweak → Pattern.'">{{ props.track.length }}</span>
+                    <button
+                        type="button"
+                        class="iconbtn iconbtn--tiny track-more"
+                        :data-active="!!menu"
+                        aria-label="Track menu"
+                        aria-haspopup="menu"
+                        v-tooltip.bottom="'Duplicate, export, remove'"
+                        @click="openMenu"
+                    >
+                        <Icon icon="mdi:dots-horizontal" class="w-4 h-4" />
+                    </button>
                 </div>
 
                 <div class="track-mix">
@@ -120,33 +147,42 @@ const confirmRemove = (event: MouseEvent) => {
                     <span class="track-db">{{ volumeLabel }}</span>
                 </div>
 
-                <div class="tools">
-                    <slot name="actions" />
+                <div class="track-toolbar">
+                    <div class="tools" role="group" aria-label="Show under the steps">
+                        <slot name="actions" />
+                        <button
+                            type="button"
+                            class="tool"
+                            :data-active="isVelocityOpen"
+                            v-tooltip.bottom="'Velocity: how loud each step plays'"
+                            :aria-pressed="isVelocityOpen"
+                            @click="isVelocityOpen = !isVelocityOpen"
+                        >
+                            <Icon icon="mdi:chart-bar" class="w-4 h-4" />
+                            <span>Velocity</span>
+                        </button>
+                        <button
+                            v-if="isPro"
+                            type="button"
+                            class="tool"
+                            :data-active="showsAutomation"
+                            v-tooltip.bottom="'Automate: draw any value of this track over the loop'"
+                            :aria-pressed="showsAutomation"
+                            @click="isAutomationOpen = !isAutomationOpen"
+                        >
+                            <Icon icon="mdi:chart-bell-curve-cumulative" class="w-4 h-4" />
+                            <span>Automate</span>
+                            <b v-if="props.track.automation.lanes.length" class="tool-count">{{ props.track.automation.lanes.length }}</b>
+                        </button>
+                    </div>
                     <button
                         type="button"
-                        class="tool"
-                        :data-active="isVelocityOpen"
-                        v-tooltip.bottom="'How loud each step plays'"
-                        :aria-pressed="isVelocityOpen"
-                        @click="isVelocityOpen = !isVelocityOpen"
+                        class="tool tool--tweak"
+                        :data-active="isTweakOpen"
+                        v-tooltip.bottom="'Sound, pattern tools and effects'"
+                        :aria-pressed="isTweakOpen"
+                        @click="toggleTweak"
                     >
-                        <Icon icon="mdi:chart-bar" class="w-4 h-4" />
-                        <span>Velocity</span>
-                    </button>
-                    <button
-                        v-if="isPro"
-                        type="button"
-                        class="tool"
-                        :data-active="showsAutomation"
-                        v-tooltip.bottom="'Draw any value of this track over the loop'"
-                        :aria-pressed="showsAutomation"
-                        @click="isAutomationOpen = !isAutomationOpen"
-                    >
-                        <Icon icon="mdi:chart-bell-curve-cumulative" class="w-4 h-4" />
-                        <span>Automate</span>
-                        <span v-if="props.track.automation.lanes.length" class="tool-count">{{ props.track.automation.lanes.length }}</span>
-                    </button>
-                    <button type="button" class="tool" :data-active="isTweakOpen" v-tooltip.bottom="'Sound, pattern tools and effects'" :aria-pressed="isTweakOpen" @click="toggleTweak">
                         <Icon icon="mdi:tune-variant" class="w-4 h-4" />
                         <span>Tweak</span>
                     </button>
@@ -175,4 +211,8 @@ const confirmRemove = (event: MouseEvent) => {
             </div>
         </div>
     </div>
+
+    <Teleport to="body">
+        <SongMenu v-if="menu" :items="menuItems" :x="menu.x" :y="menu.y" :title="`${meta.label} ${props.trackIndex + 1}`" @close="menu = null" />
+    </Teleport>
 </template>

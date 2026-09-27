@@ -55,7 +55,7 @@
     --jl-surface-2: var(--jl-raised);
 
     /* Width of the channel head on the left of every track row. The step ruler uses it too. */
-    --jl-track-head: 16rem;
+    --jl-track-head: 14.5rem;
     /* Gap between that column and the grid. */
     --jl-track-gap: 0.75rem;
     /* Head plus gap: how far the step grids of a row are indented. Zero when the head sits above the grid. */

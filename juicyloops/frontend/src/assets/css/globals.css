@@ -1607,9 +1607,10 @@
     z-index: 3;
     display: flex;
     flex-direction: column;
+    justify-content: center;
     gap: 0.3rem;
     min-width: 0;
-    padding: 0.35rem 0.4rem 0.35rem 0.8rem;
+    padding: 0.35rem 0.4rem 0.4rem 0.75rem;
     border-radius: 0.65rem;
     background:
         linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 10%, transparent), transparent 70%),
@@ -1635,13 +1636,12 @@
     transition: width 0.15s ease;
 }
 
+/* The selected head has no outline: its colour strip glows instead (below). */
 .track--selected .track-head {
     background:
         linear-gradient(90deg, color-mix(in oklab, var(--jl-accent) 18%, transparent), transparent 70%),
         var(--jl-raised);
-    box-shadow:
-        inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 55%, var(--jl-line)),
-        calc(-1 * var(--jl-row-pad)) 0 0 0 var(--jl-bg);
+    box-shadow: calc(-1 * var(--jl-row-pad)) 0 0 0 var(--jl-bg);
 }
 
 .track--selected .track-head::before {
@@ -1649,35 +1649,38 @@
     box-shadow: 0 0 14px color-mix(in oklab, var(--jl-accent) 70%, transparent);
 }
 
+/* Row one: who the track is. The ⋯ menu sits at the far end, quiet until the head is hovered or selected. */
 .track-title {
     display: flex;
     align-items: center;
-    gap: 0.45rem;
-    height: 1.75rem;
+    gap: 0.4rem;
+    min-width: 0;
+    height: 1.5rem;
 }
 
-.track-actions {
-    display: inline-flex;
-    gap: 1px;
-    opacity: 0;
+.track-more {
+    margin-left: auto;
+    opacity: 0.45;
     transition: opacity 0.12s ease;
 }
 
-.track-head:hover .track-actions,
-.track--selected .track-actions,
-.track-actions:focus-within {
+.track-head:hover .track-more,
+.track--selected .track-more,
+.track-more:focus-visible,
+.track-more[data-active='true'] {
     opacity: 1;
 }
 
+/* Row two: the mix, M then the fader then its reading. */
 .track-mix {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    height: 1.5rem;
+    height: 1.35rem;
 }
 
 .track-db {
-    width: 3.8rem;
+    width: 3.2rem;
     font-family: var(--font-mono);
     font-size: 0.68rem;
     color: var(--jl-muted);
@@ -1690,8 +1693,9 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 1.5rem;
-    height: 1.35rem;
+    flex-shrink: 0;
+    width: 1.45rem;
+    height: 1.3rem;
     border-radius: 0.35rem;
     background: var(--jl-cell);
     color: var(--jl-muted);
@@ -1800,24 +1804,28 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 1.6rem;
-    height: 1.6rem;
-    border-radius: 0.45rem;
+    width: 1.45rem;
+    height: 1.45rem;
+    border-radius: 0.4rem;
     background: color-mix(in oklab, var(--jl-accent) 20%, transparent);
     color: var(--jl-accent);
 }
 
 .track-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: 0.98rem;
+    font-size: 0.9rem;
     letter-spacing: -0.01em;
     white-space: nowrap;
 }
 
 .track-index {
+    margin-left: 0.3rem;
     font-family: var(--font-mono);
-    font-size: 0.7rem;
+    font-size: 0.68rem;
     font-weight: 700;
     color: var(--jl-muted);
 }
@@ -1857,32 +1865,34 @@
     background: var(--jl-accent);
 }
 
-/* The tool row under the volume: what the row can show or open. */
+/*
+ * Row three: the tools. What can open under the steps is one group of icon toggles (their labels are for screen
+ * readers and tooltips); Tweak, which opens the panel instead, stands apart at the end with its label.
+ */
+.track-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
 .tools {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
+    display: flex;
     gap: 2px;
     padding: 2px;
-    border-radius: 0.55rem;
+    border-radius: 0.5rem;
     background: color-mix(in oklab, var(--jl-cell) 70%, transparent);
 }
 
-/* With four tools the row would overflow the head; two rows of two keep every label readable. */
-.tools:has(> :nth-child(4)) {
-    grid-auto-flow: row;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
 .tool {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 0.3rem;
     min-width: 0;
-    height: 1.6rem;
-    padding: 0 0.3rem;
-    border-radius: 0.4rem;
+    width: 1.85rem;
+    height: 1.55rem;
+    border-radius: 0.38rem;
     font-size: 0.74rem;
     font-weight: 600;
     color: var(--jl-muted);
@@ -1892,6 +1902,16 @@
         background-color 0.12s ease,
         color 0.12s ease,
         box-shadow 0.12s ease;
+}
+
+/* The toggles show their icon only; the label stays for assistive tech. */
+.tools .tool > span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
 }
 
 .tool:hover {
@@ -1910,16 +1930,34 @@
     cursor: not-allowed;
 }
 
+/* How many automation lanes a track has: a small count on the toggle's corner. */
 .tool-count {
-    min-width: 1rem;
-    padding: 0 0.25rem;
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    min-width: 0.85rem;
+    padding: 0 0.2rem;
     border-radius: 999px;
-    background: color-mix(in oklab, var(--jl-accent) 22%, transparent);
-    color: var(--jl-accent);
+    background: var(--jl-accent);
+    color: var(--jl-accent-ink);
     font-family: var(--font-mono);
-    font-size: 0.6rem;
-    line-height: 1rem;
+    font-size: 0.55rem;
+    line-height: 0.85rem;
     text-align: center;
+}
+
+.tool--tweak {
+    width: auto;
+    margin-left: auto;
+    padding: 0 0.55rem 0 0.45rem;
+    border: 1px solid var(--jl-line);
+    background: var(--jl-panel);
+    color: var(--jl-text);
+}
+
+.tool--tweak[data-active='true'] {
+    border-color: color-mix(in oklab, var(--jl-accent) 55%, var(--jl-line));
+    background: color-mix(in oklab, var(--jl-accent) 16%, var(--jl-raised));
 }
 
 .grid-hint {
@@ -1973,7 +2011,7 @@
     }
 
     .track--selected .track-head {
-        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 45%, var(--jl-line));
+        box-shadow: none;
     }
 
     .track-head > * {
@@ -4365,19 +4403,16 @@
         flex: 1 1 100%;
     }
 
-    .track-actions {
+    .track-more {
         opacity: 1;
     }
 
-    .tools {
-        grid-auto-flow: column;
-        grid-template-columns: none;
-        grid-auto-columns: minmax(0, 1fr);
+    .tool {
+        height: 2rem;
     }
 
-    .tools:has(> :nth-child(4)) {
-        grid-auto-flow: row;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+    .tools .tool {
+        width: 2.3rem;
     }
 
     .addrow {
