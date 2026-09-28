@@ -316,12 +316,38 @@ export class Sequencer {
         return copy;
     }
 
+    /**
+     * Song lanes being recorded (MIDI controllers in song mode), by id: they do not play meanwhile, so the controller
+     * is heard, not the old curve. Transient, like `BaseTrack.holdAutomation`.
+     */
+    private readonly heldSongLanes = new Set<string>();
+
+    /** Stops a song lane from playing while it is recorded. */
+    holdSongAutomation(laneId: string): void {
+        this.heldSongLanes.add(laneId);
+    }
+
+    /** Lets a held song lane play again and puts its parameter back to its stored value until the lane's next step. */
+    releaseSongAutomation(laneId: string): void {
+        if (!this.heldSongLanes.delete(laneId)) {
+            return;
+        }
+        const lane = toRaw(this.song).automation.find((candidate) => candidate.id === laneId);
+        if (lane) {
+            this.resolveTarget(lane.target)?.settle(lane.param);
+        }
+    }
+
     /** Song lanes for the step window `[step, step + 1)`: the value at the step, then every point inside the window at its own time. */
     private applySongAutomation(song: Song, step: number, time: number): void {
         const lanes = song.automation;
+        const held = this.heldSongLanes;
         let stepSeconds = 0;
         for (let l = 0; l < lanes.length; l++) {
             const lane = lanes[l]!;
+            if (held.size && held.has(lane.id)) {
+                continue;
+            }
             const target = this.resolveTarget(lane.target);
             const param = target?.parameter(lane.param);
             const points = lane.points;

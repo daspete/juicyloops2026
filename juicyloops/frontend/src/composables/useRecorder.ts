@@ -1,10 +1,10 @@
-import { toNormalized, type AutomationPoint, type StepAutomationLane } from '@/juicyloops/automation';
+import { toNormalized, type AutomationCurve, type AutomationPoint, type AutomationTarget } from '@/juicyloops/automation';
 import { Metronome, type ClickContext } from '@/juicyloops/metronome';
-import { ControllerThinner, clearLaneStep, writeRecordedPoint } from '@/juicyloops/midi/laneRecord';
-import { controllerValue, mappingsFor } from '@/juicyloops/midi/mappings';
+import { ControllerThinner, LaneWriter, SongReplacePass, TakePoints, clearLaneStep, songLaneFor, type LaneWrap } from '@/juicyloops/midi/laneRecord';
+import { controllerValue, mappingsFor, paramKey } from '@/juicyloops/midi/mappings';
 import { midiNoteName } from '@/juicyloops/midi/messages';
 import { clampOffset, readRecordSettings, writeRecordSettings, type RecordSettings } from '@/juicyloops/midi/recordSettings';
-import { heardTime, patternPosition, transportStepAt, type ClockReading, type PlayState, type TakeStart, type TransportClock } from '@/juicyloops/midi/recordTiming';
+import { heardTime, patternPosition, songPosition, songWrap, transportStepAt, type ClockReading, type PlayState, type TakeStart, type TransportClock } from '@/juicyloops/midi/recordTiming';
 import type { MidiRouterEvent } from '@/juicyloops/midi/router';
 import { notesToReplace, ReplacePass, Take } from '@/juicyloops/midi/take';
 import { wrapStart } from '@/juicyloops/notes/Note';
@@ -22,10 +22,11 @@ import { useMidi } from './useMidi';
  * - `record()` (the Record button, the `R` key) starts a take. Stopped: after a one-bar count-in (when on) the
  *   transport starts and the take begins with it. Playing: the take begins right away (punch in).
  * - Notes are written as they close (`midi/take.ts`), learned controllers aimed at an armed track and the pitch wheel
- *   into that track's step lanes (`midi/laneRecord.ts`); when a key went down is mapped to what was heard then and on
- *   to a pattern position by `midi/recordTiming.ts`.
+ *   into that track's step lanes (`midi/laneRecord.ts`); in song mode, learned controllers aimed at a container bus,
+ *   the master or a track that is not armed into song automation lanes. When a key went down is mapped to what was
+ *   heard then and on to a pattern position or song step by `midi/recordTiming.ts`.
  * - Replace clears, on the first pass of a take, what the armed tracks would play at each step just before it is
- *   scheduled (and the stretch of lanes the take records into); later passes overdub.
+ *   scheduled (and the stretch of lanes the take records into, song lanes too); later passes overdub.
  * - Pressing record again punches out (playback goes on); stop ends the take where it was heard.
  * - A take is one undo step (`useHistory().hold`).
  * - The metronome clicks straight into the speakers (`metronome.ts`), never through the master.
@@ -97,20 +98,31 @@ const clicks = (): Metronome => (metronome ??= new Metronome(raw));
 
 /* ---- the take ---- */
 
-/** Where a lane's recorded value belongs: pattern position, value 0..1 and the running step it was played at. */
+/**
+ * Where a lane's recorded value belongs: pattern position (song step for a song lane), value 0..1, the running step it
+ * was played at and, for a song lane, where song positions wrap (the loop region, or the song's end).
+ */
 interface PointAt {
     position: number;
     value: number;
     step: number;
+    wrap?: LaneWrap;
 }
 
 interface LaneTake {
-    trackId: string;
+    /** The track whose step lane this is, or whose parameter a song lane drives (null: a bus or the master). */
+    trackId: string | null;
     key: string;
-    lane: StepAutomationLane;
+    lane: AutomationCurve;
+    /** A song lane (song mode, controllers not aimed at an armed track): its id; null for a track's step lane. */
+    songLaneId: string | null;
     thinner: ControllerThinner<PointAt>;
+    /** Writes the points, a gesture at a time, with holds keeping the old curve around each gesture. */
+    writer: LaneWriter;
     lastPosition: number | null;
     lastStep: number;
+    /** The point written last (raw), which the controller's resting value replaces when its step is full. */
+    lastPoint: AutomationPoint | null;
 }
 
 interface Session {
@@ -119,9 +131,11 @@ interface Session {
     replace: boolean;
     /** Replace mode: which steps of each track the first pass has cleared. */
     passes: Map<string, ReplacePass>;
+    /** Replace mode, song mode: which song steps the take has cleared (for the song lanes it records). */
+    songPass: SongReplacePass | null;
     lanes: Map<string, LaneTake>;
-    /** The lane points this take wrote (raw objects). */
-    own: WeakSet<AutomationPoint>;
+    /** The lane points this take put in: recorded (its own) and holds. */
+    points: TakePoints;
     /** Parameter values (0..1) when the take started, for lanes it creates: the curve holds them before the first move. */
     startValues: Map<string, number>;
     /** Reused by the position lookups and the step hook (song mode), so they do not allocate maps. */
@@ -144,11 +158,9 @@ const COUNT_IN_GRACE_STEPS = 1;
 const COUNT_IN_LEAD_SECONDS = 0.1;
 
 const laneKey = (trackId: string, key: string): string => `${trackId}|${key}`;
+const songLaneKey = (target: AutomationTarget, key: string): string => `song|${paramKey(target, key)}`;
 
-const isOwnOf =
-    (current: Session) =>
-    (point: AutomationPoint): boolean =>
-        current.own.has(toRaw(point));
+const isOwnOf = (current: Session) => current.points.isOwn;
 
 const positionOf = (current: Session, trackId: string, step: number): number | null => {
     const found = findTrack(trackId);
@@ -168,8 +180,9 @@ const beginTake = (start: TakeStart): void => {
         start,
         replace: settings.replace,
         passes: new Map(),
+        songPass: settings.replace ? new SongReplacePass() : null,
         lanes: new Map(),
-        own: new WeakSet(),
+        points: new TakePoints(toRaw),
         startValues: new Map(),
         positionMap: new Map(),
         hookMap: new Map(),
@@ -191,6 +204,16 @@ const beginTake = (start: TakeStart): void => {
             }
         }
     }
+    // Song mode: every learned parameter may end up in a song lane (all but those of armed tracks do); a new lane
+    // holds the value it had when the take began until the controller first moves. (Read in any mode: the sequencer
+    // follows a mode switch a tick later, and a switch ends the take anyway.)
+    for (const mapping of engine.sequencer.midiMappings) {
+        const owner = engine.sequencer.resolveTarget(mapping.target);
+        const param = owner?.parameter(mapping.param);
+        if (owner && param) {
+            current.startValues.set(songLaneKey(mapping.target, mapping.param), toNormalized(param, owner.getParameter(mapping.param)));
+        }
+    }
     // Everything before the take is its own undo step; the take becomes one step when it ends.
     history.hold(() => endTake());
     session = current;
@@ -206,11 +229,24 @@ const endTake = (step?: number): void => {
     lastTake = current.take;
     current.take.stop(step ?? stepNow(current));
     for (const rec of current.lanes.values()) {
+        const full = rec.thinner.isFull;
         const pending = rec.thinner.flush();
         if (pending) {
+            // The controller's resting value; in a step that is full already it takes the place of the last point.
+            const index = full && rec.lastPoint && Math.floor(rec.lastStep) === Math.floor(pending.step) ? toRaw(rec.lane.points).indexOf(rec.lastPoint) : -1;
+            if (index !== -1) {
+                rec.lane.points.splice(index, 1);
+            }
             writePoint(current, rec, pending);
         }
-        findTrack(rec.trackId)?.track.releaseAutomation(rec.key);
+        // The last gesture ends: the old curve after it goes on as it was.
+        rec.writer.finish();
+        if (rec.songLaneId) {
+            engine.sequencer.releaseSongAutomation(rec.songLaneId);
+        }
+        if (rec.trackId) {
+            findTrack(rec.trackId)?.track.releaseAutomation(rec.key);
+        }
     }
     while (timers.length) {
         clearTimeout(timers.pop());
@@ -225,8 +261,13 @@ const endTake = (step?: number): void => {
 const writePoint = (current: Session, rec: LaneTake, at: PointAt): void => {
     const gesture = rec.lastPosition !== null && at.step - rec.lastStep <= GESTURE_GAP_STEPS ? rec.lastPosition : null;
     const point: AutomationPoint = { step: at.position, value: at.value };
-    writeRecordedPoint(rec.lane.points, point, gesture, isOwnOf(current));
-    current.own.add(point);
+    for (const added of rec.writer.write(point, gesture, at.wrap)) {
+        if (Math.floor(added.step) === Math.floor(point.step)) {
+            // A hold (or a wrapped region's start) in the recorded point's step counts towards the step's points.
+            rec.thinner.reserve();
+        }
+    }
+    rec.lastPoint = point;
     rec.lastPosition = at.position;
     rec.lastStep = at.step;
 };
@@ -252,7 +293,8 @@ const laneTake = (current: Session, found: { track: BaseTrack }, key: string, va
             clearLaneStep(lane.points, step, isOwnOf(current));
         }
     }
-    const rec: LaneTake = { trackId: track.id, key, lane, thinner: new ControllerThinner<PointAt>(), lastPosition: null, lastStep: Number.NEGATIVE_INFINITY };
+    const writer = new LaneWriter(lane.points, current.points, (position) => current.passes.get(track.id)?.has(position) ?? false);
+    const rec: LaneTake = { trackId: track.id, key, lane, songLaneId: null, thinner: new ControllerThinner<PointAt>(), writer, lastPosition: null, lastStep: Number.NEGATIVE_INFINITY, lastPoint: null };
     current.lanes.set(id, rec);
     return rec;
 };
@@ -267,7 +309,56 @@ const recordValue = (current: Session, found: { track: BaseTrack; containerId: s
         return;
     }
     const rec = laneTake(current, found, key, value);
-    const at = { position, value, step };
+    const at = { position, value, step, wrap: { start: 0, end: found.track.length } };
+    if (rec.thinner.offer(step, value, at)) {
+        writePoint(current, rec, at);
+    }
+};
+
+/**
+ * The song lane a take records a parameter into (song mode); found or made on the first move. While it records, the
+ * lane does not play, nor does a track's own step lane for the parameter, so the controller is heard.
+ */
+const songLaneTake = (current: Session, target: AutomationTarget, key: string, value: number): LaneTake => {
+    const id = songLaneKey(target, key);
+    const existing = current.lanes.get(id);
+    if (existing) {
+        return existing;
+    }
+    const { lane, start } = songLaneFor(song.value, target, key, current.startValues.get(id) ?? value);
+    if (start) {
+        current.points.addOwn(start);
+    }
+    engine.sequencer.holdSongAutomation(lane.id);
+    const trackId = target.kind === 'track' ? target.trackId : null;
+    if (trackId) {
+        findTrack(trackId)?.track.holdAutomation(key);
+    }
+    if (current.songPass) {
+        // A lane that joins a replace take late loses what the take has passed already.
+        for (const step of current.songPass.clearedSteps()) {
+            clearLaneStep(lane.points, step, isOwnOf(current));
+        }
+    }
+    const writer = new LaneWriter(lane.points, current.points, (position) => current.songPass?.has(position) ?? false);
+    const rec: LaneTake = { trackId, key, lane, songLaneId: lane.id, thinner: new ControllerThinner<PointAt>(), writer, lastPosition: null, lastStep: Number.NEGATIVE_INFINITY, lastPoint: null };
+    current.lanes.set(id, rec);
+    return rec;
+};
+
+/** A controller move into a song lane, at the song step heard (clip or no clip: song lanes span the timeline). */
+const recordSongValue = (current: Session, target: AutomationTarget, key: string, value: number, heard: number): void => {
+    const step = transportStepAt(heard, transportClock, current.start);
+    if (step === null) {
+        return;
+    }
+    const play = playState();
+    const position = songPosition(step, play);
+    if (position === null) {
+        return;
+    }
+    const rec = songLaneTake(current, target, key, value);
+    const at = { position, value, step, wrap: songWrap(play) };
     if (rec.thinner.offer(step, value, at)) {
         writePoint(current, rec, at);
     }
@@ -275,18 +366,26 @@ const recordValue = (current: Session, found: { track: BaseTrack; containerId: s
 
 /**
  * A learned controller is recorded when it turns a parameter of a track the event went to (an armed track, or the
- * selected one). Controllers mapped to a container channel, the master or a track that is not armed are played, not
- * recorded (step lanes belong to tracks; see notes/midi-recording.md, "As built (Phase 4)").
+ * selected one): into that track's step lane. In song mode the others (a container bus, the master, a track that is
+ * not armed) go into song automation lanes; in loop mode there is no timeline for them, so they are only played.
  */
 const recordController = (current: Session, event: MidiRouterEvent, heard: number): void => {
     for (const mapping of mappingsFor(engine.sequencer.midiMappings, event.cc ?? -1, event.channel)) {
-        if (mapping.target.kind !== 'track' || !event.trackIds.includes(mapping.target.trackId)) {
+        const { target } = mapping;
+        if (target.kind === 'track' && event.trackIds.includes(target.trackId)) {
+            const found = findTrack(target.trackId);
+            const param = found?.track.parameter(mapping.param);
+            if (found && param) {
+                recordValue(current, found, mapping.param, toNormalized(param, controllerValue(param, event.value ?? 0)), heard);
+            }
             continue;
         }
-        const found = findTrack(mapping.target.trackId);
-        const param = found?.track.parameter(mapping.param);
-        if (found && param) {
-            recordValue(current, found, mapping.param, toNormalized(param, controllerValue(param, event.value ?? 0)), heard);
+        if (engine.sequencer.mode !== 'song') {
+            continue;
+        }
+        const param = engine.sequencer.resolveTarget(target)?.parameter(mapping.param);
+        if (param) {
+            recordSongValue(current, target, mapping.param, toNormalized(param, controllerValue(param, event.value ?? 0)), heard);
         }
     }
 };
@@ -373,9 +472,21 @@ const clearStep = (current: Session, containerId: string, patternStep: number): 
             found.track.removeNotes(ids);
         }
         for (const rec of current.lanes.values()) {
-            if (rec.trackId === trackId) {
+            if (!rec.songLaneId && rec.trackId === trackId) {
                 clearLaneStep(rec.lane.points, position, isOwnOf(current));
             }
+        }
+    }
+};
+
+/** Replace, song mode: the first time a take plays a song step, the song lanes it records lose that step. */
+const clearSongStep = (current: Session, pass: SongReplacePass, step: number): void => {
+    if (!pass.claim(step)) {
+        return;
+    }
+    for (const rec of current.lanes.values()) {
+        if (rec.songLaneId) {
+            clearLaneStep(rec.lane.points, Math.floor(step), isOwnOf(current));
         }
     }
 };
@@ -393,6 +504,9 @@ engine.sequencer.setStepHook((step, time) => {
                 clearStep(current, containerId, patternStep);
             }
         }
+    }
+    if (current?.songPass && engine.sequencer.mode === 'song') {
+        clearSongStep(current, current.songPass, step);
     }
 });
 

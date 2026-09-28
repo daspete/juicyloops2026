@@ -115,3 +115,18 @@ export const patternPosition = (step: number, containerId: string, trackLength: 
     const patternStep = play.song.playingAt(songStep, into).get(containerId);
     return patternStep === undefined ? null : wrapStart(patternStep, trackLength);
 };
+
+/**
+ * The song step a running step plays (song mode: the loop region and the song's end wrap it, as the sequencer does),
+ * for song automation lanes, which span the whole timeline: whether a clip plays there does not matter. Null in loop
+ * mode (there is no timeline) and when the song is empty.
+ */
+export const songPosition = (step: number, play: PlayState): number | null => {
+    if (play.mode !== 'song' || (!play.songLength && !play.loop)) {
+        return null;
+    }
+    return songStepAt(step, play.songLength, play.loop);
+};
+
+/** Where song positions jump back: the loop region, else the song's end to its start. */
+export const songWrap = (play: PlayState): { start: number; end: number } => play.loop ?? { start: 0, end: play.songLength };

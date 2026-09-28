@@ -418,8 +418,53 @@ notes anywhere (not only on steps), with grid snap and a separate quantize comma
   (`ControllerThinner`): a value is kept when it moved by more than 0.5 % AND at least 1/64 step passed, at most 16 per
   step; a moved-but-dropped last value is written when the take ends. A gesture (points within a beat of each other)
   writes over the lane's old points between its points, also across the loop end ("touch"), instead of zig-zagging
-  through them. **Not recorded:** controllers mapped to a container channel, the master, or a track that is not armed
-  (open question for the user: record them into song lanes in song mode?).
+  through them. **Holds** (`LaneWriter` in `midi/laneRecord.ts`, for step and song lanes alike): a gesture into a lane
+  that has points takes over sharply, and the old curve around it stays as it was. Before its first point a `hold`
+  point 1/256 step earlier (`HOLD_GAP`; two points cannot share a position) carries the lane's value there, so the old
+  curve no longer ramps into the first recorded point; not needed where the segment holds already (a new song lane's
+  start point), at position 0, in an empty lane. When the gesture ends (the next gesture of that lane starts, or the
+  take ends) and old points follow it, a point 1/256 step after its last carries the old curve's value there, with the
+  shape of the old segment it splits (worked out from the lane without the gesture plus the old points it wrote over),
+  so the old curve goes on instead of ramping from the recorded end value into its next point; with nothing old after
+  it the recorded end value holds, as before (so a new lane keeps the controller's last value). A gesture across a song
+  loop region's end also gets a point at the region's end (the old curve after the region goes on), a hold before the
+  region's start and a recorded point at the start with the value the gesture had at the wrap (the region starts
+  where the gesture was; outside the region the song plays as it did). The holds are not the take's own points: a
+  later gesture writes over them and replace clears them; replace mode puts none in a step it has cleared (no old
+  curve left there: `ReplacePass.has` / `SongReplacePass.has`). Point limit: a hold in the first point's step counts
+  towards its 16 (`ControllerThinner.reserve`), a hold into a step already holding 16 of the take's points is left out,
+  and the hold after the gesture takes the place of the point before the last in a full step. Splitting a straight or
+  holding segment is exact; a bent one (tension) stays close. Controllers mapped to a container channel, the master, or a track that is not armed: recorded into song
+  lanes in song mode, played only in loop mode (see "As built (song-lane recording)" below).
+- **As built (song-lane recording)** (the user's decision): in **song mode**, a learned controller whose mapping
+  targets the master, a container bus or a track the event did not go to (not armed, not the selected fallback) records
+  into the **song automation lane** for `(target, param)` (`songLaneFor` in `midi/laneRecord.ts`: the first lane with
+  that target and parameter, else a new one via `Song.addAutomation`). Position: the song step heard
+  (`recordTiming.songPosition`: `songStepAt` with the loop region / song-end wrap, as playback), whether or not a clip
+  plays there; an empty song records nothing. A new lane gets a `hold` point at step 0 with the parameter's value when
+  the take began, so the song sounds as before up to the first move (no ramp from the song start). Thinning, gesture
+  overwrite and replace are the track lanes' (`ControllerThinner`, `writeRecordedPoint` with a `LaneWrap` so a gesture
+  across the loop-region end only overwrites `(from, end) ∪ [start, to]`; `SongReplacePass` clears each song step once
+  in the step hook, a late lane loses the steps already passed). While recorded, the song lane does not play
+  (`Sequencer.holdSongAutomation`/`releaseSongAutomation`, which settles the parameter), nor does the target track's own
+  step lane for that parameter. Same single undo step per take (`useHistory.release` now also flushes a pending
+  `commitWhenQuiet`, so the controller stream's stored-value commit lands in the take's step at once instead of 400 ms
+  later). The lanes appear in the song editor as they are created (reactive `song.automation`). Controllers aimed at an
+  armed track keep recording into its step lanes (clip-relative). **Loop mode:** these controllers are only played (there
+  is no song timeline); song lanes stay untouched. Also fixed: the resting value that `flush` hands back at the end of a
+  take could make a 17th point in a full step; it now takes the place of that step's last point (`ControllerThinner.isFull`).
+  An existing lane keeps its old curve up to the gesture and after it (the holds, see "Controllers and the wheel";
+  this was a known limitation until the hold fix). Tests: `songLaneRecord.spec.ts` (also the holds: before, after,
+  loop-region wrap, point limit, replace, new lane), `take.spec.ts` (the same for step lanes); `scripts/midi/record.mjs`
+  now 55 checks (the holds: a CC gesture at steps 8..11 into a track's existing rising volume lane and one at song steps
+  22..25 into the existing master lane leave the lane's values unchanged up to 1/256 step before the gesture and after
+  it (drift ~1e-16), and an offline render matches the one before the take within 0.5 dB at steps before and after it;
+  with the holds disabled these four checks fail with 4..35 dB ramps; the song CC check "points at the song steps heard"
+  skips the two holds) (song CC: master volume, a container
+  bus and an unarmed track into song lanes, thinned, at the song steps heard, the editor shows the lanes during and after
+  the take, the old lane is silenced while recording (+6 dB heard vs -28 dB the lane would play; a run with the hold
+  disabled fails this check), an offline song render follows the master sweep (-46 → -5 dB), one undo step and undo
+  removes the points and the new lanes; a loop-mode take leaves the song lanes untouched).
 - **Sub-step automation.** `BaseTrack.applyAutomation` and `Sequencer.applySongAutomation` apply the value at the step
   start (as before), then every point inside `(step, step + 1)` at its own time (`setParameter(key, value, time)`, a
   10 ms ramp like every automation move). `firstPointAfter` is a binary search; the loops allocate nothing.
@@ -469,6 +514,13 @@ notes anywhere (not only on steps), with grid snap and a separate quantize comma
   did.
 - **Docs:** update `notes/performance-upgrade.md` where it mentions ticks, and add a short "how to record"
   section to the in-app help if one exists.
+
+**As built (Phase 5):** every check green with no fixes needed (vue-tsc app and vitest, eslint, vitest 226 tests,
+`dsp/scripts/test.sh` and `check.sh`, build + SSR build + prerender); `scripts/midi/live.mjs` 72/72 and
+`record.mjs` 38/38 still pass. The perf harness gained `--latency interactive|balanced` and times the step callback;
+the bucketed notes cost the same as the ticks did (measured against 7315b50), and 'interactive' costs nothing
+measurable on `heavy`. Numbers: "Notes instead of ticks" in `notes/performance-upgrade.md`. There is no in-app help
+page; the status bar's key hints already list `R record`.
 
 ## Order and parallelism
 

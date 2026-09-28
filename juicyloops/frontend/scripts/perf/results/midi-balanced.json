@@ -1,0 +1,429 @@
+{
+    "label": "midi-balanced",
+    "commit": "803d0c5",
+    "dirty": false,
+    "date": "2026-09-28T07:43:37.895Z",
+    "url": "http://juicyloops.test/app",
+    "browser": "153.0.8010.12",
+    "secondsPerMode": 20,
+    "latency": "balanced",
+    "fixtures": {
+        "small": {
+            "spec": {
+                "containers": 1,
+                "tracks": 8,
+                "samplers": 3,
+                "trackEffects": [],
+                "busEffects": {},
+                "song": {
+                    "lanes": 1,
+                    "bars": 8,
+                    "clipBars": 4
+                },
+                "automation": 0
+            },
+            "tracks": 8,
+            "samplers": 3,
+            "fileBytes": 1262353,
+            "loadMs": 512,
+            "audioContext": {
+                "latencyHint": "balanced",
+                "baseLatencyMs": 10,
+                "outputLatencyMs": 40
+            },
+            "nodes": {
+                "empty": 20,
+                "loaded": 65,
+                "end": 103,
+                "byType": {
+                    "Gain": 23,
+                    "Volume": 11,
+                    "PanVol": 10,
+                    "Panner": 10,
+                    "SynthVoices": 5,
+                    "ListenerInstance": 1,
+                    "DestinationInstance": 1,
+                    "TickSignal": 1,
+                    "ToneConstantSource": 1,
+                    "Limiter": 1,
+                    "Compressor": 1
+                }
+            },
+            "loop": {
+                "samples": 77,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.8196870708229003,
+                "renderCapacityMax": 0.904423812124522,
+                "callbackIntervalMeanMs": 9.943701847348652,
+                "callbackIntervalVarianceMean": 0.0001009552442032846,
+                "callbackIntervalVarianceMax": 0.0001129869789673564,
+                "load": 0.8196988948042947,
+                "nodes": 123,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 176,
+                    "meanMs": 0.5005681818689812,
+                    "p95Ms": 1.5999999940395355,
+                    "maxMs": 2.899999998509884
+                }
+            },
+            "song": {
+                "samples": 77,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.832533757895666,
+                "renderCapacityMax": 0.9102189781021899,
+                "callbackIntervalMeanMs": 9.949800597218363,
+                "callbackIntervalVarianceMean": 0.00009579537371234393,
+                "callbackIntervalVarianceMax": 0.00009967497916680716,
+                "load": 0.8325385241901209,
+                "nodes": 123,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 177,
+                    "meanMs": 0.6045197744322361,
+                    "p95Ms": 1.6000000014901161,
+                    "maxMs": 13.900000005960464
+                }
+            },
+            "sweep": {
+                "renders": 6,
+                "durationMs": 4779.5,
+                "samples": 19,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.755856879723417,
+                "renderCapacityMax": 0.8847703464947624,
+                "callbackIntervalMeanMs": 9.950725030464074,
+                "callbackIntervalVarianceMean": 0.00009774763661628689,
+                "callbackIntervalVarianceMax": 0.00009946389420663486,
+                "load": 0.7558739472981222,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 44,
+                    "meanMs": 0.5295454549857161,
+                    "p95Ms": 1.5,
+                    "maxMs": 2.9000000059604645
+                },
+                "tasks": []
+            }
+        },
+        "medium": {
+            "spec": {
+                "containers": 4,
+                "tracks": 8,
+                "samplers": 3,
+                "trackEffects": [
+                    {
+                        "effect": "delay",
+                        "wet": 0.25,
+                        "every": 8,
+                        "offset": 4
+                    },
+                    {
+                        "effect": "chorus",
+                        "wet": 0.4,
+                        "every": 16,
+                        "offset": 5
+                    },
+                    {
+                        "effect": "distortion",
+                        "wet": 0.3,
+                        "every": 16,
+                        "offset": 1
+                    }
+                ],
+                "busEffects": {},
+                "song": {
+                    "lanes": 3,
+                    "bars": 16,
+                    "clipBars": 4
+                },
+                "automation": 0
+            },
+            "tracks": 32,
+            "samplers": 12,
+            "fileBytes": 1313172,
+            "loadMs": 1055,
+            "audioContext": {
+                "latencyHint": "balanced",
+                "baseLatencyMs": 10,
+                "outputLatencyMs": 32
+            },
+            "nodes": {
+                "empty": 20,
+                "loaded": 463,
+                "end": 387,
+                "byType": {
+                    "Gain": 183,
+                    "Volume": 42,
+                    "PanVol": 37,
+                    "Panner": 37,
+                    "ToneConstantSource": 31,
+                    "Signal": 22,
+                    "SynthVoices": 20,
+                    "WaveShaper": 14,
+                    "CrossFade": 8,
+                    "GainToAudio": 8,
+                    "Delay": 8,
+                    "FeedbackDelay": 4,
+                    "Split": 4,
+                    "Merge": 4,
+                    "LFO": 4,
+                    "Oscillator": 4,
+                    "Zero": 4,
+                    "AudioToGain": 4,
+                    "Scale": 4,
+                    "Multiply": 4,
+                    "Add": 4,
+                    "ToneOscillatorNode": 4,
+                    "Distortion": 2,
+                    "Chorus": 2,
+                    "ListenerInstance": 1,
+                    "DestinationInstance": 1,
+                    "TickSignal": 1,
+                    "Limiter": 1,
+                    "Compressor": 1
+                }
+            },
+            "loop": {
+                "samples": 77,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.7807634394934273,
+                "renderCapacityMax": 0.9249890972525077,
+                "callbackIntervalMeanMs": 9.957068432176023,
+                "callbackIntervalVarianceMean": 0.00009079492780166572,
+                "callbackIntervalVarianceMax": 0.00009521034845126436,
+                "load": 0.7808071889817197,
+                "nodes": 367,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 176,
+                    "meanMs": 0.4721590911715545,
+                    "p95Ms": 1.2999999970197678,
+                    "maxMs": 2.2999999970197678
+                }
+            },
+            "song": {
+                "samples": 79,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.8096233126542124,
+                "renderCapacityMax": 0.96586520493335,
+                "callbackIntervalMeanMs": 9.975109050230023,
+                "callbackIntervalVarianceMean": 0.000059964939519750305,
+                "callbackIntervalVarianceMax": 0.00007812039953153602,
+                "load": 0.809859124866535,
+                "nodes": 579,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 179,
+                    "meanMs": 0.7636871508962615,
+                    "p95Ms": 2.399999998509884,
+                    "maxMs": 6.5
+                }
+            },
+            "sweep": {
+                "renders": 6,
+                "durationMs": 4781.60000000149,
+                "samples": 19,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.8409847816162275,
+                "renderCapacityMax": 0.9474363108674622,
+                "callbackIntervalMeanMs": 9.95613600106293,
+                "callbackIntervalVarianceMean": 0.00006840627737356476,
+                "callbackIntervalVarianceMax": 0.00007560014381073943,
+                "load": 0.8410360290615599,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 42,
+                    "meanMs": 0.5095238098431201,
+                    "p95Ms": 1.3999999985098839,
+                    "maxMs": 3.2000000029802322
+                },
+                "tasks": []
+            }
+        },
+        "heavy": {
+            "spec": {
+                "containers": 8,
+                "tracks": 16,
+                "samplers": 5,
+                "trackEffects": [
+                    {
+                        "effect": "delay",
+                        "wet": 0.2,
+                        "every": 8,
+                        "offset": 6
+                    },
+                    {
+                        "effect": "chorus",
+                        "wet": 0.4,
+                        "every": 16,
+                        "offset": 7
+                    },
+                    {
+                        "effect": "phaser",
+                        "wet": 0.3,
+                        "every": 32,
+                        "offset": 9
+                    },
+                    {
+                        "effect": "bitCrusher",
+                        "wet": 0.5,
+                        "every": 64,
+                        "offset": 2
+                    }
+                ],
+                "busEffects": {
+                    "reverb": 0.2,
+                    "delay": 0.15
+                },
+                "song": {
+                    "lanes": 4,
+                    "bars": 32,
+                    "clipBars": 4
+                },
+                "automation": 6
+            },
+            "tracks": 128,
+            "samplers": 40,
+            "fileBytes": 1498219,
+            "loadMs": 4966,
+            "audioContext": {
+                "latencyHint": "balanced",
+                "baseLatencyMs": 10,
+                "outputLatencyMs": 40
+            },
+            "nodes": {
+                "empty": 20,
+                "loaded": 3167,
+                "end": 3807,
+                "byType": {
+                    "Gain": 1271,
+                    "Volume": 306,
+                    "ToneConstantSource": 227,
+                    "PanVol": 137,
+                    "Panner": 137,
+                    "Signal": 130,
+                    "Noise": 96,
+                    "ToneBufferSource": 96,
+                    "SynthVoices": 88,
+                    "WaveShaper": 72,
+                    "Merge": 68,
+                    "ListenerInstance": 49,
+                    "DestinationInstance": 49,
+                    "TickSignal": 49,
+                    "CrossFade": 46,
+                    "GainToAudio": 46,
+                    "Delay": 40,
+                    "FeedbackDelay": 24,
+                    "LFO": 24,
+                    "Oscillator": 24,
+                    "Zero": 24,
+                    "AudioToGain": 24,
+                    "Scale": 24,
+                    "Multiply": 24,
+                    "Add": 24,
+                    "ToneOscillatorNode": 24,
+                    "Split": 20,
+                    "Reverb": 8,
+                    "Chorus": 8,
+                    "Phaser": 4,
+                    "Crusher": 2,
+                    "Limiter": 1,
+                    "Compressor": 1
+                }
+            },
+            "loop": {
+                "samples": 76,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.7839798935032655,
+                "renderCapacityMax": 0.972333022150556,
+                "callbackIntervalMeanMs": 10.014389123325492,
+                "callbackIntervalVarianceMean": 0.0000315573751989963,
+                "callbackIntervalVarianceMax": 0.000043609959596784746,
+                "load": 0.7857722399165283,
+                "nodes": 1996,
+                "longTasks": {
+                    "count": 1,
+                    "maxMs": 59,
+                    "totalMs": 59
+                },
+                "stepCallback": {
+                    "count": 175,
+                    "meanMs": 0.6114285718117441,
+                    "p95Ms": 1.8999999985098839,
+                    "maxMs": 3.399999998509884
+                }
+            },
+            "song": {
+                "samples": 79,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.9930042412101886,
+                "renderCapacityMax": 0.9964644462067143,
+                "callbackIntervalMeanMs": 21.29139349496617,
+                "callbackIntervalVarianceMean": 0.000018657334409127106,
+                "callbackIntervalVarianceMax": 0.00003538739088765136,
+                "load": 2.114659768301009,
+                "nodes": 4011,
+                "longTasks": {
+                    "count": 2,
+                    "maxMs": 196,
+                    "totalMs": 246
+                },
+                "stepCallback": {
+                    "count": 83,
+                    "meanMs": 4.236144578510738,
+                    "p95Ms": 5.899999998509884,
+                    "maxMs": 192.80000000447035
+                }
+            },
+            "sweep": {
+                "renders": 6,
+                "durationMs": 4808.69999999553,
+                "samples": 19,
+                "nominalCallbackMs": 10,
+                "renderCapacityMean": 0.9931800834624223,
+                "renderCapacityMax": 0.9961916686230012,
+                "callbackIntervalMeanMs": 23.878297508749796,
+                "callbackIntervalVarianceMean": 0.000016654585572122418,
+                "callbackIntervalVarianceMax": 0.00001885547399869382,
+                "load": 2.3715526240705396,
+                "longTasks": {
+                    "count": 0,
+                    "maxMs": 0,
+                    "totalMs": 0
+                },
+                "stepCallback": {
+                    "count": 19,
+                    "meanMs": 0.7684210523178703,
+                    "p95Ms": 5,
+                    "maxMs": 5
+                },
+                "tasks": []
+            }
+        }
+    }
+}

@@ -106,6 +106,10 @@ Each step is its own commit and its own before/after perf run.
 
 - `TrackContainer.play` and `Sequencer.playStep` call `toRaw(track)` before `track.play`, so the audio callback
   never goes through a proxy, and nested `ticks` and `automation` are not wrapped per access.
+  (Since the MIDI work, `notes/midi-recording.md`, tracks hold free-timed `notes` instead of one tick per step. The
+  step callback reads them from a bucket index, `NotePattern.notesStartingAt(step)`, which is rebuilt only when the
+  pattern's `revision` or length changed, so it still allocates and scans nothing; see "Notes instead of ticks" under
+  the Results log.)
 - `BaseTrack`:
   - Cache `parameters` in a `Map<string, AutomationParam>`, built once per instance. Subclasses' `ownParameters`
     are static.
@@ -659,6 +663,24 @@ Estimated size: several weeks. Re-estimate from the Tier 2 measurements before c
 | 2026-09-28 | `tier2-2` | medium | song | 0.813 mean, 0.961 max (load 0.81) | 587 playing | |
 | 2026-09-28 | `tier2-2` | heavy | loop | 0.827 mean, 0.982 max (load 0.83) | 1988 playing | 2, max 52 ms |
 | 2026-09-28 | `tier2-2` | heavy | song | 0.992 mean, 0.997 max (load 2.59) | 3995 playing | |
+| 2026-09-28 | `ticks-7315b50` (tick patterns, before notes; step timing added) | small | loop | 0.819 mean, 0.903 max (load 0.82) | 123 playing | 0 |
+| 2026-09-28 | `ticks-7315b50` | small | song | 0.782 mean, 0.911 max (load 0.78) | 123 playing | |
+| 2026-09-28 | `ticks-7315b50` | medium | loop | 0.818 mean, 0.925 max (load 0.82) | 369 playing | 0 |
+| 2026-09-28 | `ticks-7315b50` | medium | song | 0.838 mean, 0.960 max (load 0.84) | 583 playing | |
+| 2026-09-28 | `ticks-7315b50` | heavy | loop | 0.815 mean, 0.976 max (load 0.82) | 1996 playing | 0 |
+| 2026-09-28 | `ticks-7315b50` | heavy | song | 0.992 mean, 0.996 max (load 2.09) | 3971 playing | |
+| 2026-09-28 | `midi` (notes + MIDI phases 1-4, 'interactive', the new default) | small | loop | 0.820 mean, 0.914 max (load 0.82) | 123 playing | 0 |
+| 2026-09-28 | `midi` | small | song | 0.796 mean, 0.907 max (load 0.80) | 123 playing | |
+| 2026-09-28 | `midi` | medium | loop | 0.835 mean, 0.929 max (load 0.84) | 367 playing | 0 |
+| 2026-09-28 | `midi` | medium | song | 0.793 mean, 0.960 max (load 0.79) | 587 playing | |
+| 2026-09-28 | `midi` | heavy | loop | 0.826 mean, 0.975 max (load 0.83) | 1988 playing | 0 |
+| 2026-09-28 | `midi` | heavy | song | 0.994 mean, 0.997 max (load 2.14) | 3995 playing | |
+| 2026-09-28 | `midi-balanced` (same, `--latency balanced`) | small | loop | 0.820 mean, 0.904 max (load 0.82) | 123 playing | 0 |
+| 2026-09-28 | `midi-balanced` | small | song | 0.833 mean, 0.910 max (load 0.83) | 123 playing | |
+| 2026-09-28 | `midi-balanced` | medium | loop | 0.781 mean, 0.925 max (load 0.78) | 367 playing | 0 |
+| 2026-09-28 | `midi-balanced` | medium | song | 0.810 mean, 0.966 max (load 0.81) | 579 playing | |
+| 2026-09-28 | `midi-balanced` | heavy | loop | 0.784 mean, 0.972 max (load 0.79) | 1996 playing | 0 |
+| 2026-09-28 | `midi-balanced` | heavy | song | 0.993 mean, 0.996 max (load 2.11) | 4011 playing | |
 
 How to read it (full numbers in `scripts/perf/results/baseline.json`; `yarn perf <label> --compare scripts/perf/results/baseline.json`
 diffs a later run against it):
@@ -678,5 +700,39 @@ diffs a later run against it):
   400 ms rest so the debounced `timeStretch` runs, on the first sample track of container 1 (a 7 s stereo drum loop)
   while it plays in loop mode. Long tasks during plain playback are in the JSON; they are noisy run to run (0 to
   about 20) and mostly UI work.
+- **Latency hint and step timing** (added to the harness for the MIDI work): `--latency interactive|balanced` sets the
+  app's "low latency" setting (`localStorage['juicyloops:lowLatency']`) before the page loads. Without it the app's
+  default applies: 'interactive' since the MIDI work, 'balanced' in every run up to `tier2-2`/`phase1`. The JSON also
+  records the context's hint and latencies (`audioContext`) and, per phase, the main-thread time of the sequencer's
+  step callback (`stepCallback`: count, mean, p95, max ms; the harness wraps `Sequencer.playStep` in the page;
+  `performance.now()` is coarsened to 0.1 ms, so read means, not single calls).
 - Side finding: Tone creates its own default `AudioContext` ('interactive') on import, before `engine.ts` installs
-  the 'balanced' one. It kept running idle next to the engine's context; since step 1.2 `engine.ts` closes it.
+  its own ('balanced' then; 'interactive' by default since the MIDI work). It kept running idle next to the engine's context; since step 1.2 `engine.ts` closes it.
+
+### Notes instead of ticks (MIDI Phase 5, 2026-09-28)
+
+Tracks now hold free-timed notes (`notes/midi-recording.md`); the perf fixtures build the same patterns as before
+(one-step notes on whole steps, see `scripts/perf/fixtures.mjs`). The step callback was timed on the commit before
+the note model (`ticks-7315b50`: 7315b50 with only the harness change, a scratch dev server) and on the notes code
+with both latency hints (`midi`, `midi-balanced`), same machine, back to back:
+
+| Step callback, mean / p95 ms | ticks (7315b50) | notes, balanced | notes, interactive |
+|---|---|---|---|
+| small loop / song | 0.455 / 1.4, 0.436 / 1.2 | 0.501 / 1.6, 0.605 / 1.6 | 0.456 / 1.3, 0.435 / 1.2 |
+| medium loop / song | 0.434 / 1.2, 0.765 / 2.1 | 0.472 / 1.3, 0.764 / 2.4 | 0.454 / 1.2, 0.769 / 2.1 |
+| heavy loop / song | 0.607 / 1.9, 4.346 / 7.0 | 0.611 / 1.9, 4.236 / 5.9 | 0.605 / 1.9, 4.234 / 6.6 |
+| heavy pitch sweep | 0.665 / 2.1 | 0.768 / 5.0 | 0.767 / 4.4 |
+
+- **The bucketed notes cost the same as the ticks** (within run-to-run noise, both directions). `heavy` song's
+  ~4.2 ms mean and ~180-190 ms max are the same with ticks: hibernation waking containers (node construction) in
+  the step callback, not the note lookup.
+- **Render load** is unchanged against `tier2-2` and `phase1`: `small`/`medium` within ±6 % either way, `heavy` loop
+  0.83 (all runs), `heavy` song 2.14 (interactive) / 2.11 (balanced) against 2.59 (`tier2-2`), 2.97 (`phase1`) and
+  2.09 (`ticks-7315b50`). That fixture sits at the machine's limit, so its load swings with the machine; the runs
+  of this section were back to back and agree. Session load (`loadMs`, building the fixture) is 484/1080/5011 ms
+  against 516/1154/6464 (`tier2-2`) and 558/1180/5853 (`phase1`). No long tasks in the pitch sweeps.
+- **'interactive' costs nothing measurable on `heavy`** (loop 0.83 vs 0.79, song 2.14 vs 2.11, sweep 2.39 vs 2.37).
+  Headless Chromium's fake device does not behave like hardware here: 'interactive' gets the *larger* callback, 512
+  frames (11.6 ms), against 441 (10.0 ms) for 'balanced', so the callback interval columns differ by design and
+  render capacity (the share of each callback spent rendering) is the fair comparison; it matches. On real hardware 'interactive' asks for a smaller buffer, i.e. less headroom per callback, which a
+  session at the limit (like `heavy` song) would feel first; the setting can be switched off for that.

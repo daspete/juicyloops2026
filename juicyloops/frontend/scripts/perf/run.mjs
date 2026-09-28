@@ -8,6 +8,8 @@
  *   2. sweeps the pitch knob of a sample track the way a drag does, while playing, and records main-thread long
  *      tasks (> 50 ms);
  *   3. reads the live Tone node count from the dev-only counter (`src/juicyloops/debug/nodeCounter.ts`).
+ * Every phase also times the sequencer's step callback (`Sequencer.playStep`, wrapped in the page) on the main
+ * thread: calls, mean, 95th percentile and max in milliseconds.
  *
  * The result goes to `scripts/perf/results/<label>.json` (label defaults to the git short sha) and a table is
  * printed, next to a previous result when `--compare` names one.
@@ -18,6 +20,9 @@
  *   --seconds <n>        seconds per playback mode (default 20)
  *   --headed             show the browser
  *   --save-fixtures      also write the fixtures as `.juicyloops` files into `scripts/perf/fixtures/`
+ *   --latency <hint>     `interactive` or `balanced`: sets the app's "low latency" setting (`juicyloops:lowLatency`)
+ *                        before the page loads; without it the app's default applies (interactive since the MIDI work,
+ *                        balanced before, and in every result up to `tier2-2`/`phase1`)
  */
 import { execSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -38,7 +43,7 @@ const option = (name, fallback = null) => {
     return index === -1 ? fallback : args[index + 1];
 };
 const flag = (name) => args.includes(`--${name}`);
-const VALUE_OPTIONS = new Set(['--url', '--fixtures', '--seconds', '--compare']);
+const VALUE_OPTIONS = new Set(['--url', '--fixtures', '--seconds', '--compare', '--latency']);
 const positional = args.filter((arg, index) => !arg.startsWith('--') && !VALUE_OPTIONS.has(args[index - 1]));
 
 const git = (command) => {
@@ -55,6 +60,10 @@ const url = option('url', 'http://juicyloops.test/app');
 const seconds = Number(option('seconds', 20));
 const fixtureNames = option('fixtures', Object.keys(FIXTURES).join(',')).split(',');
 const comparePath = option('compare');
+const latency = option('latency');
+if (latency !== null && latency !== 'interactive' && latency !== 'balanced') {
+    throw new Error(`--latency must be 'interactive' or 'balanced', not '${latency}'`);
+}
 
 /** How often the Web Audio realtime data is read. */
 const POLL_MS = 250;
@@ -87,6 +96,17 @@ const summarize = ({ samples, callbackMs }) => ({
     load: callbackMs ? mean(samples.map((sample) => sample.renderCapacity * Math.max(1, (sample.callbackIntervalMean * 1000) / callbackMs))) : null,
 });
 
+/** Step callback durations (ms) of one phase. */
+const summarizeSteps = (durations) => {
+    const sorted = [...durations].sort((a, b) => a - b);
+    return {
+        count: sorted.length,
+        meanMs: mean(sorted),
+        p95Ms: sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] : null,
+        maxMs: max(sorted),
+    };
+};
+
 const summarizeLongTasks = (tasks) => ({
     count: tasks.length,
     maxMs: max(tasks.map((task) => task.duration)) ?? 0,
@@ -111,6 +131,28 @@ const openStudio = async (page) => {
                 globalThis.__perfLongTasks.push({ start: entry.startTime, duration: entry.duration });
             }
         }).observe({ type: 'longtask', buffered: true });
+    });
+    /* Times every step callback: the transport's repeat calls `this.playStep(time)`, so an own property wins. */
+    return page.evaluate(async () => {
+        const load = (path) => {
+            const loaded = performance.getEntriesByType('resource').find((entry) => new URL(entry.name).pathname === path);
+            return import(loaded ? loaded.name : path);
+        };
+        const module = await load('/src/juicyloops/engine.ts');
+        const sequencer = module.engine.sequencer;
+        const playStep = Object.getPrototypeOf(sequencer).playStep;
+        globalThis.__perfSteps = [];
+        sequencer.playStep = function (time) {
+            const start = performance.now();
+            try {
+                return playStep.call(this, time);
+            } finally {
+                globalThis.__perfSteps.push([start, performance.now() - start]);
+            }
+        };
+        const raw = module.engine.transport.context.rawContext;
+        const native = raw._nativeAudioContext ?? raw;
+        return { latencyHint: module.ENGINE_LATENCY_HINT ?? null, baseLatencyMs: (native.baseLatency ?? 0) * 1000, outputLatencyMs: (native.outputLatency ?? 0) * 1000 };
     });
 };
 
@@ -179,6 +221,9 @@ const sweepPitch = (page) =>
 const readLongTasks = (page, from, to) =>
     page.evaluate(({ from, to }) => globalThis.__perfLongTasks.filter((task) => task.start >= from && task.start <= to), { from, to });
 
+const readSteps = (page, from, to) =>
+    page.evaluate(({ from, to }) => globalThis.__perfSteps.filter(([start]) => start >= from && start <= to).map(([, duration]) => duration), { from, to });
+
 const readNodes = (page) => page.evaluate(() => ({ count: globalThis.__jlNodeCount, byType: globalThis.__jlNodeCounts() }));
 
 /* ---- Web Audio realtime data over CDP ---- */
@@ -232,13 +277,16 @@ const runFixture = async (browser, name) => {
         throw new Error(`Unknown fixture "${name}". Known: ${Object.keys(FIXTURES).join(', ')}`);
     }
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+    if (latency) {
+        await context.addInitScript((low) => localStorage.setItem('juicyloops:lowLatency', low), String(latency === 'interactive'));
+    }
     const page = await context.newPage();
     page.on('pageerror', (error) => console.warn(`  [${name}] page error: ${error.message}`));
     const cdp = await context.newCDPSession(page);
     const audio = await watchAudio(cdp);
 
     console.log(`- ${name}: opening the studio`);
-    await openStudio(page);
+    const audioContext = await openStudio(page);
     /* A reload (the dev server reacting to a file change) would silently throw the session away. */
     let reloads = 0;
     page.on('framenavigated', (frame) => frame === page.mainFrame() && reloads++);
@@ -261,8 +309,9 @@ const runFixture = async (browser, name) => {
         const to = await page.evaluate(() => performance.now());
         const nodes = await readNodes(page);
         const longTasks = await readLongTasks(page, from, to);
+        const steps = await readSteps(page, from, to);
         await stopPlayback(page);
-        phases[mode] = { ...summarize(samples), nodes: nodes.count, longTasks: summarizeLongTasks(longTasks) };
+        phases[mode] = { ...summarize(samples), nodes: nodes.count, longTasks: summarizeLongTasks(longTasks), stepCallback: summarizeSteps(steps) };
         await sleep(500);
     }
 
@@ -274,6 +323,7 @@ const runFixture = async (browser, name) => {
     const sweep = await sweepPitch(page).finally(() => (isSwept = true));
     const sweepAudio = summarize(await sweepPolling);
     const sweepTasks = await readLongTasks(page, sweep.from, sweep.to);
+    const sweepSteps = await readSteps(page, sweep.from, sweep.to);
     await stopPlayback(page);
     await sleep(1500);
     const nodesEnd = await readNodes(page);
@@ -290,10 +340,11 @@ const runFixture = async (browser, name) => {
         samplers: built.samplers,
         fileBytes: built.bytes,
         loadMs,
+        audioContext,
         nodes: { empty: nodesEmpty.count, loaded: nodesLoaded.count, end: nodesEnd.count, byType: nodesLoaded.byType },
         loop: phases.loop,
         song: phases.song,
-        sweep: { renders: sweep.renders, durationMs: sweep.to - sweep.from, ...sweepAudio, longTasks: summarizeLongTasks(sweepTasks), tasks: sweepTasks },
+        sweep: { renders: sweep.renders, durationMs: sweep.to - sweep.from, ...sweepAudio, longTasks: summarizeLongTasks(sweepTasks), stepCallback: summarizeSteps(sweepSteps), tasks: sweepTasks },
     };
 };
 
@@ -309,6 +360,9 @@ const cell = (current, previous, digits) => {
     const change = previous ? ` ${current >= previous ? '+' : ''}${fmt(((current - previous) / previous) * 100, 0)}%` : '';
     return `${fmt(current, digits)} (was ${fmt(previous, digits)}${change})`;
 };
+
+const stepCell = (now, was) =>
+    now ? `${fmt(now.meanMs, 3)}/${fmt(now.p95Ms, 3)}${was ? ` (was ${fmt(was.meanMs, 3)}/${fmt(was.p95Ms, 3)})` : ''}` : '-';
 
 const printTable = (result, previous) => {
     const rows = [];
@@ -327,6 +381,7 @@ const printTable = (result, previous) => {
                 'cb variance': cell(now.callbackIntervalVarianceMean, was?.callbackIntervalVarianceMean, 4),
                 nodes: cell(now.nodes, was?.nodes, 0),
                 'long tasks': cell(now.longTasks.count, was?.longTasks.count, 0),
+                'step ms mean/p95': stepCell(now.stepCallback, was?.stepCallback),
             });
         }
         rows.push({
@@ -338,6 +393,7 @@ const printTable = (result, previous) => {
             'cb interval ms': cell(fixture.sweep.callbackIntervalMeanMs, before?.sweep.callbackIntervalMeanMs, 2),
             'cb variance': cell(fixture.sweep.callbackIntervalVarianceMean, before?.sweep.callbackIntervalVarianceMean, 4),
             nodes: cell(fixture.nodes.end, before?.nodes.end, 0),
+            'step ms mean/p95': stepCell(fixture.sweep.stepCallback, before?.sweep.stepCallback),
             'long tasks': `${cell(fixture.sweep.longTasks.count, before?.sweep.longTasks.count, 0)}, max ${cell(fixture.sweep.longTasks.maxMs, before?.sweep.longTasks.maxMs, 0)} ms`,
         });
     }
@@ -370,6 +426,7 @@ const main = async () => {
         url,
         browser: browser.version(),
         secondsPerMode: seconds,
+        latency: latency ?? 'app default',
         fixtures: {},
     };
     try {

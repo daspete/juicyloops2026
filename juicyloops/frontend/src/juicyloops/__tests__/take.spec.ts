@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { clearLaneStep, ControllerThinner, CC_MAX_PER_STEP, inStretch, writeRecordedPoint } from '../midi/laneRecord';
+import { clearLaneStep, ControllerThinner, CC_MAX_PER_STEP, HOLD_GAP, inStretch, LaneWriter, TakePoints, writeRecordedPoint } from '../midi/laneRecord';
 import { notesToReplace, ReplacePass, Take } from '../midi/take';
 import { NotePattern } from '../notes/NotePattern';
 import type { AutomationPoint } from '../automation';
-import { firstPointAfter } from '../automation';
+import { firstPointAfter, valueAt } from '../automation';
 
 /** Two 16-step tracks in loop mode: the running step wrapped. `playing` false: nothing is playing (not recorded). */
 const setup = (length = 16) => {
@@ -216,6 +216,148 @@ describe('writing recorded points', () => {
         expect(points.map((point) => `${point.step}:${point.value}`)).toEqual(['1.5:0.1', '2:0.9', '3:0.9', '13.5:0.1', '15.5:0.1']);
         expect(inStretch(0.5, 15.5, 1.5)).toBe(true);
         expect(inStretch(8, 15.5, 1.5)).toBe(false);
+    });
+});
+
+describe('holds around a gesture in a step lane', () => {
+    const wrap = { start: 0, end: 16 };
+    /** A straight old curve: 0.2 at step 1, up to 0.7 at 6, down to 0.5 at 14. */
+    const oldLane = (): AutomationPoint[] => [
+        { step: 1, value: 0.2 },
+        { step: 6, value: 0.7 },
+        { step: 14, value: 0.5 },
+    ];
+    const old = (step: number) => valueAt(oldLane(), step)!;
+    const expectOldCurve = (points: AutomationPoint[], steps: number[]) => {
+        for (const step of steps) {
+            expect(valueAt(points, step), `step ${step}`).toBeCloseTo(old(step), 9);
+        }
+    };
+
+    it('keeps the old curve right up to the gesture, and from its end on', () => {
+        const points = oldLane();
+        const take = new TakePoints();
+        const writer = new LaneWriter(points, take);
+        const [before] = writer.write({ step: 3.5, value: 0.95 }, null, wrap);
+        expect(before).toEqual({ step: 3.5 - HOLD_GAP, value: old(3.5 - HOLD_GAP), shape: 'hold' });
+        writer.write({ step: 5, value: 0.9 }, 3.5, wrap);
+        // Passes over the old point at 6.
+        writer.write({ step: 7, value: 0.05 }, 5, wrap);
+        const after = writer.finish()!;
+        expect(after.step).toBeCloseTo(7 + HOLD_GAP, 12);
+        expect(after.value).toBeCloseTo(old(7 + HOLD_GAP), 12);
+        expect(points.map((point) => point.step)).toEqual([1, 3.5 - HOLD_GAP, 3.5, 5, 7, 7 + HOLD_GAP, 14]);
+        // Unchanged before the gesture (no ramp from step 1 into 0.95), and after it (no ramp from 0.05 into step 14).
+        expectOldCurve(points, [0, 1, 2, 3, 3.4, 3.5 - HOLD_GAP, 7.01, 8, 10, 13, 14, 15.9]);
+        expect(valueAt(points, 3.5 - HOLD_GAP / 2)).toBeCloseTo(old(3.5 - HOLD_GAP), 9);
+        expect(valueAt(points, 3.5)).toBe(0.95);
+        expect(valueAt(points, 7)).toBeCloseTo(0.05, 12);
+        // The holds are the old curve's, not the take's recording: a later gesture or replace may remove them.
+        expect(take.isOwn(before!) || take.isOwn(after)).toBe(false);
+        expect(take.isHold(before!) && take.isHold(after)).toBe(true);
+        expect(take.isOwn(points[2]!)).toBe(true);
+    });
+
+    it('adds no hold where the old curve holds already, at the lane start, or into an empty lane; nothing old after the gesture: its end value stays', () => {
+        const held: AutomationPoint[] = [{ step: 0, value: 0.3, shape: 'hold' }];
+        const writer = new LaneWriter(held, new TakePoints());
+        expect(writer.write({ step: 4, value: 0.9 }, null, wrap)).toEqual([]);
+        expect(valueAt(held, 3.99)).toBe(0.3);
+        writer.write({ step: 5, value: 0.6 }, 4, wrap);
+        expect(writer.finish()).toBeNull();
+        expect(valueAt(held, 15)).toBe(0.6);
+        const atStart = oldLane();
+        expect(new LaneWriter(atStart, new TakePoints()).write({ step: 0, value: 0.9 }, null, wrap)).toEqual([]);
+        const empty: AutomationPoint[] = [];
+        expect(new LaneWriter(empty, new TakePoints()).write({ step: 4, value: 0.9 }, null, wrap)).toEqual([]);
+        // A gesture in front of the first point: the flat stretch before it keeps the first point's value.
+        const late: AutomationPoint[] = [{ step: 8, value: 0.4 }];
+        const lateWriter = new LaneWriter(late, new TakePoints());
+        expect(lateWriter.write({ step: 2, value: 0.9 }, null, wrap)).toEqual([{ step: 2 - HOLD_GAP, value: 0.4, shape: 'hold' }]);
+        lateWriter.write({ step: 3, value: 0.1 }, 2, wrap);
+        expect(lateWriter.finish()).toEqual({ step: 3 + HOLD_GAP, value: 0.4 });
+        expect(valueAt(late, 1)).toBe(0.4);
+        expect(valueAt(late, 5)).toBe(0.4);
+    });
+
+    it('wraps: a gesture across the pattern end keeps the old curve before its start and after its wrapped end', () => {
+        const points = oldLane();
+        const writer = new LaneWriter(points, new TakePoints());
+        expect(writer.write({ step: 12, value: 0.9 }, null, wrap)[0]!.step).toBeCloseTo(12 - HOLD_GAP, 12);
+        writer.write({ step: 15.5, value: 0.8 }, 12, wrap);
+        writer.write({ step: 0.5, value: 0.7 }, 15.5, wrap);
+        // Passes over the old point at 1: the hold after 2 follows the old segment 1 → 6.
+        writer.write({ step: 2, value: 0.1 }, 0.5, wrap);
+        const after = writer.finish()!;
+        expect(after.value).toBeCloseTo(old(2 + HOLD_GAP), 12);
+        expect(points.map((point) => +point.step.toFixed(6))).toEqual([0.5, 2, +(2 + HOLD_GAP).toFixed(6), 6, +(12 - HOLD_GAP).toFixed(6), 12, 15.5]);
+        expectOldCurve(points, [2.01, 3, 5, 6, 8, 11, 11.99]);
+        // No hold after a gesture ending right at the pattern end.
+        const end = oldLane();
+        const endWriter = new LaneWriter(end, new TakePoints());
+        endWriter.write({ step: 15, value: 0.2 }, null, wrap);
+        endWriter.write({ step: 16 - HOLD_GAP / 2, value: 0.3 }, 15, wrap);
+        expect(endWriter.finish()).toBeNull();
+    });
+
+    it('holds never make a step hold more than 16 of the take points', () => {
+        const points: AutomationPoint[] = [
+            { step: 0, value: 0.5 },
+            { step: 8, value: 0.5 },
+        ];
+        const take = new TakePoints();
+        const writer = new LaneWriter(points, take);
+        const thinner = new ControllerThinner<number>();
+        let last: number | null = null;
+        // A fast sweep inside step 4: the thinner keeps 16 a step, the hold before counts as one of them.
+        for (let i = 0; i < 48; i++) {
+            const step = 4.25 + i / 64;
+            if (thinner.offer(step, i / 47, i)) {
+                for (const hold of writer.write({ step, value: i / 47 }, last, wrap)) {
+                    if (Math.floor(hold.step) === Math.floor(step)) {
+                        thinner.reserve();
+                    }
+                }
+                last = step;
+            }
+        }
+        const inStep4 = () => points.filter((point) => point.step >= 4 && point.step < 5);
+        expect(inStep4()).toHaveLength(CC_MAX_PER_STEP);
+        expect(inStep4().filter(take.isHold)).toHaveLength(1);
+        // The hold after takes the place of the point before the last one.
+        const lastPoint = points.find((point) => point.step === last)!;
+        const after = writer.finish()!;
+        expect(after.step).toBeCloseTo(last! + HOLD_GAP, 12);
+        expect(inStep4()).toHaveLength(CC_MAX_PER_STEP);
+        expect(inStep4().filter(take.isHold)).toHaveLength(2);
+        expect(points).toContain(lastPoint);
+        // A hold into a step already full of the take points is left out.
+        const full: AutomationPoint[] = [{ step: 0, value: 0.5 }];
+        const fullTake = new TakePoints();
+        for (let i = 0; i < CC_MAX_PER_STEP; i++) {
+            const point = { step: 3 + i / 16, value: 0.1 };
+            full.push(point);
+            fullTake.addOwn(point);
+        }
+        full.push({ step: 8, value: 0.5 });
+        expect(new LaneWriter(full, fullTake).write({ step: 4, value: 0.9 }, null, wrap)).toEqual([]);
+    });
+
+    it('replace: no hold where the take cleared the old curve', () => {
+        const points = oldLane();
+        const pass = new ReplacePass(16);
+        pass.claim(3);
+        clearLaneStep(points, 3, () => false);
+        const writer = new LaneWriter(points, new TakePoints(), (position) => pass.has(position));
+        expect(writer.write({ step: 3.5, value: 0.9 }, null, wrap)).toEqual([]);
+        writer.write({ step: 4, value: 0.8 }, 3.5, wrap);
+        // Step 4 is still the old curve's: the hold after keeps it (segment 1 → 6).
+        expect(writer.finish()!.value).toBeCloseTo(old(4 + HOLD_GAP), 12);
+        pass.claim(4);
+        const cleared = oldLane();
+        const clearedWriter = new LaneWriter(cleared, new TakePoints(), (position) => pass.has(position));
+        clearedWriter.write({ step: 4.5, value: 0.8 }, null, wrap);
+        expect(clearedWriter.finish()).toBeNull();
     });
 });
 

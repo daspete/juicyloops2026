@@ -187,6 +187,12 @@ export class ReplacePass {
         return true;
     }
 
+    /** Whether the step holding `step` was cleared. */
+    has(step: number): boolean {
+        const index = Math.floor(step);
+        return index >= 0 && index < this.length && this.cleared[index] === 1;
+    }
+
     /** The steps cleared so far, for a lane that joins the take late. */
     clearedSteps(): number[] {
         const steps: number[] = [];

@@ -96,12 +96,16 @@ const hold = (onBreak: () => void): void => {
     holder = onBreak;
 };
 
-/** Ends a hold and commits everything that changed during it as one step. */
+/**
+ * Ends a hold and commits everything that changed during it as one step, right away: a controller stream still
+ * waiting for quiet (`commitWhenQuiet`) belongs to the take.
+ */
 const release = (): void => {
     if (!holder) {
         return;
     }
     holder = null;
+    flushQuiet();
     commit();
 };
 

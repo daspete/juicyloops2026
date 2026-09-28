@@ -15,7 +15,11 @@
  *
  * Checks: loop and song mode takes with a synth and a sampler, overdub, replace, count-in, the metronome (heard at
  * the destination, absent from an offline export), undo of a whole take, controller recording into a lane that plays
- * back in an offline render, pitch-wheel recording, a note held across the loop end, the R key and the button.
+ * back in an offline render, pitch-wheel recording, a note held across the loop end, the R key and the button; in song
+ * mode, controllers mapped to the master, a container bus and a track that is not armed record into song automation
+ * lanes (thinned, at the song steps heard, the old lane silenced while it records, one undo step), while in loop mode
+ * they are only played. Recording into an existing lane (a track's step lane and a song lane) leaves the old curve as
+ * it was right up to the gesture and after it: the lane's values and an offline render match the ones before the take.
  * Exit code 1 when a check fails.
  */
 import { createRequire } from 'node:module';
@@ -82,6 +86,7 @@ async function installHelpers(bpm) {
     const { useRecorder } = await load('/src/composables/useRecorder.ts');
     const { midiNoteName } = await load('/src/juicyloops/midi/messages.ts');
     const { renderSession } = await load('/src/juicyloops/render.ts');
+    const { valueAt } = await load('/src/juicyloops/automation.ts');
     const jl = useJuicyLoops();
     const recorder = useRecorder();
     const midi = useMidi();
@@ -175,9 +180,10 @@ async function installHelpers(bpm) {
         return { peak, peaks };
     };
 
-    /** Offline render of a container, one pass: RMS per window and the onsets (silence to sound). */
+    /** Offline render of a container, one pass (or of the song, with `containerId` null): RMS per window and the onsets (silence to sound). */
     const render = async (containerId, repeats = 1) => {
-        const audio = await renderSession(jl.engine.capture(), { bpm, scope: { kind: 'container', containerId, repeats }, tail: 0.3, sampleRate: 44100 });
+        const scope = containerId ? { kind: 'container', containerId, repeats } : { kind: 'song' };
+        const audio = await renderSession(jl.engine.capture(), { bpm, scope, tail: 0.3, sampleRate: 44100 });
         const data = audio.getChannelData(0);
         const rate = audio.sampleRate;
         let peak = 0;
@@ -208,7 +214,32 @@ async function installHelpers(bpm) {
         return { peak, onsets, rms: (a, b) => rms(a, b), duration: audio.duration, window: (fromStep, toStep) => rms(fromStep * stepSeconds, toStep * stepSeconds) };
     };
 
-    window.__jlr = { jl, recorder, midi, history, workspace: useWorkspace(), midiNoteName, transport, native, sleep, stepSeconds, heardNow, perform, at, until, notesOf, trackById, armOnly, destinationPeak, render, stepOfTime };
+    /**
+     * How far a lane's curve strays from `old` (points) outside a recorded gesture: before `first` (its first point) and
+     * after `last` (its last), sampled every 1/16 step up to 1/128 step from the gesture, and at the hold 1/256 step
+     * (half a millisecond) before it, where the recording takes over.
+     */
+    const curveDrift = (points, old, first, last, end) => {
+        const samples = [first - 1 / 256];
+        for (let step = 0; step < first - 1 / 128; step += 1 / 16) {
+            samples.push(step);
+        }
+        for (let step = last + 1 / 128; step < end; step += 1 / 16) {
+            samples.push(step);
+        }
+        let worst = 0;
+        let at = null;
+        for (const step of samples) {
+            const drift = Math.abs(valueAt(points, step) - valueAt(old, step));
+            if (drift > worst) {
+                worst = drift;
+                at = step;
+            }
+        }
+        return { worst, at };
+    };
+
+    window.__jlr = { jl, recorder, midi, history, workspace: useWorkspace(), midiNoteName, transport, native, sleep, stepSeconds, heardNow, perform, at, until, notesOf, trackById, armOnly, destinationPeak, render, stepOfTime, valueAt, curveDrift };
 }
 
 /* ---- node side ---- */
@@ -545,6 +576,72 @@ const main = async () => {
         }, synth.id);
         await settle(page);
 
+        /* ---- a controller into an existing step lane: the old curve stays up to the gesture and after it ---- */
+        const trackHold = await evaluate(
+            page,
+            async ({ id, containerId }) => {
+                const { recorder, perform, until, jl, trackById, render, curveDrift } = window.__jlr;
+                const track = trackById(id);
+                track.addNote({ note: 'A4', start: 0, length: 15.9, velocity: 1 });
+                // An existing volume lane rising from -26 dB (step 0) to +1 dB (step 15).
+                const lane = track.automation.add('volume', 0.3);
+                lane.points.push({ step: 15, value: 0.9 });
+                const old = lane.points.map((point) => ({ ...point }));
+                const windows = [0.5, 2.5, 4.5, 6.5, 7.5, 12.25, 13.5, 14.5];
+                const measure = async () => {
+                    const result = await render(containerId);
+                    return windows.map((step) => 20 * Math.log10(Math.max(result.window(step, step + 0.4), 1e-9)));
+                };
+                const before = await measure();
+                jl.engine.sequencer.setMidiMappings([{ cc: 74, channel: 'all', target: { kind: 'track', containerId, trackId: id }, param: 'volume' }]);
+                recorder.record();
+                // A gesture from the top (step 8) down to the bottom (step 11).
+                const events = [];
+                for (let i = 0; i <= 96; i++) {
+                    events.push([8 + i / 32, [0xb0, 74, Math.round((1 - i / 96) * 127)]]);
+                }
+                await perform(events);
+                await until(12.5);
+                jl.stop();
+                const first = lane.points.find((point) => point.step >= 7.99 && point.value > 0.95);
+                const last = [...lane.points].reverse().find((point) => point.step <= 11.1 && point.value < 0.05);
+                const drift = first && last ? curveDrift(lane.points, old, first.step, last.step, 16) : null;
+                const after = await measure();
+                return {
+                    before,
+                    after,
+                    drift,
+                    first: first ? [first.step, first.value] : null,
+                    last: last ? [last.step, last.value] : null,
+                    around: lane.points.filter((point) => point.step > 7 && point.step < 8.1).map((point) => [+point.step.toFixed(4), +point.value.toFixed(3), point.shape ?? null]),
+                };
+            },
+            synth,
+        );
+        check(
+            !!trackHold.drift && trackHold.drift.worst < 1e-6 && trackHold.first[0] < 8.05 && trackHold.last[0] > 10.9,
+            'CC into an existing step lane: the old curve is unchanged right up to the gesture (8) and after it (11)',
+            trackHold.drift ? `worst drift ${trackHold.drift.worst.toExponential(1)} at step ${trackHold.drift.at?.toFixed(3)}; around the start ${JSON.stringify(trackHold.around)}` : 'no gesture found',
+        );
+        const trackDbDrift = trackHold.before.map((db, i) => Math.abs(db - trackHold.after[i]));
+        check(
+            Math.max(...trackDbDrift) < 0.5,
+            'CC into an existing step lane: an offline render matches the old curve before and after the gesture',
+            `before ${trackHold.before.map((db) => db.toFixed(1)).join(', ')} dB; after ${trackHold.after.map((db) => db.toFixed(1)).join(', ')} dB (steps 0.5..7.5, 12.25..14.5)`,
+        );
+        await evaluate(page, (id) => {
+            const { jl, trackById } = window.__jlr;
+            const track = trackById(id);
+            track.clear();
+            for (const lane of [...track.automation.lanes]) {
+                track.automation.remove(lane.id);
+            }
+            track.settleAll();
+            track.setVolume(0);
+            jl.engine.sequencer.setMidiMappings([]);
+        }, synth.id);
+        await settle(page);
+
         /* ---- count-in and the metronome ---- */
         await setSettings(page, { countIn: true, metronome: true });
         const countIn = await evaluate(page, async () => {
@@ -718,6 +815,239 @@ const main = async () => {
         );
         check(songTake.notes.length === 4, 'song: notes before the clip are not recorded, the four in it are', songTake.notes.map((note) => `${note.note}@${note.start.toFixed(3)}`).join(' '));
         check(songErrors.worst <= TOLERANCE_MS, 'song: starts at the clip-relative pattern position of the stamped times (±3 ms)', songErrors.detail);
+        await settle(page);
+
+        /* ---- song mode: controllers into song automation lanes ---- */
+        const songCc = await evaluate(
+            page,
+            async ({ armed, unarmed, containerId }) => {
+                const { recorder, perform, until, jl, trackById, history, heardNow, sleep } = window.__jlr;
+                const song = jl.song.value;
+                const sequencer = jl.engine.sequencer;
+                const master = sequencer.master;
+                const armedTrack = trackById(armed.id);
+                armedTrack.clear();
+                // A tone through every pass of the clip (song steps 16..48), so the master's level is heard all the time.
+                armedTrack.addNote({ note: 'A4', start: 0, length: 15.9, velocity: 1 });
+                // An existing master lane (-17 dB, falling to -40 dB at step 30): the take records into it and silences it meanwhile.
+                const old = song.addAutomation({ kind: 'master' }, 'volume');
+                old.points.push({ step: 0, value: 0.5 }, { step: 30, value: 0 });
+                const oldPoints = JSON.stringify(old.points);
+                sequencer.setMidiMappings([
+                    { cc: 20, channel: 'all', target: { kind: 'master' }, param: 'volume' },
+                    { cc: 21, channel: 'all', target: { kind: 'container', containerId }, param: 'volume' },
+                    { cc: 22, channel: 'all', target: { kind: 'track', containerId: unarmed.containerId, trackId: unarmed.id }, param: 'volume' },
+                    { cc: 23, channel: 'all', target: { kind: 'track', containerId, trackId: armed.id }, param: 'pan' },
+                ]);
+                history.commit();
+                const lanesBefore = song.automation.length;
+                const revisionBefore = history.revision.value;
+                const busStart = sequencer.resolveTarget({ kind: 'container', containerId }).getParameter('volume');
+                // The song editor is open, so the lanes can be seen arriving (the song view plays in song mode).
+                await document.querySelector('#app').__vue_app__.config.globalProperties.$router.push({ name: 'app.song' });
+                await sleep(500);
+                jl.setMode('song');
+                jl.cueSong(0);
+                recorder.record();
+                const sweep = (cc, from, to, up) => {
+                    const events = [];
+                    for (let i = 0; i <= 192; i++) {
+                        const t = i / 192;
+                        events.push([from + t * (to - from), [0xb0, cc, Math.round((up ? t : 1 - t) * 127)]]);
+                    }
+                    return events;
+                };
+                // The bus before the clip (nothing plays there: the song lane records anyway), the master inside it.
+                await perform([...sweep(21, 4, 10, true), ...sweep(20, 20, 26, true)]);
+                await until(29);
+                await sleep(30);
+                const rowsDuring = document.querySelectorAll('.arr-row--auto').length;
+                const heldDuring = sequencer.heldSongLanes.size;
+                // After the sweep (it ends at +6 dB on step 26) the old lane would pull the master down towards its point at
+                // step 30 (-28 dB at step 29); held, the controller's +6 dB stays.
+                const liveMasterDb = master.output.volume.getValueAtTime(heardNow());
+                await perform([...sweep(22, 29, 31, false), ...sweep(23, 32, 34, true)]);
+                await until(36);
+                jl.stop();
+                await sleep(50);
+                const rowsAfter = document.querySelectorAll('.arr-row--auto').length;
+                const lanes = song.automation.map((lane) => ({
+                    id: lane.id,
+                    target: { ...lane.target },
+                    param: lane.param,
+                    points: lane.points.map((point) => [point.step, +point.value.toFixed(4), point.shape ?? null]),
+                }));
+                return {
+                    lanes,
+                    oldId: old.id,
+                    oldPoints,
+                    lanesBefore,
+                    busStart,
+                    heldDuring,
+                    rowsDuring,
+                    rowsAfter,
+                    heldAfter: sequencer.heldSongLanes.size,
+                    liveMasterDb,
+                    entries: history.revision.value - revisionBefore,
+                    armedPan: armedTrack.automation.laneFor('pan')?.points.length ?? 0,
+                    armedPanPositions: (armedTrack.automation.laneFor('pan')?.points ?? []).map((point) => +point.step.toFixed(3)),
+                };
+            },
+            { armed: songSynth, unarmed: synth, containerId: songSetup.containerId },
+        );
+        const laneOf = (kind, param) => songCc.lanes.find((lane) => lane.target.kind === kind && lane.param === param);
+        const masterLane = laneOf('master', 'volume');
+        const busLane = laneOf('container', 'volume');
+        const trackLane = laneOf('track', 'volume');
+        // The recorded points of a gesture, without the holds 1/256 step before (shape `hold`) and after it (recorded
+        // points are 1/64 step apart at least).
+        const holdGap = (a, b) => !!a && !!b && Math.abs(b[0] - a[0] - 1 / 256) < 1e-9;
+        const isHold = (points, i) => (points[i][2] === 'hold' && holdGap(points[i], points[i + 1])) || (holdGap(points[i - 1], points[i]) && points[i - 1][2] !== 'hold');
+        const recordedOf = (lane, from, to) => (lane ? lane.points.filter(([step], i, points) => step >= from - 0.01 && step <= to + 0.05 && !isHold(points, i)) : []);
+        const maxPerStep = (points) => {
+            const perStep = new Map();
+            for (const [step] of points) {
+                perStep.set(Math.floor(step), (perStep.get(Math.floor(step)) ?? 0) + 1);
+            }
+            return Math.max(0, ...perStep.values());
+        };
+        const masterPoints = recordedOf(masterLane, 20, 26);
+        const busPoints = recordedOf(busLane, 4, 10);
+        const trackPoints = recordedOf(trackLane, 29, 31);
+        check(
+            songCc.lanes.length === songCc.lanesBefore + 2 && masterLane?.id === songCc.oldId && !!busLane && !!trackLane && !laneOf('track', 'pan'),
+            'song CC: master, bus and unarmed-track controllers record into song lanes (the existing master lane is reused)',
+            songCc.lanes.map((lane) => `${lane.target.kind}.${lane.param} (${lane.points.length})`).join(', '),
+        );
+        const thinned = [masterPoints, busPoints, trackPoints].every((points) => points.length >= 10 && points.length < 100 && maxPerStep(points) <= 16);
+        check(thinned, 'song CC: thinned points (at most 16 a step, fewer than the 193 messages each)', [masterPoints, busPoints, trackPoints].map((points) => `${points.length} pts, max ${maxPerStep(points)}/step`).join('; '));
+        const onSweep = (points, from, to, up) =>
+            points.length > 0 &&
+            Math.abs(points[0][0] - from) < 0.05 &&
+            Math.abs(points.at(-1)[0] - to) < 0.1 &&
+            points.every(([step, value]) => Math.abs(value - (up ? (step - from) / (to - from) : 1 - (step - from) / (to - from))) < 0.03);
+        check(
+            onSweep(masterPoints, 20, 26, true) && onSweep(busPoints, 4, 10, true) && onSweep(trackPoints, 29, 31, false),
+            'song CC: points at the song steps heard (master 20..26, bus 4..10 before the clip, track 29..31)',
+            [masterPoints, busPoints, trackPoints].map((points) => `${points[0]?.[0].toFixed(3)}/${points[0]?.[1]} … ${points.at(-1)?.[0].toFixed(3)}/${points.at(-1)?.[1]}`).join('; '),
+        );
+        const busFirst = busLane?.points[0];
+        check(
+            !!busFirst && busFirst[0] === 0 && busFirst[2] === 'hold' && Math.abs(busFirst[1] - (songCc.busStart + 40) / 46) < 0.01 && trackLane?.points[0]?.[2] === 'hold',
+            'song CC: a new lane holds the value the take began with until the first move',
+            JSON.stringify(busLane?.points.slice(0, 2)),
+        );
+        const masterOld = masterLane?.points.filter(([step]) => step === 0 || step === 30) ?? [];
+        check(masterOld.length === 2, 'song CC: the existing lane keeps its points outside the gesture', JSON.stringify(masterLane?.points.filter(([step]) => step < 20 || step > 26.1)));
+        check(
+            songCc.armedPan >= 10 && songCc.armedPanPositions.every((step) => step >= 0 && step < 16.001),
+            'song CC: a controller aimed at the armed track still records into its step lane (clip-relative)',
+            `${songCc.armedPan} points, ${songCc.armedPanPositions[0]}..${songCc.armedPanPositions.at(-1)}`,
+        );
+        check(
+            songCc.rowsDuring === songCc.lanesBefore + 1 && songCc.rowsAfter === songCc.lanesBefore + 2,
+            'song CC: the song editor shows the new lanes while recording and after',
+            `rows: ${songCc.lanesBefore} before, ${songCc.rowsDuring} during (after the bus sweep), ${songCc.rowsAfter} after`,
+        );
+        check(songCc.heldDuring >= 2 && songCc.heldAfter === 0, 'song CC: the lanes being recorded are silenced while the take runs, and play again after', `held during ${songCc.heldDuring}, after ${songCc.heldAfter}`);
+        check(songCc.liveMasterDb > 3, 'song CC: the controller is heard, not the old lane (master at the controller value after the sweep)', `${songCc.liveMasterDb.toFixed(1)} dB at step 29 (the lane: -28 dB)`);
+        check(songCc.entries === 1, 'song CC: the take is one undo step', `${songCc.entries} history entries`);
+        const songRender = await evaluate(page, async () => {
+            const result = await window.__jlr.render(null);
+            return [20.25, 21, 22, 23, 24, 25, 25.75].map((step) => result.window(step, step + 0.25));
+        });
+        const songDb = songRender.map((rms) => 20 * Math.log10(Math.max(rms, 1e-9)));
+        const songRising = songDb.every((value, i, all) => i === 0 || value > all[i - 1] - 0.5);
+        check(
+            songRising && songDb[5] - songDb[0] > 20,
+            'song CC: an offline render of the song follows the recorded master sweep',
+            songDb.map((value) => value.toFixed(1)).join(' dB, ') + ' dB (steps 20.25, 21..25, 25.75)',
+        );
+        const songUndo = await evaluate(page, (oldId) => {
+            const { history, jl } = window.__jlr;
+            history.undo();
+            const song = jl.song.value;
+            return {
+                lanes: song.automation.map((lane) => ({ id: lane.id, points: JSON.stringify(lane.points) })),
+                pan: jl.containers.value.flatMap((container) => container.tracks).some((track) => track.automation.laneFor('pan')),
+                oldId,
+            };
+        }, songCc.oldId);
+        check(
+            songUndo.lanes.length === songCc.lanesBefore && songUndo.lanes.find((lane) => lane.id === songCc.oldId)?.points === songCc.oldPoints && !songUndo.pan,
+            'song CC: undo removes the recorded points and the lanes the take made',
+            songUndo.lanes.map((lane) => `${lane.id === songCc.oldId ? 'master' : lane.id}: ${lane.points}`).join('; '),
+        );
+        await settle(page);
+
+        /* ---- a controller into an existing song lane: the old curve stays up to the gesture and after it ---- */
+        const songHold = await evaluate(page, async () => {
+            const { recorder, perform, until, jl, render, curveDrift, history } = window.__jlr;
+            const song = jl.song.value;
+            // The master lane of before (-17 dB at step 0, falling to -40 dB at step 30), the tone in the clip (16..48).
+            const lane = song.automation.find((candidate) => candidate.target.kind === 'master' && candidate.param === 'volume');
+            const old = lane.points.map((point) => ({ ...point }));
+            const windows = [16.25, 18, 20, 21.5, 25.5, 27, 29];
+            const measure = async () => {
+                const result = await render(null);
+                return windows.map((step) => 20 * Math.log10(Math.max(result.window(step, step + 0.4), 1e-9)));
+            };
+            const before = await measure();
+            const revisionBefore = history.revision.value;
+            jl.setMode('song');
+            jl.cueSong(0);
+            recorder.record();
+            // A gesture from the bottom (step 22) to the top (step 25).
+            const events = [];
+            for (let i = 0; i <= 96; i++) {
+                events.push([22 + i / 32, [0xb0, 20, Math.round((i / 96) * 127)]]);
+            }
+            await perform(events);
+            await until(26);
+            jl.stop();
+            const first = lane.points.find((point) => point.step >= 21.99 && point.step < 22.1 && point.value < 0.05);
+            const last = [...lane.points].reverse().find((point) => point.step <= 25.1 && point.value > 0.95);
+            const drift = first && last ? curveDrift(lane.points, old, first.step, last.step, 40) : null;
+            const after = await measure();
+            const around = lane.points.filter((point) => (point.step > 21 && point.step < 22.1) || (point.step > 24.9 && point.step < 26)).map((point) => [+point.step.toFixed(4), +point.value.toFixed(3), point.shape ?? null]);
+            const entries = history.revision.value - revisionBefore;
+            // Leave the song as it was.
+            history.undo();
+            return { before, after, drift, first: first ? [first.step, first.value] : null, last: last ? [last.step, last.value] : null, around, entries, restored: JSON.stringify(lane.points) === JSON.stringify(old) };
+        });
+        check(
+            !!songHold.drift && songHold.drift.worst < 1e-6 && songHold.first[0] < 22.05 && songHold.last[0] > 24.9,
+            'CC into an existing song lane: the old curve is unchanged right up to the gesture (22) and after it (25)',
+            songHold.drift ? `worst drift ${songHold.drift.worst.toExponential(1)} at step ${songHold.drift.at?.toFixed(3)}; around the ends ${JSON.stringify(songHold.around)}` : 'no gesture found',
+        );
+        const songDbDrift = songHold.before.map((db, i) => Math.abs(db - songHold.after[i]));
+        check(
+            Math.max(...songDbDrift) < 0.5 && songHold.entries === 1 && songHold.restored,
+            'CC into an existing song lane: an offline render of the song matches the old curve before and after the gesture',
+            `before ${songHold.before.map((db) => db.toFixed(1)).join(', ')} dB; after ${songHold.after.map((db) => db.toFixed(1)).join(', ')} dB (steps 16.25..21.5, 25.5..29); undone: ${songHold.restored}`,
+        );
+        await settle(page);
+
+        /* ---- loop mode: the same controllers are played, not recorded ---- */
+        const loopCc = await evaluate(page, async () => {
+            const { recorder, perform, until, jl } = window.__jlr;
+            const song = jl.song.value;
+            const before = JSON.stringify(song.automation);
+            const masterBefore = jl.engine.sequencer.master.getParameter('volume');
+            await document.querySelector('#app').__vue_app__.config.globalProperties.$router.push({ name: 'app.index' });
+            await window.__jlr.sleep(300);
+            jl.setMode('loop');
+            recorder.record();
+            const events = [];
+            for (let i = 0; i <= 64; i++) {
+                events.push([2 + i / 16, [0xb0, 20, Math.round((i / 64) * 127)]], [2 + i / 16, [0xb0, 21, Math.round((i / 64) * 127)]]);
+            }
+            await perform(events);
+            await until(7);
+            jl.stop();
+            return { same: JSON.stringify(song.automation) === before, masterBefore, masterAfter: jl.engine.sequencer.master.getParameter('volume') };
+        });
+        check(loopCc.same && loopCc.masterAfter !== loopCc.masterBefore, 'loop mode: controllers of the master and a bus are played live, song lanes stay untouched', JSON.stringify(loopCc));
     } finally {
         await browser.close();
     }
