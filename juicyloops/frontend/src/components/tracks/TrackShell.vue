@@ -43,15 +43,15 @@ const { isAnyArmed } = useMidi();
 const meta = computed(() => TRACK_META[props.track.type]);
 const isSelected = computed(() => selectedTrack.value?.id === props.track.id);
 const isTweakOpen = computed(() => isTrackShowing(props.track.id));
-/** With no track armed, the selected one plays MIDI: its arm button shows that, dimmer than a real arm. */
+/** The selected track always plays MIDI; with no track armed it is also the one a take records into: its arm button shows that, dimmer than a real arm. */
 const isArmedImplicitly = computed(() => !isAnyArmed.value && isSelected.value);
 const armHint = computed(() => {
     if (props.track.isArmed) {
-        return 'Armed: your MIDI keyboard plays this track. Click to disarm';
+        return 'Armed: your MIDI keyboard plays this track and recording goes into it. Click to disarm';
     }
     return isArmedImplicitly.value
-        ? 'Plays your MIDI keyboard because it is selected and no track is armed. Click to arm it'
-        : 'Arm: play this track from a MIDI keyboard (several can be armed)';
+        ? 'Selected and no track is armed: your MIDI keyboard plays this track and recording goes into it. Click to arm it'
+        : 'Arm: play and record this track from a MIDI keyboard (several can be armed; the selected track always plays)';
 });
 
 const isVelocityOpen = ref(false);

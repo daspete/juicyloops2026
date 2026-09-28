@@ -22,7 +22,7 @@ const setup = () => {
     let armed: LiveTrack[] = [a.track];
     let now = 1;
     const woken: string[] = [];
-    const router = new MidiRouter({ armed: () => armed, now: () => now, wake: (track) => woken.push(track.id) });
+    const router = new MidiRouter({ live: () => armed, now: () => now, wake: (track) => woken.push(track.id) });
     const events: MidiRouterEvent[] = [];
     router.subscribe((event) => events.push(event));
     const send = (...bytes: number[]) => router.handle('in', parseMidiMessage(bytes)!, 1000 + now);
@@ -105,5 +105,108 @@ describe('MIDI router', () => {
         send(0x90, 60, 127);
         send(0x80, 60, 0);
         expect(events.map((event) => event.trackIds)).toEqual([[], []]);
+    });
+});
+
+/**
+ * The studio's split: live = armed plus the selected track; record targets = the armed ones, or the selected one when
+ * none is armed. The router plays the first and reports the second with every event.
+ */
+describe('MIDI router: live tracks and record targets', () => {
+    const splitSetup = () => {
+        const a = fakeTrack('a');
+        const b = fakeTrack('b');
+        const c = fakeTrack('c');
+        let armed: LiveTrack[] = [a.track];
+        let selected: LiveTrack | null = b.track;
+        const live = () => (selected && !armed.includes(selected) ? [...armed, selected] : armed);
+        const recordTargets = () => (armed.length || !selected ? armed : [selected]);
+        const router = new MidiRouter({ live, recordTargets, now: () => 1 });
+        const events: MidiRouterEvent[] = [];
+        router.subscribe((event) => events.push(event));
+        const send = (...bytes: number[]) => router.handle('in', parseMidiMessage(bytes)!, 1000);
+        return {
+            a,
+            b,
+            c,
+            router,
+            events,
+            send,
+            arm: (...tracks: LiveTrack[]) => (armed = tracks),
+            select: (track: LiveTrack | null) => (selected = track),
+        };
+    };
+
+    it('plays the armed tracks and the selected one, but records only the armed ones', () => {
+        const { a, b, events, send } = splitSetup();
+        send(0x90, 60, 127);
+        expect(a.calls).toEqual(['on in:0:60 C4 1.00 @1']);
+        expect(b.calls).toEqual(['on in:0:60 C4 1.00 @1']);
+        expect(events[0]).toMatchObject({ trackIds: ['a', 'b'], recordTrackIds: ['a'] });
+        send(0x80, 60, 0);
+        expect(events[1]).toMatchObject({ trackIds: ['a', 'b'], recordTrackIds: ['a'] });
+    });
+
+    it('plays a selected track that is armed too only once', () => {
+        const { a, events, send, select } = splitSetup();
+        select(a.track);
+        send(0x90, 60, 127);
+        expect(a.calls).toHaveLength(1);
+        expect(events[0]).toMatchObject({ trackIds: ['a'], recordTrackIds: ['a'] });
+    });
+
+    it('records the selected track when nothing is armed', () => {
+        const { a, b, events, send, arm } = splitSetup();
+        arm();
+        send(0x90, 60, 127);
+        expect(a.calls).toEqual([]);
+        expect(b.calls).toHaveLength(1);
+        expect(events[0]).toMatchObject({ trackIds: ['b'], recordTrackIds: ['b'] });
+    });
+
+    it('releases a held note on the track it started on when the selection changes, and closes it where it recorded', () => {
+        const { a, b, c, events, send, select } = splitSetup();
+        send(0x90, 64, 100);
+        select(c.track);
+        send(0x80, 64, 0);
+        expect(b.calls).toEqual(['on in:0:64 E4 0.79 @1', 'off in:0:64 @1']);
+        expect(a.calls[1]).toBe('off in:0:64 @1');
+        expect(c.calls).toEqual([]);
+        expect(events[1]).toMatchObject({ type: 'noteoff', trackIds: ['a', 'b'], recordTrackIds: ['a'] });
+    });
+
+    it('keeps the record targets of a note-on for its note-off, even when arming changed', () => {
+        const { a, b, events, send, arm } = splitSetup();
+        arm();
+        send(0x90, 60, 127);
+        arm(a.track);
+        send(0x80, 60, 0);
+        expect(b.calls[1]).toBe('off in:0:60 @1');
+        expect(a.calls).toEqual([]);
+        expect(events[1]).toMatchObject({ trackIds: ['b'], recordTrackIds: ['b'] });
+    });
+
+    it('reports the pedal, controllers and the wheel to the record targets among the live tracks', () => {
+        const { events, send, select, c } = splitSetup();
+        send(0xb0, 64, 127);
+        select(c.track);
+        send(0xb0, 74, 10);
+        send(0xe0, 0x7f, 0x7f);
+        send(0xb0, 64, 0);
+        expect(events.map((event) => [event.type, event.trackIds, event.recordTrackIds])).toEqual([
+            ['sustain', ['a', 'b'], ['a']],
+            ['cc', ['a', 'c'], ['a']],
+            ['bend', ['a', 'c'], ['a']],
+            // Pedal-up reaches every track it went down on (b) and the live ones now (c).
+            ['sustain', ['a', 'b', 'c'], ['a']],
+        ]);
+    });
+
+    it('closes the recorded notes on all notes off', () => {
+        const { events, router, send } = splitSetup();
+        send(0x90, 60, 127);
+        router.allNotesOff(0);
+        expect(events[1]).toMatchObject({ type: 'allnotesoff', recordTrackIds: ['a'] });
+        expect([...events[1]!.trackIds].sort()).toEqual(['a', 'b']);
     });
 });

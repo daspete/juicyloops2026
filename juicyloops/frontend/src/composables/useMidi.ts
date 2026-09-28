@@ -12,14 +12,15 @@ import { useMidiLearn } from './useMidiLearn';
 import { useWorkspace } from './useWorkspace';
 
 /**
- * MIDI in the studio: the inputs, the router that plays armed tracks, MIDI learn and the latency setting.
+ * MIDI in the studio: the inputs, the router that plays armed tracks (and the selected one), MIDI learn and the
+ * latency setting.
  * Module level state: there is one set of MIDI inputs per page.
  *
  * **Recorder hook** (Phase 4 of notes/midi-recording.md): `onMidiEvent(listener)` hands every routed event to the
- * listener: `{ type, input, channel, id, note, velocity, cc, value, timeStamp, time, trackIds }` (see
+ * listener: `{ type, input, channel, id, note, velocity, cc, value, timeStamp, time, trackIds, recordTrackIds }` (see
  * `MidiRouterEvent`). Note-ons and note-offs share `id`; `timeStamp` is the `performance.now()` clock of the message,
  * `time` the context time it was played at; `trackIds` are the tracks it went to (a note-off: the ones its note-on
- * went to). Controllers that drive a learned knob arrive as `cc` events too; `mappingsFor` tells which parameters.
+ * went to), `recordTrackIds` those of them a take records into (`recordTargets`). Controllers that drive a learned knob arrive as `cc` events too; `mappingsFor` tells which parameters.
  */
 
 const { containers, currentContainer } = useJuicyLoops();
@@ -38,38 +39,60 @@ watch(lowLatency, (value) => writeLowLatency(value));
 /** True when the setting differs from what the running context was made with: it applies on the next start. */
 const latencyNeedsRestart = computed(() => latencyHintFor(lowLatency.value) !== ENGINE_LATENCY_HINT);
 
-/** Whether any track in any container is armed; when none is, the selected track plays MIDI. */
+/** Whether any track in any container is armed; when none is, the selected track is the one recording records into. */
 const isAnyArmed = computed(() => containers.value.some((container) => container.tracks.some((track) => track.isArmed)));
 
-/** The container of every track the last `armedTracks` call returned, to wake it before a note. */
+/** The container of every track the last `liveTracks` call returned, to wake it before a note. */
 const containerOf = new Map<string, string>();
 
-/** The tracks MIDI plays: every armed track of every container, or else the selected one. Raw objects. */
-const armedTracks = (): LiveTrack[] => {
-    containerOf.clear();
+/** Every armed track of every container, raw; with `containerIds`, notes the container of each there. */
+const armedOnly = (containerIds?: Map<string, string>): LiveTrack[] => {
     const armed: LiveTrack[] = [];
     for (const container of containers.value) {
         for (const track of container.tracks) {
             if (track.isArmed) {
                 const raw = toRaw(track);
                 armed.push(raw);
-                containerOf.set(raw.id, container.id);
+                containerIds?.set(raw.id, container.id);
             }
         }
     }
-    const selected = selectedTrack.value;
-    if (!armed.length && selected) {
-        const raw = toRaw(selected);
-        armed.push(raw);
-        containerOf.set(raw.id, currentContainer.value.id);
-    }
     return armed;
+};
+
+/**
+ * The tracks MIDI plays: every armed track of every container plus the selected track (once, when it is armed too).
+ * Raw objects. The selected track always plays, so the track on screen answers the keyboard.
+ */
+const liveTracks = (): LiveTrack[] => {
+    containerOf.clear();
+    const live = armedOnly(containerOf);
+    const selected = selectedTrack.value;
+    if (selected) {
+        const raw = toRaw(selected);
+        if (!containerOf.has(raw.id)) {
+            live.push(raw);
+            containerOf.set(raw.id, currentContainer.value.id);
+        }
+    }
+    return live;
+};
+
+/**
+ * The tracks a take records into: every armed track, or the selected one when none is armed. Raw objects. A selected
+ * track that is not armed while others are plays live but is not recorded.
+ */
+const recordTargets = (): LiveTrack[] => {
+    const armed = armedOnly();
+    const selected = selectedTrack.value;
+    return armed.length || !selected ? armed : [toRaw(selected)];
 };
 
 const context = engine.transport.context;
 
 const router = new MidiRouter({
-    armed: armedTracks,
+    live: liveTracks,
+    recordTargets,
     now: () => context.currentTime,
     // A note on a sleeping container (hibernation) wakes it first; it stays awake while notes are held.
     wake: (track) => {
@@ -195,8 +218,10 @@ export const useMidi = () => ({
     removeMappingAt,
     setMappingChannel,
     onMidiEvent,
-    /** The tracks MIDI plays right now (raw objects): the armed ones, or else the selected one. What recording writes into. */
-    armedTracks,
+    /** The tracks MIDI plays right now (raw objects): the armed ones plus the selected one. */
+    liveTracks,
+    /** The tracks a take records into right now (raw objects): the armed ones, or else the selected one. */
+    recordTargets,
     /** The router itself, for tests and the recorder (`handle` plays a parsed message as if it came in). */
     router,
     ...learn,

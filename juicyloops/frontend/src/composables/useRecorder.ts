@@ -174,7 +174,7 @@ const closingStep = (current: Session, heard: number): number => (heard < curren
 const stepNow = (current: Session): number => closingStep(current, heardTime(performance.now(), readClock(), settings.offsetMs));
 
 const beginTake = (start: TakeStart): void => {
-    const tracks = midi.armedTracks();
+    const tracks = midi.recordTargets();
     const current: Session = {
         take: undefined as unknown as Take,
         start,
@@ -365,14 +365,15 @@ const recordSongValue = (current: Session, target: AutomationTarget, key: string
 };
 
 /**
- * A learned controller is recorded when it turns a parameter of a track the event went to (an armed track, or the
- * selected one): into that track's step lane. In song mode the others (a container bus, the master, a track that is
- * not armed) go into song automation lanes; in loop mode there is no timeline for them, so they are only played.
+ * A learned controller is recorded when it turns a parameter of a track the event records into (an armed track, or the
+ * selected one when none is armed: `recordTrackIds`): into that track's step lane. In song mode the others (a container
+ * bus, the master, a track that is not a record target, also the selected track while other tracks are armed) go into
+ * song automation lanes; in loop mode there is no timeline for them, so they are only played.
  */
 const recordController = (current: Session, event: MidiRouterEvent, heard: number): void => {
     for (const mapping of mappingsFor(engine.sequencer.midiMappings, event.cc ?? -1, event.channel)) {
         const { target } = mapping;
-        if (target.kind === 'track' && event.trackIds.includes(target.trackId)) {
+        if (target.kind === 'track' && event.recordTrackIds.includes(target.trackId)) {
             const found = findTrack(target.trackId);
             const param = found?.track.parameter(mapping.param);
             if (found && param) {
@@ -392,7 +393,7 @@ const recordController = (current: Session, event: MidiRouterEvent, heard: numbe
 
 /** The wheel plays on top of the bend knob; the lane records what was heard, knob plus wheel. Synth tracks only. */
 const recordBend = (current: Session, event: MidiRouterEvent, heard: number): void => {
-    for (const trackId of event.trackIds) {
+    for (const trackId of event.recordTrackIds) {
         const found = findTrack(trackId);
         const param = found?.track.parameter('bend');
         if (found && param) {
@@ -422,23 +423,23 @@ const onEvent = (event: MidiRouterEvent): void => {
     switch (event.type) {
         case 'noteon':
             if (current.replace) {
-                for (const id of event.trackIds) {
+                for (const id of event.recordTrackIds) {
                     const found = current.passes.has(id) ? undefined : findTrack(id);
                     if (found) {
                         current.passes.set(id, new ReplacePass(found.track.length));
                     }
                 }
             }
-            current.take.noteOn(event.id!, midiNoteName(event.note!), event.velocity ?? 1, event.trackIds, transportStepAt(heard, transportClock, current.start));
+            current.take.noteOn(event.id!, midiNoteName(event.note!), event.velocity ?? 1, event.recordTrackIds, transportStepAt(heard, transportClock, current.start));
             return;
         case 'noteoff':
-            current.take.noteOff(event.id!, event.trackIds, closingStep(current, heard));
+            current.take.noteOff(event.id!, event.recordTrackIds, closingStep(current, heard));
             return;
         case 'sustain':
-            current.take.sustain((event.value ?? 0) >= 64, event.trackIds, closingStep(current, heard));
+            current.take.sustain((event.value ?? 0) >= 64, event.recordTrackIds, closingStep(current, heard));
             return;
         case 'allnotesoff':
-            current.take.allNotesOff(event.trackIds, closingStep(current, heard));
+            current.take.allNotesOff(event.recordTrackIds, closingStep(current, heard));
             return;
         case 'cc':
             recordController(current, event, heard);
@@ -522,7 +523,7 @@ watch(mode, () => endTake(), { flush: 'sync' });
 /* ---- the transport side ---- */
 
 /** Whether a take has something to record into: an armed track, or a selected one. */
-const canRecord = (): boolean => midi.armedTracks().length > 0;
+const canRecord = (): boolean => midi.recordTargets().length > 0;
 
 export type RecordResult = 'started' | 'no-track';
 

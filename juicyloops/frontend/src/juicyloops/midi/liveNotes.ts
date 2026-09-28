@@ -3,14 +3,22 @@
  * use these and do the sound themselves; nothing here knows about audio.
  */
 
+/** How a key sounds: held down, or only by the sustain pedal (its key is up). */
+export type HeldKey = 'held' | 'sustained';
+
+/** The keys that sound on a track, by note name ('C4'). */
+export type HeldKeys = ReadonlyMap<string, HeldKey>;
+
+export const NO_HELD_KEYS: HeldKeys = new Map();
+
 /**
  * The sustain pedal of one track. Note-offs that arrive while the pedal is down are held back and released when it
  * comes up. A key struck again while its note still rings (held by the pedal) restarts it: the caller stops the old
  * voice first.
  */
 export class SustainGate {
-    /** Every live note that sounds, held by its key or by the pedal. */
-    private readonly sounding = new Set<string>();
+    /** Every live note that sounds, held by its key or by the pedal, with its note name. */
+    private readonly sounding = new Map<string, string>();
     /** The notes whose key came up while the pedal was down. */
     private readonly deferred = new Set<string>();
     private down = false;
@@ -29,9 +37,9 @@ export class SustainGate {
     }
 
     /** A key went down. True when the same note still sounds (the caller stops that voice before starting the new one). */
-    press(id: string): boolean {
+    press(id: string, note = ''): boolean {
         const restrike = this.sounding.has(id);
-        this.sounding.add(id);
+        this.sounding.set(id, note);
         this.deferred.delete(id);
         return restrike;
     }
@@ -65,10 +73,32 @@ export class SustainGate {
 
     /** Forgets everything (all notes off); returns every note that was sounding. The pedal state stays. */
     clear(): string[] {
-        const all = [...this.sounding];
+        const all = [...this.sounding.keys()];
         this.sounding.clear();
         this.deferred.clear();
         return all;
+    }
+
+    /**
+     * The keys that sound, by note name: 'held' while a key plays it, else 'sustained' (the pedal holds it). Two ids
+     * with the same name (two inputs) count once, 'held' first. A new map on every call; empty is `NO_HELD_KEYS`.
+     */
+    keys(): HeldKeys {
+        if (!this.sounding.size) {
+            return NO_HELD_KEYS;
+        }
+        const keys = new Map<string, HeldKey>();
+        for (const [id, note] of this.sounding) {
+            if (!note) {
+                continue;
+            }
+            if (!this.deferred.has(id)) {
+                keys.set(note, 'held');
+            } else if (!keys.has(note)) {
+                keys.set(note, 'sustained');
+            }
+        }
+        return keys;
     }
 }
 

@@ -9,7 +9,8 @@
  * `.test` hosts. Three passes:
  *  - `rust`: Chromium with the plain-http dev origin treated as secure, so AudioWorklet and the Rust synth run. Checks
  *    the MIDI UI, note-on onset (in frames after the event), note-off, sustain, pitch bend, last-note priority, MIDI
- *    learn (and that a controller gesture is one undo step), the sampler's slices and gate, a sleeping container that
+ *    learn (and that a controller gesture is one undo step), the sampler's slices and gate, the selected track playing
+ *    alongside the armed ones (and nothing hanging when the selection moves under a held key), a sleeping container that
  *    an armed note wakes, and the Tone engine on the same secure page (built with WebAssembly hidden) for comparison.
  *  - `tone`: the headless shell on the insecure origin, where there is no AudioWorklet: synths fall back to Tone.js.
  *    Checked with an AnalyserNode: note-on, note-off, sustain, bend, last-note priority, sampler slices.
@@ -273,7 +274,32 @@ async function installHelpers() {
         }
     }
 
-    window.__jlt = { burst, Tone, jl, workspace: useWorkspace(), history: useHistory(), midi: useMidi(), context, raw, rate, sleep, capture, onset, sineWav, hasWorklet };
+    /** Levels of several tracks at once, each read from an analyser on the track's own output (before the master). */
+    const trackTaps = new Map();
+    const trackLevels = async (ids) => {
+        const taps = ids.map((id) => {
+            let tap = trackTaps.get(id);
+            if (!tap) {
+                tap = raw.createAnalyser();
+                tap.fftSize = 2048;
+                Tone.connect(jl.tracks.value.find((track) => track.id === id).output, tap);
+                trackTaps.set(id, tap);
+            }
+            return tap;
+        });
+        const from = raw.currentTime;
+        while (raw.currentTime - from < 2048 / rate + 0.03) {
+            await sleep(5);
+        }
+        return ids.map((id, i) => {
+            const data = new Float32Array(2048);
+            taps[i].getFloatTimeDomainData(data);
+            const track = jl.tracks.value.find((candidate) => candidate.id === id);
+            return { ...analyse(data), live: track.liveNoteCount };
+        });
+    };
+
+    window.__jlt = { burst, Tone, jl, workspace: useWorkspace(), history: useHistory(), midi: useMidi(), context, raw, rate, sleep, capture, onset, sineWav, hasWorklet, trackLevels };
 }
 
 /* ---- the checks ---- */
@@ -301,6 +327,10 @@ const addSynth = (page, { hideWasm = false } = {}) =>
         return { id: track.id, engine: live.engine?.constructor.name ?? 'none' };
     }, hideWasm);
 
+/**
+ * Arms exactly `ids`. The first of them is also selected (when it is in the current container), because the selected
+ * track always plays too: so only the armed track sounds in the checks that measure one track.
+ */
 const setArmed = (page, ids) =>
     page.evaluate((armed) => {
         for (const container of window.__jlt.jl.containers.value) {
@@ -308,7 +338,14 @@ const setArmed = (page, ids) =>
                 track.setArmed(armed.includes(track.id));
             }
         }
+        if (armed.length) {
+            window.__jlt.workspace.selectTrack(armed[0]);
+        }
     }, ids);
+
+const selectTrack = (page, id) => page.evaluate((trackId) => window.__jlt.workspace.selectTrack(trackId), id);
+const trackLevels = (page, ids) => page.evaluate((list) => window.__jlt.trackLevels(list), ids);
+const levelText = (levels) => levels.map((level, i) => `${'AB'[i]}: rms ${level.rms.toFixed(3)}, ${level.live} live`).join('; ');
 
 const capture = (page, seconds) => page.evaluate((s) => window.__jlt.capture(s), seconds);
 const onset = (page, bytes) => page.evaluate((b) => window.__jlt.onset(b), bytes);
@@ -390,6 +427,61 @@ const synthChecks = async (page, label, { precise }) => {
     await wait(page, 250);
     heard = await capture(page, 0.1);
     check(heard.peak < 1e-3, `${label}: silent after the last key`, `peak ${heard.peak.toExponential(1)}`);
+};
+
+/**
+ * The selected track always plays: armed A plus selected B both sound; with nothing armed only the selected one does.
+ * Moving the selection while a key is held must not leave the note hanging on the track it started on.
+ */
+const splitChecks = async (page, label, synthId) => {
+    const other = await addSynth(page);
+    const ids = [synthId, other.id];
+    await setArmed(page, [synthId]);
+    await selectTrack(page, other.id);
+    await sendMidi(page, noteOn(69));
+    await wait(page, 60);
+    let levels = await trackLevels(page, ids);
+    check(levels.every((level) => level.rms > 0.05 && level.live === 1), `${label}: armed A and selected B both sound`, levelText(levels));
+    await sendMidi(page, noteOff(69));
+    await wait(page, 250);
+    levels = await trackLevels(page, ids);
+    check(levels.every((level) => level.peak < 1e-3 && level.live === 0), `${label}: the note-off releases both`, levelText(levels));
+
+    // The selection moves to A while the key is held: B no longer plays new keys, but the held one is released on both.
+    await sendMidi(page, noteOn(64));
+    await wait(page, 60);
+    await selectTrack(page, synthId);
+    await sendMidi(page, noteOn(67));
+    await wait(page, 60);
+    levels = await trackLevels(page, ids);
+    check(levels[0].live === 2 && levels[1].live === 1, `${label}: after the selection moved, a new key plays on A only`, levelText(levels));
+    await sendMidi(page, noteOff(64));
+    await sendMidi(page, noteOff(67));
+    await wait(page, 250);
+    levels = await trackLevels(page, ids);
+    check(levels.every((level) => level.peak < 1e-3 && level.live === 0), `${label}: the key held across the selection change releases on both tracks`, levelText(levels));
+
+    // Nothing armed: the selected track plays alone; selecting another while the key is held leaves nothing hanging.
+    await setArmed(page, []);
+    await selectTrack(page, other.id);
+    await sendMidi(page, sustain(true));
+    await sendMidi(page, noteOn(60));
+    await wait(page, 60);
+    levels = await trackLevels(page, ids);
+    check(levels[0].peak < 1e-3 && levels[1].rms > 0.05, `${label}: nothing armed, only the selected track sounds`, levelText(levels));
+    await selectTrack(page, synthId);
+    await sendMidi(page, noteOff(60));
+    await sendMidi(page, sustain(false));
+    await wait(page, 250);
+    levels = await trackLevels(page, ids);
+    const master = await capture(page, 0.1);
+    check(
+        levels.every((level) => level.peak < 1e-3 && level.live === 0) && master.peak < 1e-3,
+        `${label}: a key (and pedal) held across a selection change releases, nothing hangs`,
+        `${levelText(levels)}; master peak ${master.peak.toExponential(1)}`,
+    );
+    await page.evaluate((trackId) => window.__jlt.jl.removeTrack(trackId), other.id);
+    await selectTrack(page, synthId);
 };
 
 /** Sampler: keys pick slices (C5, key 72, the first), gate stops the voice at the note-off, one-shot plays the slice out. */
@@ -496,6 +588,7 @@ const rustPass = async () => {
         await wait(page, 200);
 
         await samplerChecks(page, 'rust sampler');
+        await splitChecks(page, 'rust', synth.id);
 
         // Hot-plugging: a new input shows up and plays; unplugging it stops its held note; a switched-off input is ignored.
         await page.evaluate(() => window.__fakeMidi.plug('kbd-2', 'Second Keys'));
@@ -537,6 +630,13 @@ const rustPass = async () => {
         });
         check(sleeping.asleep, 'rust: the other container went to sleep while the loop played');
         await setArmed(page, [sleeping.id]);
+        // The selected track (in the playing container) plays every key too: muted here, so the onset is the woken track's.
+        await page.evaluate(
+            (id) => {
+                window.__jlt.jl.tracks.value.find((track) => track.id === id).isMuted = true;
+            },
+            synth.id,
+        );
         const wake = await onset(page, noteOn(69));
         const awake = await page.evaluate((id) => window.__jlt.jl.engine.containers.find((c) => c.id === id).isAwake, sleeping.containerId);
         check(awake && wake.frames <= 1024, 'rust: a note on an armed track in a sleeping container wakes it and sounds', `${wake.frames} frames after the event`);
@@ -546,6 +646,12 @@ const rustPass = async () => {
         await sendMidi(page, noteOff(69));
         await page.evaluate(() => window.__jlt.jl.stop());
         await wait(page, 300);
+        await page.evaluate(
+            (id) => {
+                window.__jlt.jl.tracks.value.find((track) => track.id === id).isMuted = false;
+            },
+            synth.id,
+        );
         await setArmed(page, []);
         await page.evaluate(() => window.__jlt.jl.selectContainer(window.__jlt.jl.containers.value[0].id));
 

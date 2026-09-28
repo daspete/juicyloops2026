@@ -215,7 +215,8 @@ notes anywhere (not only on steps), with grid snap and a separate quantize comma
   is key 72 (the first slice of a cut sample). Recorded notes store the same name that was played. (Phase 3 first shipped
   `noteAt(n)`, an octave higher.)
 - **Routing** (`MidiRouter`): every event goes to every armed track, any channel; with none armed, the selected track
-  (`useWorkspace().selectedTrack`) plays. A note-off goes to the tracks its note-on went to, pedal-up reaches every
+  (`useWorkspace().selectedTrack`) plays. (Changed later, the user's decision: the selected track always plays, see
+  "As built (selected track plays live)" below.) A note-off goes to the tracks its note-on went to, pedal-up reaches every
   track the pedal went down on, a bend back to the centre reaches every track that was bent. An input that is
   unplugged or switched off gets `allNotesOff` for its notes; CC120/123 and the popover's "All notes off" stop all.
 - **Recorder hook.** `useMidi().onMidiEvent(listener)` (or `router.subscribe`) hands every routed event to the
@@ -410,8 +411,8 @@ notes anywhere (not only on steps), with grid snap and a separate quantize comma
   not heard (they go just before they would play, ~0.2 s ahead of the playhead). Lanes the take records into lose
   the stretch the pass has cleared too (a lane that joins late loses what was passed already); lanes the take does not
   touch are left alone.
-- **Controllers and the wheel.** Learned CCs are recorded when their mapping targets a track the event went to (armed,
-  or the selected one): into that track's step lane for the parameter (value `toNormalized(controllerValue(...))`).
+- **Controllers and the wheel.** Learned CCs are recorded when their mapping targets a record target the event went to
+  (armed, or the selected one when none is armed; `recordTrackIds`, see "As built (selected track plays live)"): into that track's step lane for the parameter (value `toNormalized(controllerValue(...))`).
   The pitch wheel records into a synth track's `bend` lane (knob + wheel, clamped, i.e. what was heard). A lane is
   created on the first move, flat at the parameter's value when the take began. While a take records a lane, the lane
   does not play (`holdAutomation`), so the controller is heard, not the old curve; afterwards it plays again. Thinning
@@ -502,6 +503,44 @@ notes anywhere (not only on steps), with grid snap and a separate quantize comma
   +13 ms (5th..95th percentile, 511 readings over 4 s). There a key lands within about a device callback of when it
   was heard; the checks above therefore stamp their messages from the stamp the app reads. On real hardware the stamp
   follows the device clock (a callback of 128..512 frames); the record offset corrects a constant error.
+
+---
+
+**As built (selected track plays live)** (the user's decision, after Phase 5):
+
+- **Playing vs recording.** The router takes two lists (`MidiRouterOptions`): `live()`, the tracks that play (every armed
+  track plus the selected one, once), and `recordTargets()`, the tracks a take records into (every armed track, or the
+  selected one when none is armed; `useMidi().liveTracks` / `recordTargets`, `armedTracks` is gone). So a selected
+  track that is not armed plays while other tracks are armed, but is not recorded. Every `MidiRouterEvent` carries
+  `trackIds` (played) and `recordTrackIds` (those of them that record): a note-off keeps the record ids of its note-on,
+  a pedal-up those the pedal went down on plus the current ones, all-notes-off those of the notes it stops. The recorder
+  uses `recordTrackIds` for notes, sustain, all-notes-off, replace passes, the wheel and learned CCs; a CC aimed at a
+  selected-but-unarmed track while others are armed goes to a song lane in song mode, like any unarmed track. The
+  recorder's own pedal state per track still follows `trackIds` (the pedal is physical). `beginTake`/`canRecord` use
+  `recordTargets()`. Changing the selection during a held key: the note-off still reaches the tracks the note-on went
+  to (the router remembers them), so nothing hangs. Arm hints and the MIDI popover say so.
+- **Tone engine fix.** Two live keys in the same render quantum on the Tone fallback in cut mode started its one voice
+  twice at the same context time, which Tone rejects with a throw; the later key now starts one sample later
+  (`ToneSynthEngine.noteOn`). Found by the roll checks below.
+- **Live key lighting in the piano roll.** `SustainGate` keeps each live note's name and gives `keys()`: note name →
+  `'held'` or `'sustained'` (the pedal holds it). `BaseTrack` publishes that to `midi/heldKeys.ts` on every live
+  note-on/off, pedal and all-notes-off (never per frame, never for pattern notes): a `shallowReactive` Map by track id,
+  whose entries are replaced (and skipped when equal), so a reader depends on its own track only. `roll/RollLiveKeys.vue`
+  (twice in `PianoRoll.vue`: `part="keys"` in the key column next to the memoized keys, `part="rows"` under the note
+  bars) maps names through the roll's `rowOf` (a sample roll lights the slice the key plays, clamped like
+  `sliceIndexOf`; a whole sample the key's row) and draws the key in the track accent with its label, plus a faint band
+  across the row; pedal-held keys dimmer (`[data-state='sustained']`, CSS in `globals.css`). Only this component
+  re-renders on a key; the note bars do not (checked with a MutationObserver: 0 mutations).
+- **Verified.** vitest (router split: live/record ids for notes, pedal, CC, wheel, all-notes-off, selection change under
+  a held key; `SustainGate.keys`; per-track reactivity of the held-keys store). `scripts/midi/live.mjs` 78 checks (new:
+  armed A + selected B both sound and release, a key held across a selection change releases on both, a new key after
+  the change plays on A only, nothing armed: the selected track alone, pedal + selection change leaves nothing hanging;
+  measured per track with analysers on the track outputs. The sleeping-container wake check mutes the selected track,
+  which now plays too). `scripts/midi/record.mjs` 59 checks (new: armed A + selected B, only A records; a selection
+  change under a held key, A records its full length; nothing armed, the selected track records; the song CC check's
+  unarmed track is now explicitly the selected one). New `scripts/midi/rollKeys.mjs` (17 checks, `--shots <dir>` for
+  dark/light desktop and phone screenshots): note-on lights key and row, note-off clears, sustain dims until pedal up,
+  pattern playback lights nothing, the sampler roll lights the slice (a key past the last slice lights the last).
 
 ---
 

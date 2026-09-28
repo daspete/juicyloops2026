@@ -15,7 +15,9 @@
  *
  * Checks: loop and song mode takes with a synth and a sampler, overdub, replace, count-in, the metronome (heard at
  * the destination, absent from an offline export), undo of a whole take, controller recording into a lane that plays
- * back in an offline render, pitch-wheel recording, a note held across the loop end, the R key and the button; in song
+ * back in an offline render, pitch-wheel recording, a note held across the loop end, the R key and the button; the
+ * selected track playing beside an armed one without recording (a selection change under a held key, nothing armed:
+ * the selected track records); in song
  * mode, controllers mapped to the master, a container bus and a track that is not armed record into song automation
  * lanes (thinned, at the song steps heard, the old lane silenced while it records, one undo step), while in loop mode
  * they are only played. Recording into an existing lane (a track's step lane and a song lane) leaves the old curve as
@@ -642,6 +644,77 @@ const main = async () => {
         }, synth.id);
         await settle(page);
 
+        /* ---- the selected track plays live; only the armed ones record (or the selected one when none is) ---- */
+        const other = await addTrack(page, 'synth');
+        const split = await evaluate(
+            page,
+            async ({ armed, selected }) => {
+                const { recorder, perform, until, jl, notesOf, trackById, armOnly, workspace, sleep } = window.__jlr;
+                const counts = () => [trackById(armed).liveNoteCount, trackById(selected).liveNoteCount];
+                armOnly([armed]);
+                workspace.selectTrack(selected);
+                recorder.record();
+                await perform([[1, [0x90, 60, 100]]]);
+                const whileHeld = counts();
+                await perform([
+                    [2, [0x80, 60, 0]],
+                    [4, [0x90, 64, 100]],
+                ]);
+                // The selection moves while the key is held: the note-off still reaches both tracks it plays on.
+                workspace.selectTrack(armed);
+                const afterSelect = counts();
+                await perform([[5.5, [0x80, 64, 0]]]);
+                const afterRelease = counts();
+                await until(6.5);
+                jl.stop();
+                const armedTake = { armed: notesOf(armed), selected: notesOf(selected) };
+                await sleep(700);
+                // Nothing armed: the selected track records, as before.
+                armOnly([]);
+                workspace.selectTrack(selected);
+                recorder.record();
+                await perform([
+                    [1, [0x90, 67, 100]],
+                    [2, [0x80, 67, 0]],
+                ]);
+                await until(3);
+                jl.stop();
+                const selectedTake = { armed: notesOf(armed), selected: notesOf(selected) };
+                return { whileHeld, afterSelect, afterRelease, armedTake, selectedTake };
+            },
+            { armed: synth.id, selected: other.id },
+        );
+        const describeNotes = (notes) => notes.map((note) => `${note.note}@${note.start.toFixed(2)}+${note.length.toFixed(2)}`).join(' ') || 'none';
+        check(split.whileHeld.join() === '1,1', 'armed A + selected B: a key sounds on both', `live notes A ${split.whileHeld[0]}, B ${split.whileHeld[1]}`);
+        check(
+            split.armedTake.armed.length === 2 && split.armedTake.selected.length === 0,
+            'armed A + selected B: only A records',
+            `A: ${describeNotes(split.armedTake.armed)}; B: ${describeNotes(split.armedTake.selected)}`,
+        );
+        const moved = split.armedTake.armed.find((note) => note.note === 'E4');
+        check(
+            split.afterSelect.join() === '1,1' && split.afterRelease.join() === '0,0' && !!moved && Math.abs(moved.length - 1.5) * STEP_MS <= TOLERANCE_MS * 2,
+            'a selection change during a held note: the note-off releases it on both tracks, A records its full length',
+            `held ${split.afterSelect.join('/')}, after the note-off ${split.afterRelease.join('/')}; recorded ${moved ? moved.length.toFixed(3) : '-'} steps`,
+        );
+        check(
+            split.selectedTake.selected.length === 1 && split.selectedTake.selected[0].note === 'G4' && split.selectedTake.armed.length === 2,
+            'nothing armed: the selected track records',
+            `B: ${describeNotes(split.selectedTake.selected)}; A unchanged (${split.selectedTake.armed.length})`,
+        );
+        await evaluate(
+            page,
+            ({ armed, selected }) => {
+                const { jl, trackById, armOnly, workspace } = window.__jlr;
+                trackById(armed).clear();
+                jl.removeTrack(selected);
+                armOnly([armed]);
+                workspace.selectTrack(armed);
+            },
+            { armed: synth.id, selected: other.id },
+        );
+        await settle(page);
+
         /* ---- count-in and the metronome ---- */
         await setSettings(page, { countIn: true, metronome: true });
         const countIn = await evaluate(page, async () => {
@@ -821,7 +894,9 @@ const main = async () => {
         const songCc = await evaluate(
             page,
             async ({ armed, unarmed, containerId }) => {
-                const { recorder, perform, until, jl, trackById, history, heardNow, sleep } = window.__jlr;
+                const { recorder, perform, until, jl, trackById, history, heardNow, sleep, workspace } = window.__jlr;
+                // The unarmed track is the selected one: it plays live, but is no record target while another is armed.
+                workspace.selectTrack(unarmed.id);
                 const song = jl.song.value;
                 const sequencer = jl.engine.sequencer;
                 const master = sequencer.master;
@@ -916,7 +991,7 @@ const main = async () => {
         const trackPoints = recordedOf(trackLane, 29, 31);
         check(
             songCc.lanes.length === songCc.lanesBefore + 2 && masterLane?.id === songCc.oldId && !!busLane && !!trackLane && !laneOf('track', 'pan'),
-            'song CC: master, bus and unarmed-track controllers record into song lanes (the existing master lane is reused)',
+            'song CC: master, bus and unarmed (selected) track controllers record into song lanes (the existing master lane is reused)',
             songCc.lanes.map((lane) => `${lane.target.kind}.${lane.param} (${lane.points.length})`).join(', '),
         );
         const thinned = [masterPoints, busPoints, trackPoints].every((points) => points.length >= 10 && points.length < 100 && maxPerStep(points) <= 16);

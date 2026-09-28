@@ -253,8 +253,12 @@
 
 .transportbar {
     display: grid;
-    /* The left side never gets squeezed below its content: the session name must stay readable. */
-    grid-template-columns: minmax(max-content, 1fr) auto 1fr;
+    /*
+     * Nothing gets squeezed below its content (the session name must stay readable, and a squeezed right side
+     * would slide under the transport). The transport sits in the middle while both sides fit around it; the
+     * breakpoints below fold labels into icons, then move the transport to a second row, before that stops being true.
+     */
+    grid-template-columns: minmax(max-content, 1fr) max-content minmax(max-content, 1fr);
     align-items: center;
     gap: 0.75rem 1rem;
     height: 3.5rem;
@@ -284,7 +288,51 @@
     flex-shrink: 0;
 }
 
-@media (max-width: 55.9rem) {
+/* The learn prompt can name a long parameter. */
+.midilearn .midibar-label {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/*
+ * Narrower desktops: the top bar folds its labels into icons, one group at a time (the buttons keep their names for
+ * screen readers and tooltips). MIDI and Learn go first (while learning, the lit Learn button and the lit knobs say it;
+ * its tooltip carries the prompt), then the panel toggles and the view switch, then the mode switch.
+ */
+@media (max-width: 111.9rem) {
+    .midibar .chip {
+        padding: 0 0.5rem;
+    }
+
+    .midibar-label {
+        display: none;
+    }
+}
+
+@media (max-width: 98.9rem) {
+    .transportbar-right > .chip {
+        padding: 0 0.5rem;
+    }
+
+    .transportbar-right > .chip .chip-label,
+    .viewswitch-label {
+        display: none;
+    }
+}
+
+@media (max-width: 88.9rem) {
+    .modeswitch-item {
+        padding: 0 0.6rem;
+    }
+
+    .modeswitch-item > span {
+        display: none;
+    }
+}
+
+/* Below that the transport takes a row of its own. */
+@media (max-width: 84.9rem) {
     .transportbar {
         grid-template-columns: 1fr auto;
         height: auto;
@@ -1493,6 +1541,53 @@
 .proll-key--marked {
     color: var(--jl-accent);
     border-bottom-color: var(--jl-line-strong);
+}
+
+/* A key MIDI plays right now (RollLiveKeys): lit in the track's colour; dimmer while only the pedal holds it. */
+.proll-key-live {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--r) * var(--roll-row));
+    height: calc(var(--roll-row) - 1px);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 0.4rem;
+    overflow: hidden;
+    background:
+        linear-gradient(90deg, rgba(255, 255, 255, 0.18), transparent 70%),
+        var(--jl-accent);
+    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--jl-accent) 60%, #000 40%);
+    color: var(--jl-accent-ink);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 700;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.proll-key-live[data-state='sustained'] {
+    background: color-mix(in oklab, var(--jl-accent) 38%, var(--jl-panel));
+    box-shadow: inset 3px 0 0 color-mix(in oklab, var(--jl-accent) 70%, transparent);
+    color: var(--jl-text);
+}
+
+/* Its row across the notes area, under the note bars. */
+.proll-live-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--r) * var(--roll-row));
+    height: calc(var(--roll-row) - 1px);
+    background: color-mix(in oklab, var(--jl-accent) 16%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 30%, transparent);
+    pointer-events: none;
+}
+
+.proll-live-row[data-state='sustained'] {
+    background: color-mix(in oklab, var(--jl-accent) 7%, transparent);
+    box-shadow: none;
 }
 
 /* The notes area: row lines, black-key stripes and the grid under the notes. */
@@ -4617,10 +4712,17 @@
         padding: 0 0.55rem 0 0.5rem;
     }
 
+    /* Play and Record make the row one button wider: the play light goes (the play button says it), the tempo
+       field fits its three digits. */
     .readout-unit,
+    .readout-dot,
     .tempo .vrule,
     .tempo .vrule + .iconbtn {
         display: none;
+    }
+
+    .bpm-input {
+        width: 2.5rem;
     }
 
     .history {
@@ -4833,6 +4935,13 @@
     .arr-grid,
     .lane-solo:not([data-on='true']),
     .songbar .vrule {
+        display: none;
+    }
+}
+
+/* The narrowest phones: the tempo field goes without its unit, so the transport row still fits. */
+@media (max-width: 23.9rem) {
+    .tempo-unit {
         display: none;
     }
 }

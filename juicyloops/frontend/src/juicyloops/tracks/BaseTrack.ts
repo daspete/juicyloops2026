@@ -17,6 +17,7 @@ import {
 } from '../automation';
 import { PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
 import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from '../effects/effects';
+import { publishHeldKeys } from '../midi/heldKeys';
 import { SustainGate } from '../midi/liveNotes';
 import type { LiveTrack } from '../midi/router';
 import { upgradeTrackState, type LegacyTrackState } from '../notes/migrate';
@@ -169,12 +170,13 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
      * `noteOff` with the same `id`. The same id again restarts the note. A muted track keeps count but stays silent.
      */
     noteOn(id: string, note: string, velocity: number, time: number): void {
-        if (this.liveGate.press(id)) {
+        if (this.liveGate.press(id, note)) {
             this.stopLiveNote(id, time);
         }
         if (!this.isMuted) {
             this.startLiveNote(id, note, velocity, time);
         }
+        this.publishHeldKeys();
     }
 
     /** Releases a live note, unless the sustain pedal is down: then it rings until the pedal comes up. */
@@ -182,6 +184,7 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         if (this.liveGate.release(id)) {
             this.stopLiveNote(id, time);
         }
+        this.publishHeldKeys();
     }
 
     /** The sustain pedal: note-offs while it is down are held back and released when it comes up. */
@@ -189,6 +192,7 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         for (const id of this.liveGate.pedal(down)) {
             this.stopLiveNote(id, time);
         }
+        this.publishHeldKeys();
     }
 
     /** Releases every live note (a panic, an input that went away); the pedal state stays. */
@@ -196,6 +200,12 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         for (const id of this.liveGate.clear()) {
             this.stopLiveNote(id, time);
         }
+        this.publishHeldKeys();
+    }
+
+    /** Tells the piano roll which keys sound now (`midi/heldKeys.ts`); only on live note changes. */
+    private publishHeldKeys(): void {
+        publishHeldKeys(this.id, this.liveGate.keys());
     }
 
     /** Live pitch bend, -1..1. Only synths bend (by their own range); the value is played, not stored. */

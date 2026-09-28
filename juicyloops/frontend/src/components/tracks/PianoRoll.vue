@@ -7,6 +7,7 @@ import type { TrackPlayhead } from '@/composables/useContainerView';
 import { GRIDS, gridUnit, quantizeNotes, snap, type GridId, type QuantizeOptions } from '@/juicyloops/notes/grid';
 import { MIN_NOTE_LENGTH, type NoteInput, type PatternNote } from '@/juicyloops/notes/Note';
 import type { NotePattern } from '@/juicyloops/notes/NotePattern';
+import RollLiveKeys from './roll/RollLiveKeys.vue';
 import RollNoteLayer from './roll/RollNoteLayer.vue';
 import RollQuantize from './roll/RollQuantize.vue';
 import RollStemLayer from './roll/RollStemLayer.vue';
@@ -34,12 +35,13 @@ export interface RollRow {
  * undo step because the history commits when the pointer comes up.
  *
  * Performance: the note bars and velocity stems are memoized per note (`v-memo`), and their geometry lives in CSS
- * variables, so zooming, resizing the window or the playhead moving re-renders none of them.
+ * variables, so zooming, resizing the window or the playhead moving re-renders none of them. Keys played live on MIDI
+ * light up through `RollLiveKeys`, which alone re-renders when a key goes down or up.
  */
 const props = defineProps<{
     /** The track whose notes the roll edits. */
     pattern: NotePattern;
-    /** Identifies the roll (the track id): the snap setting is remembered per roll. */
+    /** Identifies the roll (the track id): the snap setting is remembered per roll, and the keys MIDI plays on the track light up. */
     rollId: string;
     rows: readonly RollRow[];
     /**
@@ -166,6 +168,9 @@ const rowKey = (note: string): string => (props.rowOf ? props.rowOf(note) : note
 const rowFor = (note: PatternNote): number => rowIndex.value.get(rowKey(note.note)) ?? -1;
 
 const isShown = (note: PatternNote): boolean => rowFor(note) >= 0;
+
+/** The row a note name (a key played live) lights, -1 when there is none. */
+const rowAtName = (note: string): number => rowIndex.value.get(rowKey(note)) ?? -1;
 
 /* ---- selection ---- */
 
@@ -852,15 +857,18 @@ defineExpose({ scrollToPattern });
                             <div ref="marker" class="proll-marker" hidden></div>
                         </div>
 
-                        <div v-memo="[props.rows]" class="proll-keys">
-                            <div
-                                v-for="row in props.rows"
-                                :key="row.note"
-                                class="proll-key"
-                                :class="{ 'proll-key--black': row.black, 'proll-key--marked': row.marked }"
-                            >
-                                {{ row.label }}
+                        <div class="proll-keys">
+                            <div v-memo="[props.rows]">
+                                <div
+                                    v-for="row in props.rows"
+                                    :key="row.note"
+                                    class="proll-key"
+                                    :class="{ 'proll-key--black': row.black, 'proll-key--marked': row.marked }"
+                                >
+                                    {{ row.label }}
+                                </div>
                             </div>
+                            <RollLiveKeys :track-id="props.rollId" :rows="props.rows" :row-at="rowAtName" part="keys" />
                         </div>
 
                         <div
@@ -875,6 +883,7 @@ defineExpose({ scrollToPattern });
                                     <div v-if="row.black || row.marked" class="proll-row" :class="{ 'proll-row--black': row.black, 'proll-row--marked': row.marked }" :style="`--r:${index}`"></div>
                                 </template>
                             </div>
+                            <RollLiveKeys :track-id="props.rollId" :rows="props.rows" :row-at="rowAtName" part="rows" />
                             <div class="proll-lines" aria-hidden="true"></div>
                             <RollNoteLayer :notes="props.pattern.notes" :rows="props.rows" :row-for="rowFor" :selected="selected" />
                             <div

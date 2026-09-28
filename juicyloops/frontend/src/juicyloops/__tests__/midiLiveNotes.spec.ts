@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { NoteStack, SustainGate } from '../midi/liveNotes';
+import { computed } from 'vue';
+import { heldKeysOf, publishHeldKeys } from '../midi/heldKeys';
+import { NO_HELD_KEYS, NoteStack, SustainGate } from '../midi/liveNotes';
 
 describe('SustainGate', () => {
     it('stops a note when its key comes up while the pedal is up', () => {
@@ -46,6 +48,53 @@ describe('SustainGate', () => {
         expect(gate.size).toBe(0);
         expect(gate.isDown).toBe(true);
         expect(gate.pedal(false)).toEqual([]);
+    });
+});
+
+describe('held keys (piano roll lighting)', () => {
+    it('lists the sounding keys by name, held by a key or by the pedal', () => {
+        const gate = new SustainGate();
+        expect(gate.keys()).toBe(NO_HELD_KEYS);
+        gate.press('in:0:60', 'C4');
+        gate.press('in:0:64', 'E4');
+        expect([...gate.keys()]).toEqual([
+            ['C4', 'held'],
+            ['E4', 'held'],
+        ]);
+        gate.pedal(true);
+        gate.release('in:0:60');
+        expect(gate.keys().get('C4')).toBe('sustained');
+        // The same key from another input, held down: held wins.
+        gate.press('other:0:60', 'C4');
+        expect(gate.keys().get('C4')).toBe('held');
+        gate.release('other:0:60');
+        gate.release('in:0:64');
+        expect([...gate.keys().values()]).toEqual(['sustained', 'sustained']);
+        gate.pedal(false);
+        expect(gate.keys()).toBe(NO_HELD_KEYS);
+    });
+
+    it('updates a reader of one track only when that track changes', () => {
+        let runs = 0;
+        const lit = computed(() => {
+            runs++;
+            return [...heldKeysOf('t1')];
+        });
+        expect(lit.value).toEqual([]);
+        publishHeldKeys('t1', new Map([['C4', 'held']]));
+        expect(lit.value).toEqual([['C4', 'held']]);
+        const after = runs;
+        // Another track, or the same keys again: nothing to recompute.
+        publishHeldKeys('t2', new Map([['D4', 'held']]));
+        publishHeldKeys('t1', new Map([['C4', 'held']]));
+        expect(lit.value).toEqual([['C4', 'held']]);
+        expect(runs).toBe(after);
+        publishHeldKeys('t1', new Map([['C4', 'sustained']]));
+        expect(lit.value).toEqual([['C4', 'sustained']]);
+        publishHeldKeys('t1', NO_HELD_KEYS);
+        expect(lit.value).toEqual([]);
+        expect(heldKeysOf('t1')).toBe(NO_HELD_KEYS);
+        publishHeldKeys('t2', NO_HELD_KEYS);
     });
 });
 

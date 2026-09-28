@@ -52,6 +52,8 @@ const enable = () => void midi.enable();
 
 const toggleLearn = () => midi.setLearning(!isLearning.value);
 
+const learnLabel = computed(() => (isLearning.value ? (learnTarget.value ? `Move a controller for ${learnTarget.value.label ?? 'the knob'}` : 'Click a knob') : 'Learn'));
+
 /* Escape leaves learn mode. */
 const onKey = (event: KeyboardEvent) => {
     if (event.key === 'Escape' && isLearning.value) {
@@ -107,19 +109,20 @@ const rows = computed(() => mappings.value.map((mapping, index) => ({ mapping, i
         >
             <span class="midichip-light" aria-hidden="true"></span>
             <Icon icon="mdi:midi" class="w-4 h-4" />
-            <span>MIDI</span>
+            <span class="midibar-label">MIDI</span>
         </button>
         <button
             v-if="isOn"
             type="button"
-            class="chip"
+            class="chip midilearn"
             :data-active="isLearning"
             :aria-pressed="isLearning"
-            v-tooltip.bottom="isLearning ? 'Leave learn mode (Esc)' : 'Learn: click a knob, then move a controller to map it'"
+            :aria-label="learnLabel"
+            v-tooltip.bottom="isLearning ? `${learnLabel}. Click or Esc to leave learn mode` : 'Learn: click a knob, then move a controller to map it'"
             @click="toggleLearn"
         >
             <Icon icon="mdi:link-variant" class="w-4 h-4" />
-            <span>{{ isLearning ? (learnTarget ? `Move a controller for ${learnTarget.label ?? 'the knob'}` : 'Click a knob') : 'Learn' }}</span>
+            <span class="midibar-label">{{ learnLabel }}</span>
         </button>
 
         <Popover ref="popover">
@@ -153,7 +156,7 @@ const rows = computed(() => mappings.value.map((mapping, index) => ({ mapping, i
                             <span class="midipop-device-name">{{ device.name }}</span>
                             <span class="midipop-device-note">{{ device.connected ? device.manufacturer : 'unplugged' }}</span>
                         </label>
-                        <p class="midipop-note">Every armed track plays, on any channel. With none armed, the selected track does.</p>
+                        <p class="midipop-note">Every armed track plays, on any channel, and so does the selected track. Recording goes into the armed tracks, or into the selected one when none is armed.</p>
                     </template>
                 </section>
 

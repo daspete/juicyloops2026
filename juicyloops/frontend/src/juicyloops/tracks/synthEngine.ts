@@ -89,6 +89,8 @@ export class ToneSynthEngine implements SynthEngine {
     /** Live notes: in cut mode the id that sounds; with overlapping notes the note each id plays. */
     private liveCurrent: number | null = null;
     private readonly liveNotes = new Map<number, string | number>();
+    /** When the last live note started in cut mode (see `noteOn`). */
+    private lastLiveAttack = -Infinity;
 
     constructor({ context, cutsNotes, oscillatorType, envelope, bend }: SynthEngineSettings) {
         this.context = context;
@@ -101,6 +103,12 @@ export class ToneSynthEngine implements SynthEngine {
 
     noteOn(id: number, note: string | number, time: number, velocity: number): void {
         const engine = this.engine();
+        if (this.cutsNotes) {
+            // Two keys in the same render quantum (a chord) arrive at the same context time; Tone's one voice cannot
+            // start twice at one time and throws, so the later key starts a sample after.
+            time = Math.max(time, this.lastLiveAttack + 1 / this.context.sampleRate);
+            this.lastLiveAttack = time;
+        }
         engine.triggerAttack(note, time, velocity);
         if (this.cutsNotes) {
             this.liveCurrent = id;

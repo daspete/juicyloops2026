@@ -410,10 +410,11 @@ onBeforeUnmount(() => {
                         :to="{ name: view.name }"
                         class="viewswitch-item"
                         :data-active="route.name === view.name"
+                        :aria-label="view.label"
                         v-tooltip.bottom="{ value: view.hint, showDelay: 600 }"
                     >
                         <Icon :icon="view.icon" class="w-4 h-4" />
-                        <span>{{ view.label }}</span>
+                        <span class="viewswitch-label">{{ view.label }}</span>
                         <span v-if="view.name === 'app.index' && containers.length > 1" class="viewswitch-count">{{ containers.length }}</span>
                     </RouterLink>
                 </nav>
@@ -502,11 +503,12 @@ onBeforeUnmount(() => {
                     class="chip"
                     :data-active="isDetailOpen"
                     :aria-pressed="isDetailOpen"
+                    aria-label="Tweak"
                     v-tooltip.bottom="'Track panel: sound, pattern tools and effects of the selected track'"
                     @click="toggleDetail"
                 >
                     <Icon icon="mdi:tune-variant" class="w-4 h-4" />
-                    <span>Tweak</span>
+                    <span class="chip-label">Tweak</span>
                 </button>
                 <button
                     v-if="isPro && !isPhone"
@@ -514,11 +516,12 @@ onBeforeUnmount(() => {
                     class="chip"
                     :data-active="isMixerOpen"
                     :aria-pressed="isMixerOpen"
+                    aria-label="Mixer"
                     v-tooltip.bottom="'Mixer: the container channel and the master, with their effects'"
                     @click="toggleMixer"
                 >
                     <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
-                    <span>Mixer</span>
+                    <span class="chip-label">Mixer</span>
                 </button>
                 <span v-if="!isPhone" class="vrule"></span>
                 <button
