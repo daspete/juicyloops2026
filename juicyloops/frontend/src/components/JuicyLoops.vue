@@ -14,6 +14,7 @@ import { useTheme } from '@/composables/useTheme';
 import { useViewport } from '@/composables/useViewport';
 import { useWorkspace, type WorkspaceMode } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
+import SampleBrowser from './browser/SampleBrowser.vue';
 import DetailPanel from './detail/DetailPanel.vue';
 import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
@@ -31,7 +32,7 @@ import { TRACK_META } from './tracks/trackMeta';
  */
 const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode: setPlaybackMode, containers, song } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
-const { mode, isPro, setMode, isMixerOpen, toggleMixer, isDetailOpen, toggleDetail } = useWorkspace();
+const { mode, isPro, setMode, isMixerOpen, toggleMixer, isDetailOpen, toggleDetail, isBrowserOpen, toggleBrowser } = useWorkspace();
 const { canUndo, canRedo, commit, undo, redo } = useHistory();
 /* On a phone the view switch and the panel toggles move to a bar at the bottom, where a thumb can reach them. */
 const { isPhone } = useViewport();
@@ -43,6 +44,18 @@ const toast = useToast();
 const confirm = useConfirm();
 const midi = useMidi();
 const recorder = useRecorder();
+
+/* On a phone a panel takes the whole stage, so the two left-hand panels take turns. */
+watch(isBrowserOpen, (open) => {
+    if (open && isPhone.value) {
+        isDetailOpen.value = false;
+    }
+});
+watch(isDetailOpen, (open) => {
+    if (open && isPhone.value) {
+        isBrowserOpen.value = false;
+    }
+});
 
 /* What you see is what you hear: the song view plays the arrangement, the track view loops every track. */
 const isSongView = computed(() => route.name === 'app.song');
@@ -238,7 +251,7 @@ const isTypingTarget = (target: EventTarget | null) => {
 };
 
 /**
- * Space plays and stops, R records (again: stops recording, playback goes on), Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
+ * Space plays and stops, R records (again: stops recording, playback goes on), B opens the sample browser, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
  * Ctrl+O opens and Ctrl+E exports audio, like in every DAW. The file shortcuts work from inside a text field too.
  */
 const onKeyDown = (event: KeyboardEvent) => {
@@ -270,6 +283,11 @@ const onKeyDown = (event: KeyboardEvent) => {
     if (event.code === 'Space' && isInitialized.value) {
         event.preventDefault();
         togglePlay();
+        return;
+    }
+    if (key === 'b' && !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value) {
+        event.preventDefault();
+        toggleBrowser();
         return;
     }
     if (key === 'r' && !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value) {
@@ -501,6 +519,19 @@ onBeforeUnmount(() => {
                     v-if="!isPhone"
                     type="button"
                     class="chip"
+                    :data-active="isBrowserOpen"
+                    :aria-pressed="isBrowserOpen"
+                    aria-label="Samples"
+                    v-tooltip.bottom="'Sample browser: your sample folders, to hear and add as tracks (B)'"
+                    @click="toggleBrowser"
+                >
+                    <Icon icon="mdi:folder-music-outline" class="w-4 h-4" />
+                    <span class="chip-label">Samples</span>
+                </button>
+                <button
+                    v-if="!isPhone"
+                    type="button"
+                    class="chip"
                     :data-active="isDetailOpen"
                     :aria-pressed="isDetailOpen"
                     aria-label="Tweak"
@@ -540,6 +571,7 @@ onBeforeUnmount(() => {
         </header>
 
         <div class="stage">
+            <SampleBrowser v-if="isBrowserOpen" />
             <DetailPanel v-if="isDetailOpen" />
             <main class="workspace">
                 <Suspense>
@@ -558,6 +590,10 @@ onBeforeUnmount(() => {
                     <span>{{ view.label }}</span>
                 </RouterLink>
             </template>
+            <button type="button" class="bottombar-item" :data-active="isBrowserOpen" :aria-pressed="isBrowserOpen" @click="toggleBrowser">
+                <Icon icon="mdi:folder-music-outline" class="w-5 h-5" />
+                <span>Samples</span>
+            </button>
             <button
                 type="button"
                 class="bottombar-item"
@@ -582,6 +618,7 @@ onBeforeUnmount(() => {
             <span class="statusbar-hint">{{ statusHint }}</span>
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
             <span class="statusbar-key"><kbd>R</kbd> record</span>
+            <span class="statusbar-key"><kbd>B</kbd> samples</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>S</kbd> save</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>E</kbd> export</span>

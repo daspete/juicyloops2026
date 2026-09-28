@@ -15,6 +15,7 @@ export type WorkspaceMode = 'quick' | 'pro';
 export type TrackTab = 'sound' | 'pattern' | 'effects';
 
 const MODE_KEY = 'juicyloops:mode';
+const BROWSER_KEY = 'juicyloops:browser';
 
 const readStoredMode = (): WorkspaceMode | null => {
     try {
@@ -25,6 +26,14 @@ const readStoredMode = (): WorkspaceMode | null => {
     }
 };
 
+const readStoredBrowser = (): boolean => {
+    try {
+        return localStorage.getItem(BROWSER_KEY) === 'open';
+    } catch {
+        return false;
+    }
+};
+
 const { tracks } = useJuicyLoops();
 
 const mode = ref<WorkspaceMode>(readStoredMode() ?? 'quick');
@@ -32,6 +41,17 @@ const isPro = computed(() => mode.value === 'pro');
 
 /** The mixer dock on the right: the container channel and the master. Pro only. */
 const isMixerOpen = ref(false);
+
+/** The sample browser on the far left: folders of samples to audition and add as tracks. Stays open across visits. */
+const isBrowserOpen = ref(readStoredBrowser());
+
+watch(isBrowserOpen, (open) => {
+    try {
+        localStorage.setItem(BROWSER_KEY, open ? 'open' : 'closed');
+    } catch {
+        /* the choice simply does not persist */
+    }
+});
 
 const selectedTrackId = ref<string | null>(null);
 const trackTab = ref<TrackTab>('sound');
@@ -84,6 +104,10 @@ const toggleMixer = (): void => {
     isMixerOpen.value = !isMixerOpen.value;
 };
 
+const toggleBrowser = (): void => {
+    isBrowserOpen.value = !isBrowserOpen.value;
+};
+
 export const useWorkspace = () => ({
     mode,
     isPro,
@@ -91,6 +115,8 @@ export const useWorkspace = () => ({
     isMixerOpen,
     openMixer,
     toggleMixer,
+    isBrowserOpen,
+    toggleBrowser,
     selectedTrack,
     trackTab,
     isDetailOpen,

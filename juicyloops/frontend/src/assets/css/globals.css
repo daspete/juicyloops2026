@@ -2771,6 +2771,235 @@
     }
 }
 
+/* ---------- sample browser ---------- */
+
+/*
+ * The sample browser docks left of everything, before the track panel: folders as trees, one row per entry.
+ * A sample row lights in the sampler colour while it plays, with a bar running along its bottom for the preview's length.
+ */
+.dock--browser {
+    --jl-dock-w: 17rem;
+    --jl-accent: var(--jl-sampler);
+    border-right: 1px solid var(--jl-line);
+    box-shadow: 12px 0 30px -24px rgba(0, 0, 0, 0.5);
+}
+
+.sb-settings {
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.7rem 0.9rem;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--jl-line);
+    background: var(--jl-bg);
+}
+
+.sb-setting {
+    display: grid;
+    grid-template-columns: 5.6rem 1fr 3rem;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.72rem;
+    color: var(--jl-muted);
+}
+
+.sb-setting-value {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    font-weight: 700;
+    color: var(--jl-text);
+}
+
+.sb-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 2.5rem 1.25rem;
+    text-align: center;
+    color: var(--jl-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
+
+.sb-empty-note {
+    font-size: 0.72rem;
+    opacity: 0.8;
+}
+
+.sb-tree {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    padding: 0.35rem 0.3rem 1rem;
+    font-size: 0.8rem;
+}
+
+.sb-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.75rem;
+    padding: 0 0.3rem 0 calc(0.25rem + var(--sb-depth, 0) * 0.9rem);
+    border-radius: 0.4rem;
+    color: var(--jl-text);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+}
+
+.sb-row:hover {
+    background: var(--jl-cell-hover);
+}
+
+.sb-row:focus-visible {
+    outline: 2px solid var(--jl-brand);
+    outline-offset: -2px;
+}
+
+.sb-row[data-active='true'] {
+    background: color-mix(in oklab, var(--jl-brand) 12%, transparent);
+}
+
+.sb-row[data-root='true'] {
+    font-weight: 700;
+}
+
+.sb-row[data-root='true'] + .sb-row[data-root='true'] {
+    margin-top: 0.2rem;
+}
+
+.sb-row[data-playing='true'] {
+    background: color-mix(in oklab, var(--jl-sampler) 16%, transparent);
+    color: var(--jl-text);
+}
+
+.sb-chevron {
+    flex-shrink: 0;
+    width: 0.95rem;
+    height: 0.95rem;
+    color: var(--jl-muted);
+    transition: transform 0.12s ease;
+}
+
+.sb-chevron[data-open='true'] {
+    transform: rotate(90deg);
+}
+
+.sb-icon {
+    flex-shrink: 0;
+    width: 1rem;
+    height: 1rem;
+    color: var(--jl-muted);
+}
+
+.sb-row[data-kind='folder'] .sb-icon {
+    color: color-mix(in oklab, var(--jl-brand) 70%, var(--jl-muted));
+}
+
+.sb-row[data-playing='true'] .sb-icon {
+    color: var(--jl-sampler);
+}
+
+.sb-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sb-tag {
+    flex-shrink: 0;
+    padding: 0 0.35rem;
+    border-radius: 0.3rem;
+    background: var(--jl-bg);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+.sb-allow {
+    flex-shrink: 0;
+    height: 1.35rem;
+    padding: 0 0.5rem;
+    border-radius: 0.35rem;
+    background: var(--jl-brand);
+    color: var(--jl-brand-ink);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+/* The quick add button shows on the row under the pointer, and on the one the keyboard is on. */
+.sb-add {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 0.35rem;
+    color: var(--jl-muted);
+    opacity: 0;
+    cursor: pointer;
+    transition:
+        opacity 0.12s ease,
+        background-color 0.12s ease,
+        color 0.12s ease;
+}
+
+.sb-row:hover .sb-add,
+.sb-row[data-active='true'] .sb-add {
+    opacity: 1;
+}
+
+.sb-add:hover {
+    background: color-mix(in oklab, var(--jl-sampler) 22%, transparent);
+    color: var(--jl-text);
+}
+
+.sb-error {
+    flex-shrink: 0;
+    color: #e5484d;
+}
+
+.sb-progress {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 2px;
+    width: 100%;
+    background: var(--jl-sampler);
+    transform-origin: left center;
+    animation-name: sb-progress;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    pointer-events: none;
+}
+
+@keyframes sb-progress {
+    from {
+        transform: scaleX(0);
+    }
+    to {
+        transform: scaleX(1);
+    }
+}
+
+@media (pointer: coarse) {
+    .sb-row {
+        height: 2.25rem;
+    }
+
+    .sb-add {
+        opacity: 1;
+    }
+}
+
 /* ---------- track panel (Tweak) ---------- */
 
 /* Which track the panel is about: its badge and name, lit in its own colour. */
