@@ -38,12 +38,19 @@ const setHead = (html, { title, description, url, head = '' }) => {
     return out.replace('<!--app-head-->', head.trim());
 };
 
-const template = await readFile(join(dist, 'index.html'), 'utf8');
-for (const placeholder of ['<!--app-html-->', '<!--app-head-->']) {
-    if (!template.includes(placeholder)) {
+const built = await readFile(join(dist, 'index.html'), 'utf8');
+for (const placeholder of ['<!--app-html-->', '<!--app-head-->', '<!--app-splash-->']) {
+    if (!built.includes(placeholder)) {
         throw new Error(`dist/index.html has no ${placeholder} placeholder; is the build current?`);
     }
 }
+/* Only the studio shell gets the splash (see src/splash/studio-splash.html); the marketing pages drop the placeholder. */
+const template = built.replace('<!--app-splash-->', '');
+const splash = (await readFile(join(root, 'src', 'splash', 'studio-splash.html'), 'utf8'))
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\n\s+/g, '\n')
+    .trim();
 
 /* ---------- preload hints from the manifest ---------- */
 
@@ -172,7 +179,7 @@ for (const path of prerenderPaths()) {
  * /app or /app/song never flashes the home page before the app takes over (nginx falls back to it).
  */
 const studioAssets = collectAssets(['src/layouts/MainLayout.vue', 'src/pages/index.vue']);
-const shell = setHead(template.replace('<!--app-html-->', ''), {
+const shell = setHead(built.replace('<!--app-splash-->', () => splash).replace('<!--app-html-->', ''), {
     title: 'Juicy Loops Studio',
     description: 'The Juicy Loops studio: a step sequencer with synths, samples and your voice, an arranger, effects and automation. Free, in your browser.',
     url: `${ORIGIN}/app`,

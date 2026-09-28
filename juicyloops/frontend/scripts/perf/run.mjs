@@ -277,6 +277,8 @@ const runFixture = async (browser, name) => {
         throw new Error(`Unknown fixture "${name}". Known: ${Object.keys(FIXTURES).join(', ')}`);
     }
     const context = await browser.newContext({ viewport: { width: 1600, height: 1000 } });
+    /* Skip the studio splash (src/splash/studio-splash.html): it is shown once per tab unless this flag is set. */
+    await context.addInitScript(() => sessionStorage.setItem('juicyloops:splash', 'skip'));
     if (latency) {
         await context.addInitScript((low) => localStorage.setItem('juicyloops:lowLatency', low), String(latency === 'interactive'));
     }

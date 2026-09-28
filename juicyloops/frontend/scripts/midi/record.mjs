@@ -296,6 +296,8 @@ const main = async () => {
         }
         await installFakeMidi(page);
         await page.addInitScript(destinationTap);
+        /* Skip the studio splash (src/splash/studio-splash.html): it is shown once per tab unless this flag is set. */
+        await page.addInitScript(() => sessionStorage.setItem('juicyloops:splash', 'skip'));
         await page.addInitScript(() => localStorage.removeItem('juicyloops:record'));
         await page.goto(url, { waitUntil: 'load' });
         await page.locator('.modecard[data-mode="pro"]').click({ timeout: 60000 });

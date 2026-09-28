@@ -12,12 +12,21 @@ const { app, router } = createJuicyApp(hasMarkup);
  * first time an /app route resolves, so the marketing pages hydrate with the router and Vue alone.
  */
 let studioReady: Promise<void> | undefined;
-router.beforeEach((to) => {
+router.beforeEach((to, from) => {
     if (!to.path.startsWith('/app')) {
         return;
     }
     studioReady ??= import('@/theme').then(({ theme }) => theme(app));
-    return studioReady;
+    /*
+     * A client side entry from a marketing page gets the studio splash too (a full load of /app has it inline in the
+     * shell). It is appended before the navigation resolves, so the studio never renders ahead of it; it shows once
+     * per tab and a failed load never blocks the studio.
+     */
+    const entering = from.matched.length > 0 && !from.path.startsWith('/app');
+    const splash = entering
+        ? import('@/splash/playSplash').then(({ playSplash }) => playSplash()).catch(() => undefined)
+        : undefined;
+    return Promise.all([studioReady, splash]).then(() => undefined);
 });
 
 /* Analytics after the page is interactive: it never competes with the first paint or hydration. */

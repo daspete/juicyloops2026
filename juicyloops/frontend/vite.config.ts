@@ -1,12 +1,37 @@
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, URL } from 'node:url';
 
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import vueDevTools from 'vite-plugin-vue-devtools';
 import tailwindcss from '@tailwindcss/vite';
 
 /* `vite build --ssr src/entry-server.ts` builds the prerender bundle; vitest merges this config, so it must stay a plain object. */
 const isSsrBuild = process.argv.includes('--ssr');
+
+/*
+ * The studio splash (src/splash/studio-splash.html) is inlined into the studio shell so it shows on the first paint.
+ * For builds `scripts/prerender/prerender.mjs` fills the `<!--app-splash-->` placeholder; in dev this plugin does it
+ * for /app URLs only and drops it everywhere else, so the marketing pages never carry the splash.
+ */
+const studioSplash = (): Plugin => ({
+    name: 'juicyloops-studio-splash',
+    apply: 'serve',
+    transformIndexHtml: {
+        order: 'post',
+        handler: (html, context) => {
+            const path = (context.originalUrl ?? context.path).split(/[?#]/)[0] ?? '';
+            const splash = /^\/app(\/|$)/.test(path)
+                ? readFileSync(new URL('./src/splash/studio-splash.html', import.meta.url), 'utf8')
+                      .replace(/<!--[\s\S]*?-->/g, '')
+                      .replace(/\/\*[\s\S]*?\*\//g, '')
+                      .replace(/\n\s+/g, '\n')
+                      .trim()
+                : '';
+            return html.replace('<!--app-splash-->', () => splash);
+        },
+    },
+});
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -17,7 +42,7 @@ export default defineConfig({
     },
     envPrefix: ['PUBLIC_'],
     /* The SSR bundle only renders the marketing pages for `scripts/prerender`; it needs neither devtools nor CSS. */
-    plugins: isSsrBuild ? [vue()] : [vue(), vueDevTools(), tailwindcss()],
+    plugins: isSsrBuild ? [vue()] : [vue(), vueDevTools(), tailwindcss(), studioSplash()],
     resolve: {
         alias: {
             '@': fileURLToPath(new URL('./src', import.meta.url)),

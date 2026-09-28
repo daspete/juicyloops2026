@@ -38,6 +38,8 @@ const openStudio = async (browser, viewport) => {
     const page = await browser.newPage({ viewport });
     page.on('pageerror', (error) => console.error('[page error]', error.message));
     await installFakeMidi(page);
+    /* Skip the studio splash (src/splash/studio-splash.html): it is shown once per tab unless this flag is set. */
+    await page.addInitScript(() => sessionStorage.setItem('juicyloops:splash', 'skip'));
     await page.goto(url, { waitUntil: 'load' });
     await page.locator('.modecard[data-mode="pro"]').click({ timeout: 30000 });
     await page.waitForFunction(() => !document.querySelector('.welcome'));

@@ -62,6 +62,8 @@ const openStudio = async (browser, { lowLatency = true } = {}) => {
         page.on('console', (message) => console.log('[console]', message.text().slice(0, 300)));
     }
     await installFakeMidi(page);
+    /* Skip the studio splash (src/splash/studio-splash.html): it is shown once per tab unless this flag is set. */
+    await page.addInitScript(() => sessionStorage.setItem('juicyloops:splash', 'skip'));
     await page.addInitScript((low) => localStorage.setItem('juicyloops:lowLatency', String(low)), lowLatency);
     await page.goto(url, { waitUntil: 'load' });
     await page.locator('.modecard[data-mode="pro"]').click({ timeout: 30000 });
