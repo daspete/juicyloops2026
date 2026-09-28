@@ -26,7 +26,8 @@ const { container, step } = useContainerView();
 
 const meta = computed(() => TRACK_META[props.track.type]);
 const trackName = computed(() => `${meta.value.label} ${container.value.tracks.indexOf(props.track) + 1}`);
-const currentStep = computed(() => (step.value === null ? null : props.track.stepOf(step.value)));
+/** The sounding step inside the pattern, as a getter: only the lane heads' live readouts follow it. */
+const currentStep = (): number | null => (step.value === null ? null : props.track.stepOf(step.value));
 
 const groups = computed(() => {
     const byGroup = new Map<string, AutomationParam[]>();
@@ -71,7 +72,7 @@ const hue = (index: number) => 200 + index * 47;
                 :curve="lane"
                 :param="paramOf(lane)"
                 :parameters="props.track.parameters"
-                :current-step="currentStep"
+                :step="currentStep"
                 @param="retarget(lane, $event)"
                 @remove="remove(lane)"
             >

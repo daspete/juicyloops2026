@@ -37,8 +37,18 @@ export const useContainerView = (): ContainerView => {
     return { container: currentContainer, step: computed(() => (isPlaying.value ? currentStep.value : null)) };
 };
 
-/** The playhead of one track row: inside its own pattern, and inside the section the ruler shows. -1 while silent. */
-export const useTrackPlayhead = (track: () => BaseTrack) => {
+/**
+ * The playhead of one track row: inside its own pattern, and inside the section the ruler shows. -1 while silent.
+ *
+ * Handed to the grids as this object of refs, not as numbers: a prop that changes every step would re-render the
+ * row and every cell in it. The grids read the refs where they need them (see `usePlayheadClass`).
+ */
+export interface TrackPlayhead {
+    currentTick: ComputedRef<number>;
+    sectionStep: ComputedRef<number>;
+}
+
+export const useTrackPlayhead = (track: () => BaseTrack): TrackPlayhead => {
     const { step } = useContainerView();
     return {
         currentTick: computed(() => (step.value === null ? -1 : track().stepOf(step.value))),

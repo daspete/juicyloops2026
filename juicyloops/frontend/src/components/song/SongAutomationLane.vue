@@ -46,8 +46,11 @@ const targetOptions = computed<TargetOption[]>(() => [
     ]),
 ]);
 
+/** The sounding song step while playing, as a getter: only the head's live readout follows it, not the whole lane. */
+const liveStep = (): number | null => (isPlaying.value ? currentStep.value : null);
+
 const target = computed(() => resolveTarget(props.lane.target));
-const param = computed<AutomationParam | undefined>(() => target.value?.parameters.find((candidate) => candidate.key === props.lane.param));
+const param = computed<AutomationParam | undefined>(() => target.value?.parameter(props.lane.param));
 
 const onTarget = (event: Event) => {
     const option = targetOptions.value.find((candidate) => candidate.key === (event.target as HTMLSelectElement).value);
@@ -71,7 +74,7 @@ const onParam = (key: string) => {
             :curve="props.lane"
             :param="param"
             :parameters="target?.parameters ?? []"
-            :current-step="isPlaying ? currentStep : null"
+            :step="liveStep"
             @param="onParam"
             @remove="emit('remove')"
         >

@@ -31,6 +31,8 @@ export interface AutomationParam {
 /** Anything with parameters automation can drive: tracks and buses. */
 export interface Automatable {
     readonly parameters: readonly AutomationParam[];
+    /** One of `parameters` by its key, without searching: the sequencer asks for every lane on every step. */
+    parameter(key: string): AutomationParam | undefined;
     getParameter(key: string): number;
     /**
      * Sets a parameter. `time` is the audio-context time to apply it at: the sequencer runs ahead of
@@ -38,6 +40,21 @@ export interface Automatable {
      */
     setParameter(key: string, value: number, time?: number): void;
 }
+
+/** A fixed list of parameters and the same parameters by key. */
+export interface ParameterTable {
+    readonly list: readonly AutomationParam[];
+    readonly byKey: ReadonlyMap<string, AutomationParam>;
+}
+
+/**
+ * Builds the lookup for a list of parameters, once per owner type. The list is frozen: Vue does not proxy frozen
+ * objects, so the UI and the audio callback share it as is.
+ */
+export const createParameterTable = (params: readonly AutomationParam[]): ParameterTable => ({
+    list: Object.freeze([...params]),
+    byKey: new Map(params.map((param) => [param.key, param])),
+});
 
 const formatDecibel = (value: number) => `${value > 0 ? '+' : ''}${value.toFixed(1)} dB`;
 const formatPan = (value: number) => (Math.abs(value) < 0.005 ? 'C' : value < 0 ? `L${Math.round(-value * 100)}` : `R${Math.round(value * 100)}`);

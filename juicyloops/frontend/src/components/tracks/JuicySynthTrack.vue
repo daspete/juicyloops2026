@@ -17,7 +17,7 @@ const props = defineProps<{
 
 
 /** The playhead inside this track's own pattern and inside the ruler's section; off the grid while silent, so no pad is lit for nothing. */
-const { currentTick, sectionStep } = useTrackPlayhead(() => props.track);
+const playhead = useTrackPlayhead(() => props.track);
 
 /** The piano roll opens in its own window over the workspace; the row keeps just the step grid. */
 const isPianoRollExpanded = ref(false);
@@ -82,8 +82,7 @@ const shiftOctave = async (direction: 1 | -1) => {
 
         <TickGrid
             :ticks="props.track.ticks"
-            :current-tick="currentTick"
-            :section-step="sectionStep"
+            :playhead="playhead"
             :spans="gridSpans.spans"
             @paint="(tick, _index, active) => (tick.isActive = active)"
         >
@@ -112,7 +111,7 @@ const shiftOctave = async (direction: 1 | -1) => {
         v-model:visible="isPianoRollExpanded"
         :ticks="props.track.ticks"
         :rows="ROWS"
-        :current-tick="currentTick"
+        :playhead="playhead"
         :header="`Notes · Synth ${props.trackIndex + 1}`"
         :accent="accent"
         home="C5"

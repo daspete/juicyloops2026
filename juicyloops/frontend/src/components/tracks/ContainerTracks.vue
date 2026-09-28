@@ -8,10 +8,10 @@ import { useWorkspace } from '@/composables/useWorkspace';
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import type { TrackType } from '@/juicyloops/tracks/registry';
 import { TRACK_META } from './trackMeta';
-import { BEAT_SIZE } from './steps';
 import JuicySynthTrack from './JuicySynthTrack.vue';
 import JuicySamplerTrack from './JuicySamplerTrack.vue';
 import JuicyMicrophoneTrack from './JuicyMicrophoneTrack.vue';
+import PlayheadBeam from './PlayheadBeam.vue';
 import StepRuler from './StepRuler.vue';
 
 /**
@@ -20,10 +20,12 @@ import StepRuler from './StepRuler.vue';
  *
  * The track view shows the current container here, a container window in the song view shows its own.
  * `step` is where the container plays (null while silent); the rows read both through the container view.
+ * It is a getter, not a number: a prop that changes every step would re-render every row with it. Only the ruler, the
+ * beam and the lit cells follow it.
  */
 const props = defineProps<{
     container: TrackContainer;
-    step: number | null;
+    step: () => number | null;
     /** A smaller empty state, for a window. */
     compact?: boolean;
 }>();
@@ -33,7 +35,7 @@ const { selectTrack, isPro } = useWorkspace();
 
 provideContainerView(
     () => props.container,
-    () => props.step,
+    () => props.step(),
 );
 
 /** Which component renders which track type. */
@@ -50,14 +52,6 @@ const tracks = computed(() => props.container.tracks);
 /** How many sections the ruler spans: enough for the longest track. */
 const sections = computed(() => Math.max(1, ...tracks.value.map((track) => Math.ceil(track.length / STEP_COUNT))));
 
-/** The playhead beam: where the ruler's current step sits, in the same units the grids are laid out in. */
-const beamStyle = computed(() => {
-    const step = (props.step ?? 0) % (sections.value * STEP_COUNT);
-    const beat = Math.floor(step / BEAT_SIZE);
-    const cell = step % BEAT_SIZE;
-    return { left: `calc(var(--jl-head-space) + ${beat} * (var(--jl-beat-w) + var(--jl-beat-gap)) + ${cell} * (var(--jl-cell-w) + var(--jl-cell-gap)))` };
-});
-
 const add = (type: TrackType) => {
     const track = addTrack(type, props.container);
     selectTrack(track.id);
@@ -67,9 +61,9 @@ const add = (type: TrackType) => {
 <template>
     <div v-if="tracks.length" class="timeline" :style="{ '--jl-sections': sections }">
         <div class="timeline-inner">
-            <StepRuler :current-step="props.step ?? -1" :sections="sections" />
+            <StepRuler :sections="sections" />
             <component v-for="(track, trackIndex) in tracks" :key="track.id" :is="TRACK_COMPONENTS[track.type]" :track="track" :track-index="trackIndex" />
-            <div v-if="props.step !== null" class="beam" :style="beamStyle" aria-hidden="true"></div>
+            <PlayheadBeam :sections="sections" />
 
             <div class="addrow">
                 <span class="eyebrow">Add track</span>

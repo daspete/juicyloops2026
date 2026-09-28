@@ -1,6 +1,7 @@
-import { Gain, getContext, Offline, ToneAudioBuffer, ToneBufferSource } from 'tone';
+import { Compressor, getContext, Offline, ToneAudioBuffer, ToneBufferSource } from 'tone';
 import { STEP_COUNT } from './constants';
-import { Effects } from './effects/effects';
+import { isEffectNeeded, type EffectKey } from './effects/definitions';
+import { upgradeEffectParams, type EffectsSnapshot } from './effects/effects';
 import { Sequencer, type PlaybackMode, type SessionState } from './sequencer';
 import { Song } from './song';
 import type { TrackState } from './tracks/BaseTrack';
@@ -118,9 +119,6 @@ export class RenderedAudio implements PcmAudio {
     }
 }
 
-/** How many effect racks a sound passes on its way out: its track's, its container's and the master's. */
-const RACKS_IN_PATH = 3;
-
 /**
  * Seconds of silence rendered before the first step. A freshly made compressor starts with its gain closed and
  * opens over its release time, so the first quarter second out of a new context is muffled; live this is over
@@ -128,29 +126,22 @@ const RACKS_IN_PATH = 3;
  */
 const PRE_ROLL = 0.5;
 
-const latencies = new Map<number, Promise<number>>();
+const compressorLatencies = new Map<number, Promise<number>>();
 
 /**
- * The seconds the signal path delays a sound. The dynamics stages of every rack are native compressors, and a
- * compressor looks a few milliseconds ahead; three racks in series add up to a delay you can hear at the start
- * of a bounced loop. Measured by sending a click through the same chain, once per sample rate, since the
- * amount is up to the browser.
+ * The seconds one native compressor delays a sound. A `DynamicsCompressorNode` looks a few milliseconds ahead,
+ * and how far is up to the browser, so it is measured: a short burst through one compressor, once per sample rate.
+ * The compressor is neutral (ratio 1) so the burst comes out whole; the look-ahead does not depend on the settings.
+ * Not a single-sample click: Firefox's compressor swallows that entirely, which read as no latency at all.
  */
-export const measureLatency = (sampleRate: number): Promise<number> => {
-    let pending = latencies.get(sampleRate);
+export const compressorLatency = (sampleRate: number): Promise<number> => {
+    let pending = compressorLatencies.get(sampleRate);
     if (!pending) {
         pending = Offline(
             () => {
-                const click = ToneAudioBuffer.fromArray(Float32Array.from([1, 0, 0, 0]));
-                const source = new ToneBufferSource(click);
-                let input: Gain = new Gain();
-                source.connect(input);
-                for (let rack = 0; rack < RACKS_IN_PATH; rack++) {
-                    const output = new Gain();
-                    new Effects().connect(input, output);
-                    input = output;
-                }
-                input.toDestination();
+                const burst = ToneAudioBuffer.fromArray(new Float32Array(Math.round(sampleRate * 0.01)).fill(1));
+                const source = new ToneBufferSource(burst);
+                source.chain(new Compressor({ ratio: 1 }).toDestination());
                 source.start(PRE_ROLL);
             },
             PRE_ROLL + 0.25,
@@ -161,9 +152,33 @@ export const measureLatency = (sampleRate: number): Promise<number> => {
             const first = samples.findIndex((sample) => Math.abs(sample) > 1e-6);
             return Math.max(0, first / sampleRate - PRE_ROLL);
         });
-        latencies.set(sampleRate, pending);
+        compressorLatencies.set(sampleRate, pending);
     }
     return pending;
+};
+
+/** How many look-ahead nodes (a compressor and a limiter are both native compressors) one stored rack builds. */
+const dynamicsInRack = (rack: EffectsSnapshot): number => {
+    const params = upgradeEffectParams(rack.params);
+    const stages: EffectKey[] = ['compressor', 'limiter'];
+    return stages.filter((effect) => isEffectNeeded(effect, params[effect] ?? {})).length;
+};
+
+/**
+ * The most compressor and limiter nodes a sound passes on its way out, over every track → container bus → master
+ * path of a session. Only racks with non-neutral values build these nodes, so a fresh session has just the master's
+ * limiter. Muted tracks are not heard and do not count; a container without audible tracks still counts its bus.
+ * Counted from the stored values: a compressor that only automation switches on joins mid-render and is not
+ * compensated, the same as live.
+ */
+export const dynamicsInPath = (state: SessionState): number => {
+    const master = dynamicsInRack(state.master.effects);
+    const paths = state.containers.flatMap((container) => {
+        const bus = dynamicsInRack(container.bus.effects);
+        const tracks = container.tracks.filter((track) => !track.isMuted);
+        return tracks.length ? tracks.map((track) => dynamicsInRack(track.effects) + bus) : [bus];
+    });
+    return master + Math.max(0, ...paths);
 };
 
 /**
@@ -175,7 +190,8 @@ export const renderSession = async (session: SessionState, options: RenderOption
     const plan = planRender(session, options.scope);
     const duration = renderDuration(plan, options);
     const sampleRate = options.sampleRate ?? getContext().sampleRate;
-    const latency = await measureLatency(sampleRate);
+    // The signal path delays every sound by the look-ahead of the compressors it passes; rendered on top and cut off below.
+    const latency = (await compressorLatency(sampleRate)) * dynamicsInPath(plan.state);
 
     let sequencer: Sequencer | null = null;
     try {

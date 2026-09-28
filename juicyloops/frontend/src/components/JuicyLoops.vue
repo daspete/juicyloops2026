@@ -16,6 +16,7 @@ import DetailPanel from './detail/DetailPanel.vue';
 import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
+import LiveText from './ui/LiveText.vue';
 import MixPanel from './mix/MixPanel.vue';
 import { TRACK_META } from './tracks/trackMeta';
 
@@ -82,7 +83,8 @@ const start = async (chosen: WorkspaceMode) => {
     isInitialized.value = true;
 };
 
-const position = computed(() => positionLabel(isSongView.value ? currentStep.value : currentTick.value));
+/** The play position readout. A getter for `LiveText`, so the moving position re-renders the readout alone, not this whole layout. */
+const position = (): string => positionLabel(isSongView.value ? currentStep.value : currentTick.value);
 
 /* ---- the session file ---- */
 
@@ -402,7 +404,7 @@ onBeforeUnmount(() => {
 
                 <div class="readout" :data-playing="isPlaying" aria-live="off" v-tooltip.bottom="{ value: 'Bar . beat . step', showDelay: 800 }">
                     <span class="readout-dot"></span>
-                    <span class="readout-value">{{ position }}</span>
+                    <span class="readout-value"><LiveText :text="position" /></span>
                     <span class="readout-unit">{{ isSongView ? 'song' : 'loop' }}</span>
                 </div>
 

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    createParameterTable,
     createSongLane,
+    MIX_PARAMS,
     formatValue,
     movePoint,
     removePoint,
@@ -198,5 +200,16 @@ describe('curve shapes', () => {
         const copy = new TrackAutomation(16);
         copy.restore(automation.serialize());
         expect(copy.lanes[0]!.points[0]).toEqual({ step: 0, value: 0, shape: 's-curve', tension: 0.6 });
+    });
+});
+
+describe('parameter tables', () => {
+    it('keeps the list in order and finds every parameter by key', () => {
+        const table = createParameterTable(MIX_PARAMS);
+        expect(table.list.map((param) => param.key)).toEqual(['volume', 'pan']);
+        expect(table.byKey.get('pan')).toBe(MIX_PARAMS[1]);
+        expect(table.byKey.get('nope')).toBeUndefined();
+        // Frozen, so Vue hands it out as is instead of proxying it.
+        expect(Object.isFrozen(table.list)).toBe(true);
     });
 });

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { useConfirm, useToast } from 'primevue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchPostEffect } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useContainerWindows } from '@/composables/useContainerWindows';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
@@ -10,6 +10,7 @@ import type { SongAutomationLane as SongAutomationLaneModel } from '@/juicyloops
 import { SONG_SNAP, SONG_STEPS_PER_BAR, snapStep, type ClipSpec, type SongClip, type SongLane } from '@/juicyloops/song';
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import { TRACK_META } from '../tracks/trackMeta';
+import LiveText from '../ui/LiveText.vue';
 import ClipPreview from './ClipPreview.vue';
 import ContainerWindows from './ContainerWindows.vue';
 import { containerHue as hueOf } from './containerHue';
@@ -1069,6 +1070,14 @@ const onWheel = (event: WheelEvent) => {
     }
 };
 
+/*
+ * The playhead moves every step. The marker and the beam read it from a CSS variable on the timeline, and the position
+ * readout is a `LiveText`, so this big template never re-renders just because the song moved on.
+ */
+const timelineInner = ref<HTMLElement | null>(null);
+watchPostEffect(() => timelineInner.value?.style.setProperty('--jl-playhead', String(currentStep.value)));
+const positionText = (): string => formatStep(currentStep.value);
+
 /* The playhead stays in view while the song plays. */
 watch(currentStep, (step) => {
     const element = scroller.value;
@@ -1417,10 +1426,10 @@ const statusText = computed(() => {
                     @wheel="onWheel"
                     @contextmenu.prevent
                 >
-                    <div class="arr-inner">
+                    <div ref="timelineInner" class="arr-inner">
                         <div class="arr-row arr-row--ruler">
                             <div class="arr-corner">
-                                <span class="arr-pos" v-tooltip.bottom="{ value: 'Position (bar.beat)', showDelay: 500 }">{{ formatStep(currentStep) }}</span>
+                                <span class="arr-pos" v-tooltip.bottom="{ value: 'Position (bar.beat)', showDelay: 500 }"><LiveText :text="positionText" /></span>
                                 <span class="arr-grid">{{ GRIDS.find((option) => option.steps === grid)?.label }}</span>
                             </div>
                             <div class="arr-ruler" @pointerdown="onRulerDown" @dblclick="songLoop = null">
@@ -1444,7 +1453,7 @@ const statusText = computed(() => {
                                 <span
                                     class="arr-marker"
                                     :data-playing="isPlaying"
-                                    :style="{ left: `calc(${currentStep} * var(--jl-song-step))` }"
+                                    :style="{ left: 'calc(var(--jl-playhead) * var(--jl-song-step))' }"
                                     aria-hidden="true"
                                 ></span>
                             </div>
@@ -1595,7 +1604,7 @@ const statusText = computed(() => {
                                 class="arr-loopzone"
                                 :style="spanStyle({ start: songLoop.start, length: songLoop.end - songLoop.start })"
                             ></div>
-                            <div class="arr-playhead" :data-playing="isPlaying" :style="{ left: `calc(${currentStep} * var(--jl-song-step))` }"></div>
+                            <div class="arr-playhead" :data-playing="isPlaying" :style="{ left: 'calc(var(--jl-playhead) * var(--jl-song-step))' }"></div>
                         </div>
 
                         <div v-if="marqueeStyle" class="arr-marquee" :style="marqueeStyle" aria-hidden="true"></div>

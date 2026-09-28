@@ -1,6 +1,7 @@
 import type { ToneAudioNode } from 'tone';
-import { markRaw, reactive } from 'vue';
+import { markRaw, reactive, toRaw } from 'vue';
 import { createId } from './audio';
+import { voiceTail, type Sleeper } from './hibernate';
 import { MixBus, type BusSnapshot } from './mixBus';
 import type { BaseTrack, TrackState } from './tracks/BaseTrack';
 import { createTrack, type TrackOf, type TrackType } from './tracks/registry';
@@ -17,12 +18,18 @@ export interface ContainerState {
  * Every track inside is a pattern with its own length; playing the container plays all of them at once.
  * All tracks are summed on the container's bus, which has its own effect rack and level before it goes to the master.
  */
-export class TrackContainer {
+export class TrackContainer implements Sleeper {
     readonly id: string;
     readonly tracks: BaseTrack[] = [];
 
     /** The container channel: every track feeds it, it feeds the master. Not reactive, it owns Tone nodes. */
-    readonly bus = markRaw(new MixBus());
+    readonly bus = markRaw(new MixBus('bus'));
+
+    /**
+     * False while the container sleeps: nothing is due for it, so its bus is out of the mix and its racks and synth
+     * voices are freed (see `hibernate.ts`). The sequencer decides; editing works the same either way.
+     */
+    isAwake = true;
 
     constructor(
         public name: string,
@@ -38,7 +45,7 @@ export class TrackContainer {
 
     addTrack<T extends TrackType>(type: T): TrackOf<T> {
         const track = createTrack(type);
-        track.connectTo(this.bus.input);
+        this.adopt(track);
         this.tracks.push(track);
         return track;
     }
@@ -65,16 +72,79 @@ export class TrackContainer {
         }
 
         const copy: BaseTrack = createTrack(source.type);
-        copy.connectTo(this.bus.input);
+        this.adopt(copy);
         await copy.copyFrom(source);
         this.tracks.splice(this.tracks.indexOf(source) + 1, 0, copy);
         return copy;
     }
 
-    /** Schedules every track for a step. */
+    /** A track without its reactive proxy (restored tracks are reactive), for what runs in the audio callback. */
+    rawTrack(id: string): BaseTrack | undefined {
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            const track = toRaw(tracks[i]!);
+            if (track.id === id) {
+                return track;
+            }
+        }
+        return undefined;
+    }
+
+    /** Schedules every track for a step. Runs in the audio callback, so it goes through the raw objects, never a proxy. */
     play(step: number, time: number): void {
-        for (const track of this.tracks) {
-            track.play(step, time);
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            toRaw(tracks[i]!).play(step, time);
+        }
+    }
+
+    /* ---- hibernation (see `hibernate.ts`); called on the raw object, from the step callback ---- */
+
+    /** Takes the container out of the mix and frees its racks and synth voices. Only once nothing it played can still sound. */
+    sleep(): void {
+        if (!this.isAwake) {
+            return;
+        }
+        this.isAwake = false;
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            toRaw(tracks[i]!).sleep();
+        }
+        this.bus.sleep();
+    }
+
+    /** Builds everything `sleep` freed and goes back into the mix. A reverb needs a moment for its impulse response. */
+    wake(): void {
+        if (this.isAwake) {
+            return;
+        }
+        this.isAwake = true;
+        this.bus.wake();
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            toRaw(tracks[i]!).wake();
+        }
+    }
+
+    /**
+     * Seconds the container can still be heard after its last step: the longest voice plus its track's effect tail,
+     * plus the bus's effect tail. `stepSeconds` is the length of a step at the current tempo.
+     */
+    tail(stepSeconds: number): number {
+        let longest = 0;
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            const track = toRaw(tracks[i]!);
+            longest = Math.max(longest, voiceTail(track, stepSeconds) + track.effects.tail());
+        }
+        return longest + this.bus.effects.tail();
+    }
+
+    /** Wires a new track into the bus; in a sleeping container it goes to sleep with the others. */
+    private adopt(track: BaseTrack): void {
+        track.connectTo(this.bus.input);
+        if (!this.isAwake) {
+            track.sleep();
         }
     }
 
@@ -85,7 +155,7 @@ export class TrackContainer {
 
         for (const track of source.tracks) {
             const copy: BaseTrack = createTrack(track.type);
-            copy.connectTo(this.bus.input);
+            this.adopt(copy);
             await copy.copyFrom(track);
             this.tracks.push(copy);
         }
@@ -113,7 +183,7 @@ export class TrackContainer {
             const existing = this.tracks.find((track) => track.id === trackState.id && track.type === trackState.type);
             const track: BaseTrack = existing ?? (reactive(createTrack(trackState.type, trackState.id)) as unknown as BaseTrack);
             if (!existing) {
-                track.connectTo(this.bus.input);
+                this.adopt(toRaw(track));
             }
             track.restore(trackState);
             return track;

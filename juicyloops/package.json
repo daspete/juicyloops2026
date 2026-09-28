@@ -4,7 +4,10 @@
   "description": "a basic web daw",
   "private": true,
   "scripts": {
-    "dev:frontend": "yarn workspace @juicyloops/frontend dev"
+    "dev:frontend": "yarn workspace @juicyloops/frontend dev",
+    "dsp:build": "bash dsp/scripts/build.sh",
+    "dsp:check": "bash dsp/scripts/check.sh",
+    "dsp:test": "bash dsp/scripts/test.sh"
   },
   "workspaces": [
     "frontend"

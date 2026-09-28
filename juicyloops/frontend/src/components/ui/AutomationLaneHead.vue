@@ -12,7 +12,8 @@ const props = defineProps<{
     param?: AutomationParam;
     /** Every value the lane could drive instead. */
     parameters: readonly AutomationParam[];
-    currentStep?: number | null;
+    /** The sounding step while playing, null otherwise. A getter, so only the live readout re-renders when it moves. */
+    step?: () => number | null;
 }>();
 
 const emit = defineEmits<{
@@ -30,7 +31,8 @@ const groups = computed(() => {
 
 /** What the lane is doing at the sounding step. */
 const live = computed(() => {
-    const value = props.currentStep === null || props.currentStep === undefined ? null : valueAt(props.curve.points, props.currentStep);
+    const step = props.step?.() ?? null;
+    const value = step === null ? null : valueAt(props.curve.points, step);
     return value === null ? null : props.param ? formatValue(props.param, value) : `${Math.round(value * 100)}%`;
 });
 </script>

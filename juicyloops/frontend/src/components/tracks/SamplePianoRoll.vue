@@ -3,6 +3,7 @@ import { ALL_NOTES_DESCENDING, transpose } from '@/juicyloops/notes';
 import { SAMPLE_ROOT_NOTE, type SampleTick } from '@/juicyloops/ticks/SampleTick';
 import type { SampleTrack } from '@/juicyloops/tracks/SampleTrack';
 import { computed } from 'vue';
+import type { TrackPlayhead } from '@/composables/useContainerView';
 import PianoRoll, { type RollRow } from './PianoRoll.vue';
 
 /**
@@ -11,7 +12,7 @@ import PianoRoll, { type RollRow } from './PianoRoll.vue';
  */
 const props = defineProps<{
     track: SampleTrack;
-    currentTick: number;
+    playhead: TrackPlayhead;
     header: string;
     accent: string;
 }>();
@@ -49,7 +50,7 @@ const hint = computed(() =>
         :ticks="props.track.ticks"
         :rows="rows"
         :row-of="rowOf"
-        :current-tick="props.currentTick"
+        :playhead="props.playhead"
         :header="props.header"
         :accent="props.accent"
         :home="SAMPLE_ROOT_NOTE"

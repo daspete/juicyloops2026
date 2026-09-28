@@ -1,0 +1,14 @@
+[package]
+name = "juicyloops-synth-worklet"
+description = "Synth voice engine for an AudioWorklet (C ABI, no wasm-bindgen)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+juicyloops-dsp-core.workspace = true

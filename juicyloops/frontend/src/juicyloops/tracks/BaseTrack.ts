@@ -1,7 +1,19 @@
 import { PanVol, type ToneAudioNode } from 'tone';
 import { markRaw } from 'vue';
 import { createId } from '../audio';
-import { MIX_PARAMS, toNormalized, toValue, TrackAutomation, valueAt, type Automatable, type AutomationParam, type StepAutomationLane, type StepAutomationSnapshot } from '../automation';
+import {
+    createParameterTable,
+    MIX_PARAMS,
+    toNormalized,
+    toValue,
+    TrackAutomation,
+    valueAt,
+    type Automatable,
+    type AutomationParam,
+    type ParameterTable,
+    type StepAutomationLane,
+    type StepAutomationSnapshot,
+} from '../automation';
 import { normalizeTrackLength, PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
 import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from '../effects/effects';
 import type { BaseTick, TickSnapshot } from '../ticks/BaseTick';
@@ -24,6 +36,9 @@ export interface TrackState extends TrackSnapshot {
     effects: EffectsSnapshot;
 }
 
+/** Every parameter of a track type, in menu order and by key. Frozen, so Vue hands it out without proxying it. */
+const PARAMETER_TABLES = new WeakMap<object, ParameterTable>();
+
 /**
  * Common behaviour of every track: a row of ticks, an effect chain and a volume/pan stage that feeds the container's bus.
  *
@@ -45,7 +60,7 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
 
     readonly ticks: TTick[];
 
-    readonly effects = markRaw(new Effects());
+    readonly effects = markRaw(new Effects({ role: 'track' }));
 
     /** Step lanes: one value per step for every automated parameter, looping with the pattern. */
     readonly automation = new TrackAutomation(STEP_COUNT);
@@ -108,6 +123,24 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         this.output.connect(destination);
     }
 
+    /**
+     * Whether the track's container sleeps (see `hibernate.ts`): its effect nodes, and a synth's voices, are thrown
+     * away until it wakes. Values set meanwhile are kept and applied on waking.
+     */
+    protected isAsleep = false;
+
+    /** Frees the nodes the track only needs while it can be heard. Only once nothing it played can still sound. */
+    sleep(): void {
+        this.isAsleep = true;
+        this.effects.suspend();
+    }
+
+    /** Builds what `sleep` threw away. */
+    wake(): void {
+        this.isAsleep = false;
+        this.effects.resume();
+    }
+
     /** Resolves once the track can sound. A track that loads audio in the background (a sample) waits for it here. */
     whenReady(): Promise<void> {
         return Promise.resolve();
@@ -148,18 +181,29 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
 
     /* ---- parameters and automation ---- */
 
-    /** Everything automation can drive on this track. Subclasses add their own in `ownParameters`. */
+    /** Everything automation can drive on this track. Subclasses add their own in `ownParameters`. Built once per track type. */
     get parameters(): readonly AutomationParam[] {
-        return [...MIX_PARAMS, ...this.ownParameters(), ...EFFECT_PARAMS];
+        return this.parameterTable().list;
     }
 
-    /** Parameters specific to a track type (a synth's envelope, ...). */
+    /** Parameters specific to a track type (a synth's envelope, ...). Must be the same for every track of a type: the result is cached per type. */
     protected ownParameters(): readonly AutomationParam[] {
         return [];
     }
 
+    /** A parameter by its key. A map lookup: automation calls it for every lane on every step. */
     parameter(key: string): AutomationParam | undefined {
-        return this.parameters.find((param) => param.key === key);
+        return this.parameterTable().byKey.get(key);
+    }
+
+    private parameterTable(): ParameterTable {
+        const type = this.constructor;
+        let table = PARAMETER_TABLES.get(type);
+        if (!table) {
+            table = createParameterTable([...MIX_PARAMS, ...this.ownParameters(), ...EFFECT_PARAMS]);
+            PARAMETER_TABLES.set(type, table);
+        }
+        return table;
     }
 
     getParameter(key: string): number {

@@ -9,7 +9,7 @@ server {
     server_name juicyloops.test;
 
     gzip on;
-    gzip_types text/plain application/xml text/css application/javascript;
+    gzip_types text/plain application/xml text/css application/javascript application/wasm;
     gzip_min_length 1000;
 
     resolver 127.0.0.11 valid=3s;

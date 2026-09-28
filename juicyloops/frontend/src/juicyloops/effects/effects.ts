@@ -1,6 +1,5 @@
 import {
     AutoFilter,
-    BitCrusher,
     Chorus,
     Compressor,
     connectSeries,
@@ -14,16 +13,37 @@ import {
     type ToneAudioNode,
 } from 'tone';
 import { atTime, type AutomationParam } from '../automation';
+import { Crusher } from './crusher';
 import { Equalizer } from './equalizer';
-import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, type EffectKey, type EffectParamDefinition, type EffectParamKey } from './definitions';
+import {
+    EFFECT_DEFINITIONS,
+    EFFECT_KEYS,
+    initialParams,
+    isEffectNeeded,
+    type EffectKey,
+    type EffectParamDefinition,
+    type EffectParamKey,
+    type EffectRackRole,
+} from './definitions';
 
-export type { EffectKey, EffectParamKey } from './definitions';
+export type { EffectKey, EffectParamKey, EffectRackRole } from './definitions';
 
 /** The stored state of a rack: the chain order and every parameter value. */
 export interface EffectsSnapshot {
     order: EffectKey[];
     params: Record<EffectKey, Record<string, number>>;
 }
+
+/**
+ * The params of a stored snapshot, brought up to date. Snapshots from before the limiter had an on/off switch
+ * have no `limiter.on`; their limiter was always active, so it restores switched on and the session sounds as it
+ * did. Compressor and equalizer values were always stored in full, so they need nothing. Session files, history
+ * and duplicated tracks all come through here (`Effects.restore`) or copy a live rack (`Effects.copyFrom`).
+ */
+export const upgradeEffectParams = (params: Partial<EffectsSnapshot['params']>): Partial<EffectsSnapshot['params']> => ({
+    ...params,
+    limiter: { ...params.limiter, on: params.limiter?.on ?? 1 },
+});
 
 /** Anything with a numeric `value`, i.e. a Tone `Param` or `Signal`. */
 interface ValueHolder {
@@ -44,7 +64,7 @@ const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
     chorus: () => new Chorus().start(),
     phaser: () => new Phaser(),
     distortion: () => new Distortion(),
-    bitCrusher: () => new BitCrusher(),
+    bitCrusher: () => new Crusher(),
     autoFilter: () => new AutoFilter().start(),
     tremolo: () => new Tremolo().start(),
     vibrato: () => new Vibrato(),
@@ -54,6 +74,12 @@ const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
     equalizer: () => new Equalizer(),
     limiter: () => new Limiter(),
 };
+
+/**
+ * How many times a delay repeats before it has died away to -60 dB. The rack's delay keeps Tone's default feedback
+ * (it has no knob for it), so the count is fixed.
+ */
+const DELAY_REPEATS = Math.ceil(Math.log(0.001) / Math.log(FeedbackDelay.getDefaults().feedback));
 
 /** Signal flow order a fresh rack starts with. */
 export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
@@ -76,12 +102,19 @@ const PARAM_PREFIX = 'fx.';
 /** The automation address of an effect parameter: `fx.<effect>.<param>`. */
 export const effectParamKey = (effect: EffectKey, param: string): string => `${PARAM_PREFIX}${effect}.${param}`;
 
-const parseParamKey = (key: string): { effect: EffectKey; param: string } | null => {
-    if (!key.startsWith(PARAM_PREFIX)) {
-        return null;
+type ParamAddress = { readonly effect: EffectKey; readonly param: string };
+
+/** Parsed keys, so automation (every lane, every step) does not split strings and allocate on each call. */
+const PARSED_KEYS = new Map<string, ParamAddress | null>();
+
+const parseParamKey = (key: string): ParamAddress | null => {
+    let address = PARSED_KEYS.get(key);
+    if (address === undefined) {
+        const [effect, param] = key.startsWith(PARAM_PREFIX) ? key.slice(PARAM_PREFIX.length).split('.') : [];
+        address = effect && param && EFFECT_KEYS.includes(effect as EffectKey) ? { effect: effect as EffectKey, param } : null;
+        PARSED_KEYS.set(key, address);
     }
-    const [effect, param] = key.slice(PARAM_PREFIX.length).split('.');
-    return effect && param && EFFECT_KEYS.includes(effect as EffectKey) ? { effect: effect as EffectKey, param } : null;
+    return address;
 };
 
 /** Every effect parameter that may be automated, in rack order, as automation sees it. Same for every rack. */
@@ -105,11 +138,13 @@ export const EFFECT_PARAMS: readonly AutomationParam[] = DEFAULT_EFFECT_ORDER.fl
  *
  * Parameter values live here as plain numbers; the Tone nodes are only created while an effect is
  * audible (`wet > 0`) and are thrown away again when it is turned fully dry. A convolution reverb,
- * a bit crusher worklet and a handful of LFOs per track are expensive even when they have nothing
+ * a bit crusher and a handful of LFOs per track are expensive even when they have nothing
  * to do, so a fresh rack costs almost nothing and a dozen tracks stay in budget.
  *
- * The dynamics stages (compressor, equalizer, limiter) have no mix control and are cheap native
- * nodes, so they are always part of the chain and the signal sounds the same as before.
+ * The dynamics stages (compressor, equalizer, limiter) have no mix control. They follow the same rule
+ * with their own idea of "doing nothing" (`isNeutral` in the definitions): ratio 1, a flat EQ, the
+ * limiter switched off. A fresh track or bus rack starts that way and has no nodes at all; the master
+ * starts with its limiter on (see `EffectRackRole`).
  *
  * Parameters are addressed by the keys declared in `EFFECT_DEFINITIONS`, so the UI can stay generic.
  * The order of the chain can be changed at any time; the nodes are re-wired on the spot.
@@ -118,7 +153,7 @@ export class Effects {
     private readonly nodes = new Map<EffectKey, ToneAudioNode>();
 
     /** The current value of every parameter, whether or not the effect's node exists. */
-    private readonly params = Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect)])) as Record<EffectKey, Record<string, number>>;
+    private readonly params: Record<EffectKey, Record<string, number>>;
 
     /** Current signal flow order, first entry is closest to the sound source. */
     private chain: EffectKey[] = [...DEFAULT_EFFECT_ORDER];
@@ -126,8 +161,16 @@ export class Effects {
     private source: ToneAudioNode | null = null;
     private destination: ToneAudioNode | null = null;
 
-    constructor() {
-        // Only the always-on dynamics stages exist from the start.
+    /** While suspended the rack has no nodes at all and the sound passes straight through; see `suspend`. */
+    private isSuspended = false;
+
+    /** Where the rack sits; decides the values it starts with and goes back to on `reset`. */
+    readonly role: EffectRackRole;
+
+    constructor({ role = 'track' }: { role?: EffectRackRole } = {}) {
+        this.role = role;
+        this.params = Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect, role)])) as Record<EffectKey, Record<string, number>>;
+        // Only what the role switches on exists from the start: nothing on a track or bus, the limiter on the master.
         for (const effect of EFFECT_KEYS) {
             if (this.isNeeded(effect)) {
                 this.createNode(effect);
@@ -142,6 +185,14 @@ export class Effects {
     /** Whether the effect currently has a node in the chain. */
     isActive(effect: EffectKey): boolean {
         return this.nodes.has(effect);
+    }
+
+    /**
+     * Whether an effect with these values (by default the stored ones) changes the sound and so needs its node:
+     * a mixable effect once it is not fully dry, a dynamics stage once it is not neutral. The UI lights an effect by this.
+     */
+    isNeeded(effect: EffectKey, params: Readonly<Record<string, number>> = this.params[effect]): boolean {
+        return isEffectNeeded(effect, params);
     }
 
     /** Routes `source -> effects -> destination`. Existing connections of both ends are dropped first. */
@@ -172,9 +223,9 @@ export class Effects {
         this.setOrder(next);
     }
 
-    /** Puts every parameter of one effect back to its initial value. */
+    /** Puts every parameter of one effect back to its initial value (the master's limiter goes back to on). */
     reset(effect: EffectKey): void {
-        this.setParams(effect, initialParams(effect) as Partial<Record<EffectParamKey<typeof effect>, number>>);
+        this.setParams(effect, initialParams(effect, this.role) as Partial<Record<EffectParamKey<typeof effect>, number>>);
     }
 
     getParam<K extends EffectKey>(effect: K, param: EffectParamKey<K>): number {
@@ -235,8 +286,9 @@ export class Effects {
 
     restore(snapshot: EffectsSnapshot): void {
         this.setOrder(snapshot.order);
+        const params = upgradeEffectParams(snapshot.params);
         for (const effect of EFFECT_KEYS) {
-            for (const [param, value] of Object.entries(snapshot.params[effect] ?? {})) {
+            for (const [param, value] of Object.entries(params[effect] ?? {})) {
                 if (this.params[effect][param] !== value) {
                     this.apply(effect, param, value);
                 }
@@ -262,6 +314,56 @@ export class Effects {
         await Promise.all([...this.nodes.values()].map((node) => (node as { ready?: Promise<unknown> }).ready));
     }
 
+    /**
+     * Throws every node away and keeps the values: a rack whose container sleeps (see `hibernate.ts`) costs nothing.
+     * Changes made meanwhile are stored as usual, automation played meanwhile is ignored. The sound passes straight
+     * through, so call it only once nothing it plays can still be heard.
+     */
+    suspend(): void {
+        if (this.isSuspended) {
+            return;
+        }
+        this.isSuspended = true;
+        const nodes = [...this.nodes.values()];
+        this.nodes.clear();
+        this.rewire();
+        for (const node of nodes) {
+            node.dispose();
+        }
+    }
+
+    /** Builds the nodes again from the stored values. A reverb renders its impulse response in the background (`whenReady`). */
+    resume(): void {
+        if (!this.isSuspended) {
+            return;
+        }
+        this.isSuspended = false;
+        for (const effect of this.chain) {
+            if (this.isNeeded(effect)) {
+                this.nodes.set(effect, this.buildNode(effect));
+            }
+        }
+        this.rewire();
+    }
+
+    /**
+     * Seconds the rack keeps sounding after its input fell silent: a reverb's decay and pre-delay, a delay's repeats.
+     * Counts every effect that has a node or should have one, at the larger of its stored and its live delay time.
+     */
+    tail(): number {
+        let seconds = 0;
+        const reverb = this.nodes.get('reverb');
+        if (reverb || this.isNeeded('reverb')) {
+            seconds += (this.params.reverb.decay ?? 0) + (this.params.reverb.preDelay ?? 0);
+        }
+        const delay = this.nodes.get('delay') as FeedbackDelay | undefined;
+        if (delay || this.isNeeded('delay')) {
+            const time = Math.max(this.params.delay.delayTime ?? 0, delay ? delay.toSeconds(delay.delayTime.value) : 0);
+            seconds += time * DELAY_REPEATS;
+        }
+        return seconds;
+    }
+
     dispose(): void {
         for (const node of this.nodes.values()) {
             node.dispose();
@@ -272,6 +374,9 @@ export class Effects {
     /** Stores a value and pushes it to the node. The node comes and goes with the effect being audible. */
     private apply(effect: EffectKey, param: string, value: number): void {
         this.params[effect][param] = value;
+        if (this.isSuspended) {
+            return;
+        }
 
         const shouldExist = this.isNeeded(effect);
         const node = this.nodes.get(effect);
@@ -286,15 +391,14 @@ export class Effects {
     }
 
     /**
-     * Plays a value at a time without storing it. A node that does not exist yet is created when the value
-     * would make the effect audible; it is never thrown away here, automation sweeping through zero every bar
-     * must not rebuild a reverb every bar.
+     * Plays a value at a time without storing it. A node that does not exist yet is created when the value, put
+     * over the stored ones, would make the effect audible (a mix above zero, a neutral compressor's ratio above 1).
+     * It is never thrown away here: automation sweeping through zero every bar must not rebuild a reverb every bar.
      */
     private applyLive(effect: EffectKey, param: string, value: number, time: number): void {
         let node = this.nodes.get(effect);
         if (!node) {
-            const audible = param === 'wet' ? value > 0 : this.isNeeded(effect);
-            if (!audible) {
+            if (this.isSuspended || !this.isNeeded(effect, { ...this.params[effect], [param]: value })) {
                 return;
             }
             this.createNode(effect);
@@ -303,19 +407,18 @@ export class Effects {
         this.applyParam(node, effect, param, value, true, time);
     }
 
-    /** An effect with a mix control is needed once it is not fully dry; the others are always in the chain. */
-    private isNeeded(effect: EffectKey): boolean {
-        const wet = this.params[effect].wet;
-        return wet === undefined || wet > 0;
+    private createNode(effect: EffectKey): void {
+        this.nodes.set(effect, this.buildNode(effect));
+        this.rewire();
     }
 
-    private createNode(effect: EffectKey): void {
+    /** A new node for an effect with the stored values on it; not wired yet. */
+    private buildNode(effect: EffectKey): ToneAudioNode {
         const node = FACTORIES[effect]();
         for (const [param, value] of Object.entries(this.params[effect])) {
             this.applyParam(node, effect, param, value, false);
         }
-        this.nodes.set(effect, node);
-        this.rewire();
+        return node;
     }
 
     private destroyNode(effect: EffectKey): void {
@@ -331,6 +434,10 @@ export class Effects {
 
     private applyParam(node: ToneAudioNode, effect: EffectKey, param: string, value: number, ramp = true, time?: number): void {
         const definition = (EFFECT_DEFINITIONS[effect].params as readonly EffectParamDefinition[]).find((p) => p.key === param);
+        if (definition?.toggle) {
+            // A switch only decides whether the node exists (`apply`); the node has no such property.
+            return;
+        }
         const target = (node as unknown as Record<string, unknown>)[param];
 
         if (isValueHolder(target)) {

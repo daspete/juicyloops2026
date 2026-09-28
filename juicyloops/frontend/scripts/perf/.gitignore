@@ -1,0 +1,2 @@
+# Written by `yarn perf --save-fixtures`; rebuilt from fixtures.mjs on every run.
+fixtures/*.juicyloops

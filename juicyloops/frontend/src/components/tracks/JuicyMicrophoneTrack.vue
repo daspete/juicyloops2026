@@ -18,7 +18,7 @@ const props = defineProps<{
 
 
 /** The playhead inside this track's own pattern and inside the ruler's section; off the grid while silent, so no pad is lit for nothing. */
-const { currentTick, sectionStep } = useTrackPlayhead(() => props.track);
+const playhead = useTrackPlayhead(() => props.track);
 
 const isWaveformExpanded = ref(false);
 
@@ -70,7 +70,7 @@ const toggleRecording = async () => {
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :current-tick="currentTick" :section-step="sectionStep" @paint="(tick, _index, active) => (tick.isActive = active)">
+        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :playhead="playhead" @paint="(tick, _index, active) => (tick.isActive = active)">
             <template #default="{ tick }">
                 <span class="tick-label">{{ sampleTickLabel(props.track, tick) }}</span>
             </template>
@@ -104,7 +104,7 @@ const toggleRecording = async () => {
     <SamplePianoRoll
         v-model:visible="isPianoRollExpanded"
         :track="props.track"
-        :current-tick="currentTick"
+        :playhead="playhead"
         :header="`Notes · Mic ${props.trackIndex + 1}`"
         :accent="TRACK_META.microphone.accent"
     />

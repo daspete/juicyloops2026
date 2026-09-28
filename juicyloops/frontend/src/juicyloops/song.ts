@@ -94,10 +94,16 @@ export class Song {
      * What sounds at a step: for every container, the position inside its patterns.
      * Muted lanes and clips stay silent, soloed lanes silence every other lane,
      * and a container placed on several lanes at once plays once.
+     *
+     * `into` is cleared and filled instead of a new map, for the step callback, which calls this on every step.
      */
-    playingAt(step: number): Map<string, number> {
-        const result = new Map<string, number>();
-        const hasSolo = this.lanes.some((lane) => lane.isSolo);
+    playingAt(step: number, into?: Map<string, number>): Map<string, number> {
+        const result = into ?? new Map<string, number>();
+        result.clear();
+        let hasSolo = false;
+        for (const lane of this.lanes) {
+            hasSolo ||= lane.isSolo === true;
+        }
         for (const lane of this.lanes) {
             if (hasSolo ? !lane.isSolo : lane.isMuted) {
                 continue;

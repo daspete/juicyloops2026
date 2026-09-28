@@ -31,3 +31,4 @@ coverage
 
 test-results/
 playwright-report/
+scripts/perf/stretch-ab-out/

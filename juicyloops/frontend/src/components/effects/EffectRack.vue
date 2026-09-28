@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { EFFECT_DEFINITIONS, type EffectKey, type EffectParamKey } from '@/juicyloops/effects/definitions';
+import { EFFECT_DEFINITIONS, type EffectKey } from '@/juicyloops/effects/definitions';
 import type { Effects } from '@/juicyloops/effects/effects';
 import { Icon } from '@iconify/vue';
 import { computed, ref } from 'vue';
@@ -22,19 +22,11 @@ const selected = ref<EffectKey>(order.value.includes('reverb') ? 'reverb' : orde
 /** Bumped after a reset so the knobs re-read their values. */
 const version = ref(0);
 
-const read = (effect: EffectKey, param: string) => props.effects.getParam(effect, param as EffectParamKey<typeof effect>);
-
-/** Effects that are always in the chain (dynamics/EQ) count as "on" once they deviate from neutral. */
-const isOn = (effect: EffectKey): boolean => {
-    const params = EFFECT_DEFINITIONS[effect].params;
-    if (params.some((param) => param.key === 'wet')) {
-        return read(effect, 'wet') > 0;
-    }
-    if (effect === 'equalizer') {
-        return params.some((param) => read(effect, param.key) !== 0);
-    }
-    return false;
-};
+/**
+ * An effect counts as "on" when it changes the sound: a mixable effect once it is not fully dry, a dynamics stage
+ * once it is not neutral (compressor above 1:1, EQ not flat, limiter switched on). The rack builds its node by the same rule.
+ */
+const isOn = (effect: EffectKey): boolean => props.effects.isNeeded(effect);
 
 const active = ref(new Set(order.value.filter(isOn)));
 const refresh = () => (active.value = new Set(order.value.filter(isOn)));

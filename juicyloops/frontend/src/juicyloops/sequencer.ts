@@ -1,7 +1,8 @@
-import { getDraw, getTransport, type DrawInstance, type TransportInstance } from 'tone';
+import { debug, getDraw, getTransport, type DrawInstance, type TransportInstance } from 'tone';
 import { markRaw, reactive, toRaw } from 'vue';
 import { toValue, valueAt, type Automatable, type AutomationTarget } from './automation';
 import { STEP_SUBDIVISION } from './constants';
+import { Hibernation, markDue, upcomingSegments, WAKE_WINDOW_STEPS } from './hibernate';
 import { MixBus, type BusSnapshot } from './mixBus';
 import { Song, type SongState } from './song';
 import { TrackContainer, type ContainerState } from './trackContainer';
@@ -37,7 +38,7 @@ export class Sequencer {
     readonly song: Song = reactive(new Song()) as Song;
 
     /** The master channel: every container feeds it, it feeds the speakers. */
-    readonly master = markRaw(new MixBus());
+    readonly master = markRaw(new MixBus('master'));
 
     /**
      * The transport and draw loop of the context the sequencer was created in. Kept as references, so a sequencer
@@ -59,6 +60,18 @@ export class Sequencer {
 
     private eventId: number | null = null;
     private readonly stepListeners = new Set<StepListener>();
+    /** Reused by every song-mode step for the containers playing there, so the step callback does not allocate a map each time. */
+    private readonly playing = new Map<string, number>();
+
+    /**
+     * Puts containers with nothing to play to sleep and wakes them before they are heard (see `hibernate.ts`).
+     * Null in an offline context: a render keeps every container awake from start to end.
+     */
+    private readonly hibernation: Hibernation | null = this.transport.context.isOffline ? null : new Hibernation();
+    /** Reused by every step: the containers due now or soon, and the song stretches the look-ahead covers. */
+    private readonly due = new Set<string>();
+    private readonly window: number[] = [0, 0, 0, 0];
+    private readonly stepSeconds = (): number => 60 / this.transport.bpm.value / 4;
 
     constructor() {
         this.master.toDestination();
@@ -76,6 +89,9 @@ export class Sequencer {
 
     setMode(mode: PlaybackMode): void {
         this.mode = mode;
+        if (mode === 'loop') {
+            this.hibernation?.wake(this.currentContainer);
+        }
     }
 
     setLoop(loop: { start: number; end: number } | null): void {
@@ -85,6 +101,18 @@ export class Sequencer {
     /** Moves the play position to a step (also while playing). */
     seekToStep(step: number): void {
         this.transport.ticks = Math.max(0, step) * this.ticksPerStep;
+        // Wake what plays at the new position right away, so its effects are ready by the time the step is heard.
+        if (this.hibernation && this.mode === 'song') {
+            const song = toRaw(this.song);
+            const songLength = song.length;
+            this.markDue(this.songStep(Math.max(0, step), songLength), song, songLength);
+            for (const id of this.due) {
+                const container = this.rawContainer(id);
+                if (container) {
+                    this.hibernation.wake(container);
+                }
+            }
+        }
     }
 
     /**
@@ -107,10 +135,14 @@ export class Sequencer {
         return this.containers.find((container) => container.id === id);
     }
 
+    /** In loop mode the new container is woken right away; the old one sleeps once its tail has rung out. */
     setCurrentContainer(id: string): void {
         const container = this.rawContainer(id);
         if (container) {
             this.currentContainer = container;
+            if (this.mode === 'loop') {
+                this.hibernation?.wake(container);
+            }
         }
     }
 
@@ -186,7 +218,7 @@ export class Sequencer {
         this.master.restore(state.master);
         this.setCurrentContainer(state.currentContainerId);
         if (!this.containers.some((container) => container.id === this.currentContainer.id)) {
-            this.currentContainer = toRaw(this.containers[0]!);
+            this.setCurrentContainer(this.containers[0]!.id);
         }
     }
 
@@ -200,9 +232,10 @@ export class Sequencer {
         toRaw(this.containers[index]!).dispose();
         this.containers.splice(index, 1);
         this.song.removeContainer(id);
+        this.hibernation?.forget(id);
 
         if (this.currentContainer.id === id) {
-            this.currentContainer = toRaw(this.containers[Math.min(index, this.containers.length - 1)]!);
+            this.setCurrentContainer(this.containers[Math.min(index, this.containers.length - 1)]!.id);
         }
     }
 
@@ -212,12 +245,19 @@ export class Sequencer {
             return this.master;
         }
         const container = this.rawContainer(target.containerId);
-        return target.kind === 'container' ? container?.bus : container?.getTrack(target.trackId);
+        return target.kind === 'container' ? container?.bus : container?.rawTrack(target.trackId);
     }
 
-    /** The container without its reactive proxy, for everything that runs in the audio callback. */
+    /** The container without its reactive proxy, for everything that runs in the audio callback. A plain loop: no closure per call. */
     private rawContainer(id: string): TrackContainer | undefined {
-        return toRaw(this.containers).find((container) => container.id === id);
+        const containers = toRaw(this.containers);
+        for (let i = 0; i < containers.length; i++) {
+            const container = toRaw(containers[i]!);
+            if (container.id === id) {
+                return container;
+            }
+        }
+        return undefined;
     }
 
     /** Creates a container with copies of all tracks, right after the original. */
@@ -237,7 +277,7 @@ export class Sequencer {
     private applySongAutomation(song: Song, step: number, time: number): void {
         for (const lane of song.automation) {
             const target = this.resolveTarget(lane.target);
-            const param = target?.parameters.find((candidate) => candidate.key === lane.param);
+            const param = target?.parameter(lane.param);
             const position = valueAt(lane.points, step);
             if (target && param && position !== null) {
                 target.setParameter(lane.param, toValue(param, position), time);
@@ -259,6 +299,14 @@ export class Sequencer {
         return songLength ? absoluteStep % songLength : 0;
     }
 
+    /** Fills `due` with the containers that play in song mode from `step` on, within the wake window (the loop region and the song's end wrap it). */
+    private markDue(step: number, song: Song, songLength: number): void {
+        const loop = this.loop;
+        const count = upcomingSegments(step, WAKE_WINDOW_STEPS, loop ? loop.start : 0, loop ? loop.end : songLength, this.window);
+        this.due.clear();
+        markDue(song, this.window, count, this.due);
+    }
+
     private playStep(time: number): void {
         /*
          * The transport runs freely; the play position is derived from its tick count.
@@ -271,10 +319,28 @@ export class Sequencer {
         const songLength = song.length;
         const step = this.mode === 'song' ? this.songStep(absoluteStep, songLength) : absoluteStep;
 
+        // Before anything plays: a container due at this very step (a seek, a clip dropped at the playhead) wakes first.
+        if (this.hibernation) {
+            if (this.mode === 'loop') {
+                this.due.clear();
+                this.due.add(this.currentContainer.id);
+            } else {
+                this.markDue(step, song, songLength);
+            }
+            // Waking and sleeping build and free nodes; Tone's own constructors and `dispose` start and stop sources
+            // without a time, which Tone warns about inside a scheduled callback. Nothing there is meant to be timed.
+            debug.enterScheduledCallback(false);
+            try {
+                this.hibernation.update(toRaw(this.containers), this.due, time, this.stepSeconds);
+            } finally {
+                debug.enterScheduledCallback(true);
+            }
+        }
+
         if (this.mode === 'loop') {
-            this.currentContainer.play(step, time);
+            toRaw(this.currentContainer).play(step, time);
         } else {
-            for (const [containerId, patternStep] of song.playingAt(step)) {
+            for (const [containerId, patternStep] of song.playingAt(step, this.playing)) {
                 this.rawContainer(containerId)?.play(patternStep, time);
             }
             // Song lanes come last, so they win over a track's own step lanes for the same parameter.
@@ -282,6 +348,14 @@ export class Sequencer {
         }
 
         // The callback fires ahead of time (transport look-ahead), so UI updates are deferred until the step is heard.
-        this.draw.schedule(() => this.stepListeners.forEach((listener) => listener(step)), time);
+        if (this.stepListeners.size) {
+            this.draw.schedule(() => this.notifyStep(step), time);
+        }
+    }
+
+    private notifyStep(step: number): void {
+        for (const listener of this.stepListeners) {
+            listener(step);
+        }
     }
 }

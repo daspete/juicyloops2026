@@ -1,19 +1,12 @@
-import { Gain, PolySynth, Synth } from 'tone';
+import { Gain } from 'tone';
 import { markRaw } from 'vue';
-import { atTime, type AutomationParam } from '../automation';
+import type { AutomationParam } from '../automation';
 import { shiftOctave, type NoteLength, type OscillatorType } from '../notes';
 import { SynthTick } from '../ticks/SynthTick';
 import { BaseTrack, type TrackSnapshot, type TrackState } from './BaseTrack';
+import { createSynthEngine, type SynthEngine, type SynthEnvelope, type SynthEnvelopeParam } from './synthEngine';
 
-/** Amplitude envelope of the synth voice. Times are seconds, sustain is a level between 0 and 1. */
-export interface SynthEnvelope {
-    attack: number;
-    decay: number;
-    sustain: number;
-    release: number;
-}
-
-export type SynthEnvelopeParam = keyof SynthEnvelope;
+export type { SynthEnvelope, SynthEnvelopeParam } from './synthEngine';
 
 export const DEFAULT_ENVELOPE: SynthEnvelope = { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 };
 
@@ -50,12 +43,10 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     override cutsNotes = true;
 
-    /** Where both synths go; the effect chain starts here. */
+    /** Where the synth goes; the effect chain starts here. */
     private readonly input = markRaw(new Gain());
-    /** One voice, for cutting notes. */
-    private readonly synth = markRaw(new Synth());
-    /** A voice per note, for overlapping ones. Voices are only made while notes play. */
-    private readonly polySynth = markRaw(new PolySynth(Synth));
+    /** Every voice of the track (see `synthEngine.ts`). Null while the track sleeps. */
+    private engine: SynthEngine | null = null;
 
     oscillatorType: OscillatorType = 'sine';
 
@@ -63,10 +54,7 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     constructor(id?: string) {
         super(id);
-        this.synth.set({ envelope: this.envelope });
-        this.polySynth.set({ envelope: this.envelope });
-        this.synth.connect(this.input);
-        this.polySynth.connect(this.input);
+        this.buildEngine();
         this.connectSource(this.input);
     }
 
@@ -77,13 +65,56 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     protected trigger(step: number, time: number): void {
         const tick = this.activeTick(step);
         if (tick) {
-            (this.cutsNotes ? this.synth : this.polySynth).triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
+            this.engine?.triggerAttackRelease(tick.note, tick.duration, time, tick.volume);
         }
     }
 
+    override setCutsNotes(cuts: boolean): void {
+        super.setCutsNotes(cuts);
+        this.engine?.setCutsNotes(cuts);
+    }
+
+    /** A sleeping track has no engine at all: its nodes would be processed even while silent. */
+    override sleep(): void {
+        super.sleep();
+        this.disposeEngine();
+    }
+
+    override wake(): void {
+        super.wake();
+        this.buildEngine();
+    }
+
+    override whenReady(): Promise<void> {
+        return this.engine?.whenReady() ?? Promise.resolve();
+    }
+
+    /** Builds the engine with the stored mode, oscillator and envelope. */
+    private buildEngine(): void {
+        if (this.engine) {
+            return;
+        }
+        const settings = { context: this.input.context, cutsNotes: this.cutsNotes, oscillatorType: this.oscillatorType, envelope: { ...this.envelope } };
+        const engine = createSynthEngine(settings, () => {
+            // The worklet engine could not start: rebuild, which gives the Tone engine from now on.
+            if (this.engine === engine) {
+                this.disposeEngine();
+                if (!this.isAsleep) {
+                    this.buildEngine();
+                }
+            }
+        });
+        engine.connect(this.input);
+        this.engine = engine;
+    }
+
+    private disposeEngine(): void {
+        this.engine?.dispose();
+        this.engine = null;
+    }
+
     setOscillatorType(type: OscillatorType): void {
-        this.synth.oscillator.type = type;
-        this.polySynth.set({ oscillator: { type } });
+        this.engine?.setOscillatorType(type);
         this.oscillatorType = type;
     }
 
@@ -96,10 +127,7 @@ export class SynthTrack extends BaseTrack<SynthTick> {
 
     /** Sets one stage of the amplitude envelope, e.g. `setEnvelope('attack', 0.2)`. */
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void {
-        atTime(this.synth.context, time, () => {
-            this.synth.envelope[param] = value;
-            this.polySynth.set({ envelope: { [param]: value } });
-        });
+        this.engine?.setEnvelope(param, value, time);
         if (time === undefined) {
             this.envelope = { ...this.envelope, [param]: value };
         }
@@ -139,8 +167,7 @@ export class SynthTrack extends BaseTrack<SynthTick> {
     }
 
     dispose(): void {
-        this.synth.dispose();
-        this.polySynth.dispose();
+        this.disposeEngine();
         this.input.dispose();
         super.dispose();
     }

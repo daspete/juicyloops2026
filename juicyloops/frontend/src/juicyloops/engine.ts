@@ -1,5 +1,7 @@
-import { Context, getTransport, setContext, start, type TransportInstance } from 'tone';
+import { Context, getContext, getTransport, setContext, start, type TransportInstance } from 'tone';
 import type { Automatable, AutomationTarget } from './automation';
+/* Dev-only live node count for leak hunting and `yarn perf`; compiles to nothing in production. */
+import './debug/nodeCounter';
 import { DEFAULT_BPM } from './constants';
 import type { MixBus } from './mixBus';
 import { Sequencer, type PlaybackMode, type SessionState, type StepListener } from './sequencer';
@@ -18,7 +20,22 @@ import { SampleTrack } from './tracks/SampleTrack';
  */
 const LOOK_AHEAD_SECONDS = 0.2;
 
-setContext(new Context({ latencyHint: 'balanced', lookAhead: LOOK_AHEAD_SECONDS }));
+/** Marks the contexts made here, so a module re-run (dev hot reload) never closes the one the running app still plays on. */
+const ENGINE_CONTEXT = Symbol.for('juicyloops.engineContext');
+
+/*
+ * Importing Tone already made a default context ('interactive'): Tone's own module touches `getContext()` to export
+ * its old `Transport`/`Destination` constants. Left alone it keeps running idle next to ours for the whole session.
+ * Nothing of ours lives on it (every node, the sequencer and the render are made after this line and ask for the
+ * context then), so it is disposed: that closes its AudioContext and frees its transport, destination and draw loop.
+ */
+const defaultContext = getContext();
+const engineContext = new Context({ latencyHint: 'balanced', lookAhead: LOOK_AHEAD_SECONDS });
+Object.defineProperty(engineContext, ENGINE_CONTEXT, { value: true });
+setContext(engineContext);
+if (defaultContext !== engineContext && !(ENGINE_CONTEXT in defaultContext)) {
+    defaultContext.dispose();
+}
 
 export class Engine {
     readonly transport: TransportInstance = getTransport();

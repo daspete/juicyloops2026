@@ -1,6 +1,8 @@
 <script setup lang="ts" generic="T extends BaseTick">
 import type { BaseTick } from '@/juicyloops/ticks/BaseTick';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
+import type { TrackPlayhead } from '@/composables/useContainerView';
+import { usePlayheadClass } from '@/composables/usePlayheadClass';
 import { STEP_COUNT } from '@/juicyloops/constants';
 import { beatsOf } from './steps';
 
@@ -18,10 +20,11 @@ export interface StepSpan {
 
 const props = defineProps<{
     ticks: T[];
-    /** The playhead inside this pattern (0 .. ticks.length - 1). */
-    currentTick: number;
-    /** The playhead inside the section (0 .. STEP_COUNT - 1), so the ghost repeats know which one is sounding. */
-    sectionStep?: number;
+    /**
+     * Where the playhead is: inside this pattern (0 .. ticks.length - 1), and inside the section (0 .. STEP_COUNT - 1)
+     * so the ghost repeats know which one is sounding. -1 while silent.
+     */
+    playhead: TrackPlayhead;
     spans?: ReadonlyMap<number, StepSpan>;
 }>();
 
@@ -46,6 +49,14 @@ const ghostBeats = computed(() =>
         ? beatsOf(STEP_COUNT - props.ticks.length).map((beat) => beat.map((index) => index + props.ticks.length))
         : [],
 );
+
+/* The playhead lights its cell without re-rendering the row (see `usePlayheadClass`). */
+const root = useTemplateRef<HTMLElement>('root');
+usePlayheadClass(root, 'tick--current', () => {
+    const tick = props.playhead.currentTick.value;
+    const section = props.playhead.sectionStep.value;
+    return [...(tick >= 0 ? [`[data-step="${tick}"]`] : []), ...(section >= 0 ? [`[data-ghost-step="${section}"]`] : [])];
+});
 
 /** The state we are painting while the pointer is down, null when idle. */
 const painting = ref<boolean | null>(null);
@@ -101,7 +112,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
 </script>
 
 <template>
-    <div class="steps track-steps" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
+    <div ref="root" class="steps track-steps" @pointerdown="onPointerDown" @pointermove="onPointerMove" @pointercancel="stopPainting">
         <div v-for="(beat, beatIndex) in beats" :key="beatIndex" class="beat">
             <button
                 v-for="index in beat"
@@ -114,7 +125,6 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                     'tick--tail': !ticks[index]!.isActive && spans?.get(index)?.tail,
                     'tick--open-end': spans?.get(index)?.openEnd,
                     'tick--partial': ticks[index]!.isActive && (spans?.get(index)?.fill ?? 1) < 1,
-                    'tick--current': currentTick === index,
                 }"
                 :style="(spans?.get(index)?.fill ?? 1) < 1 ? { '--fill': spans!.get(index)!.fill } : undefined"
                 :data-step="index"
@@ -133,8 +143,8 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                 :class="{
                     'tick--downbeat': index % 4 === 0,
                     'tick--active': ticks[index % ticks.length]!.isActive,
-                    'tick--current': sectionStep === index,
                 }"
+                :data-ghost-step="index"
             ></div>
         </div>
     </div>

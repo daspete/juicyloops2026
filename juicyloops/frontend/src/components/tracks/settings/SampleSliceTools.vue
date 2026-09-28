@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { SampleTrack } from '@/juicyloops/tracks/SampleTrack';
 import { Icon } from '@iconify/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 /** Ways to cut the played region into slices: at the hits, into equal parts, or not at all. */
 const props = defineProps<{
@@ -11,13 +11,34 @@ const props = defineProps<{
 const EVEN_COUNTS = [4, 8, 16] as const;
 
 const count = computed(() => props.track.slices.length);
+
+/** The hit search runs in the sample worker; the button waits for it instead of being pressed twice. */
+const isFindingHits = ref(false);
+
+const sliceAtHits = async () => {
+    isFindingHits.value = true;
+    try {
+        await props.track.sliceAtHits();
+    } catch (error) {
+        console.warn('Could not find the hits', error);
+    } finally {
+        isFindingHits.value = false;
+    }
+};
 </script>
 
 <template>
     <div class="lane-foot">
         <span class="setting-label">Slices</span>
-        <button type="button" class="chip" v-tooltip.bottom="'Cut wherever a hit or note starts'" @click="props.track.sliceAtHits()">
-            <Icon icon="mdi:content-cut" class="w-4 h-4" />
+        <button
+            type="button"
+            class="chip"
+            :disabled="isFindingHits"
+            :aria-busy="isFindingHits"
+            v-tooltip.bottom="'Cut wherever a hit or note starts'"
+            @click="sliceAtHits"
+        >
+            <Icon :icon="isFindingHits ? 'mdi:loading' : 'mdi:content-cut'" class="w-4 h-4" :class="{ 'animate-spin': isFindingHits }" />
             <span>At hits</span>
         </button>
         <button

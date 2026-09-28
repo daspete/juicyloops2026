@@ -3,6 +3,7 @@ import { VirtualScroller } from 'primevue';
 import { computed, nextTick, onBeforeUnmount, reactive, ref, useTemplateRef, watch } from 'vue';
 import FloatingWindow from '../ui/FloatingWindow.vue';
 import { centredWindow, isOnTop, nextZ, type FloatingWindowState } from '../ui/floatingWindow';
+import type { TrackPlayhead } from '@/composables/useContainerView';
 import { cellUnder, noteEnd, tickSteps, useNoteResize, type NoteTick } from './noteDrag';
 import { beatNumber, beatsOf } from './steps';
 
@@ -27,8 +28,11 @@ export interface RollRow {
 const props = defineProps<{
     ticks: T[];
     rows: readonly RollRow[];
-    /** The playhead inside the pattern, -1 while stopped. */
-    currentTick: number;
+    /**
+     * The playhead; its `currentTick` is inside the pattern, -1 while stopped. Read only inside the open window, so
+     * a closed roll does not re-render every step.
+     */
+    playhead: TrackPlayhead;
     header: string;
     accent: string;
     /** Which row a tick shows on; its note unless the track maps notes onto fewer rows. */
@@ -251,7 +255,7 @@ defineExpose({ scrollToPattern });
                                 v-for="(step, i) in beat"
                                 :key="step"
                                 class="ruler-cell"
-                                :class="{ 'ruler-cell--dot': i !== 0, 'ruler-cell--current': props.currentTick === step }"
+                                :class="{ 'ruler-cell--dot': i !== 0, 'ruler-cell--current': props.playhead.currentTick.value === step }"
                             >
                                 <template v-if="i === 0">{{ beatNumber(beatIndex) }}</template>
                             </div>
@@ -271,7 +275,7 @@ defineExpose({ scrollToPattern });
                                             v-for="tickIndex in beat"
                                             :key="tickIndex"
                                             class="pianotick"
-                                            :class="{ 'pianotick--current': props.currentTick === tickIndex, 'pianotick--downbeat': tickIndex % 16 === 0 }"
+                                            :class="{ 'pianotick--current': props.playhead.currentTick.value === tickIndex, 'pianotick--downbeat': tickIndex % 16 === 0 }"
                                             :data-step="tickIndex"
                                             :title="`Step ${tickIndex + 1}: ${row.label}`"
                                             @click="placeNote(props.ticks[tickIndex]!, row.note)"
@@ -282,7 +286,7 @@ defineExpose({ scrollToPattern });
                                     v-for="bar in rowNotes(row.note)"
                                     :key="bar.head"
                                     class="pianonote"
-                                    :class="{ 'pianonote--current': props.currentTick >= bar.head && props.currentTick <= bar.end }"
+                                    :class="{ 'pianonote--current': props.playhead.currentTick.value >= bar.head && props.playhead.currentTick.value <= bar.end }"
                                     :style="noteStyle(bar)"
                                     :title="`${row.label}, step ${bar.head + 1}. Drag to move${props.resizable ? ', drag the ends to change the length' : ''}.`"
                                     @pointerdown.stop.prevent="startMove($event, bar.head)"

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useWorkspace } from '@/composables/useWorkspace';
 import ContainerBar from '../containers/ContainerBar.vue';
@@ -9,7 +8,8 @@ import ContainerTracks from './ContainerTracks.vue';
 const { currentStep, currentContainer, isPlaying } = useJuicyLoops();
 const { isPro } = useWorkspace();
 
-const step = computed(() => (isPlaying.value ? currentStep.value : null));
+/** A getter, so the playhead moving does not re-render the track rows (see `ContainerTracks`). */
+const step = (): number | null => (isPlaying.value ? currentStep.value : null);
 </script>
 
 <template>

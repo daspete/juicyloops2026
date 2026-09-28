@@ -54,6 +54,15 @@ describe('Song', () => {
         expect(clip.offset).toBe(0);
     });
 
+    it('refills a given map instead of making a new one (the step callback reuses one)', () => {
+        const { song } = songWithClip();
+        const into = new Map([['stale', 1]]);
+
+        expect(song.playingAt(20, into)).toBe(into);
+        expect(into).toEqual(new Map([['a', 4]]));
+        expect(song.playingAt(90, into).size).toBe(0);
+    });
+
     it('moves clips between lanes when the spot is free', () => {
         const { song, lane, clip } = songWithClip();
         const other = song.addLane();

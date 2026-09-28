@@ -1,0 +1,11 @@
+[package]
+name = "juicyloops-dsp-core"
+description = "no_std + alloc DSP building blocks: oscillators, envelopes, smoothing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libm.workspace = true

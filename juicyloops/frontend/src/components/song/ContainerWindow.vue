@@ -18,8 +18,8 @@ const props = defineProps<{
     state: ContainerWindowState;
     container: TrackContainer;
     hue: number;
-    /** Where the song plays this container right now, null while no clip of it sounds. */
-    step: number | null;
+    /** Where the song plays this container right now, null while no clip of it sounds. A getter, so the window does not re-render every step. */
+    step: () => number | null;
     /** The size of the song view the window lives in. */
     area: WindowArea;
 }>();
@@ -65,6 +65,9 @@ const openInTrackView = () => {
     void router.push({ name: 'app.index' });
 };
 
+/** Whether a clip of this container sounds right now; a computed, so the title bar only re-renders when that flips. */
+const isLive = computed(() => props.step() !== null);
+
 const trackCount = computed(() => `${props.container.tracks.length} ${props.container.tracks.length === 1 ? 'track' : 'tracks'}`);
 </script>
 
@@ -93,7 +96,7 @@ const trackCount = computed(() => `${props.container.tracks.length} ${props.cont
             }}</span>
             <span class="fwin-meta">
                 {{ trackCount }}
-                <span v-if="props.step !== null" class="fwin-live" v-tooltip.bottom="'Playing in the song right now'"><i></i>live</span>
+                <span v-if="isLive" class="fwin-live" v-tooltip.bottom="'Playing in the song right now'"><i></i>live</span>
             </span>
         </template>
 

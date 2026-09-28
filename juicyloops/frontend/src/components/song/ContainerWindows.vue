@@ -19,6 +19,20 @@ const area = reactive({ width: 0, height: 0 });
 /** Every container the song plays at the current step, with the step it plays it at. */
 const playing = computed(() => (isPlaying.value && mode.value === 'song' ? song.value.playingAt(currentStep.value) : new Map<string, number>()));
 
+/*
+ * Each window gets a getter for its step rather than the number: the step changes every tick, and as a prop it would
+ * re-render every window and all its track rows that often. One getter per container, so the prop never changes.
+ */
+const stepGetters = new Map<string, () => number | null>();
+const stepOf = (containerId: string): (() => number | null) => {
+    let getter = stepGetters.get(containerId);
+    if (!getter) {
+        getter = () => playing.value.get(containerId) ?? null;
+        stepGetters.set(containerId, getter);
+    }
+    return getter;
+};
+
 const entries = computed(() =>
     windows.value.map((state) => ({
         state,
@@ -69,7 +83,7 @@ defineExpose({ area });
             :state="entry.state"
             :container="entry.container"
             :hue="entry.hue"
-            :step="playing.get(entry.state.containerId) ?? null"
+            :step="stepOf(entry.state.containerId)"
             :area="area"
         />
     </div>

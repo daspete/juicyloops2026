@@ -13,7 +13,8 @@
         "test:e2e": "playwright test",
         "lint": "eslint . --fix",
         "format": "prettier --write src/",
-        "check": "yarn type-check && yarn lint && yarn test:unit"
+        "check": "yarn type-check && yarn lint && yarn test:unit",
+        "perf": "node scripts/perf/run.mjs"
     },
     "dependencies": {
         "@breezystack/lamejs": "^1.2.7",

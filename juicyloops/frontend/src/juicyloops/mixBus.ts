@@ -1,5 +1,5 @@
 import { Gain, PanVol, type ToneAudioNode } from 'tone';
-import { MIX_PARAMS, type Automatable, type AutomationParam } from './automation';
+import { createParameterTable, MIX_PARAMS, type Automatable, type AutomationParam } from './automation';
 import { PARAM_RAMP_TIME } from './constants';
 import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from './effects/effects';
 
@@ -8,6 +8,8 @@ export interface BusSnapshot {
     pan: number;
     effects: EffectsSnapshot;
 }
+
+const BUS_PARAMETERS = createParameterTable([...MIX_PARAMS, ...EFFECT_PARAMS]);
 
 /**
  * A summing stage with its own effect rack and volume/pan: `input -> effects -> output`.
@@ -19,10 +21,10 @@ export class MixBus implements Automatable {
     /** Where the sources connect to. */
     readonly input: ToneAudioNode = new Gain();
 
-    readonly effects = new Effects();
+    readonly effects: Effects;
 
-    /** Everything automation can drive on a bus: level, pan and the effect rack. */
-    readonly parameters: readonly AutomationParam[] = [...MIX_PARAMS, ...EFFECT_PARAMS];
+    /** Everything automation can drive on a bus: level, pan and the effect rack. The same list for every bus. */
+    readonly parameters: readonly AutomationParam[] = BUS_PARAMETERS.list;
 
     /** Volume (dB) and pan (-1..1) stage after the effects. */
     private readonly output = new PanVol(0, 0);
@@ -30,14 +32,48 @@ export class MixBus implements Automatable {
     volume = 0;
     pan = 0;
 
-    constructor() {
+    /** Where `connectTo` sends the bus; kept so a sleeping bus can find its way back. */
+    private destination: ToneAudioNode | null = null;
+    private isAsleep = false;
+
+    /** `master` for the song's master channel (its rack starts with the limiter on), `bus` for a container's. */
+    constructor(role: 'bus' | 'master' = 'bus') {
+        this.effects = new Effects({ role });
         this.effects.connect(this.input, this.output);
     }
 
     /** Sends this bus into another node, replacing where it went before. */
     connectTo(destination: ToneAudioNode): void {
+        this.destination = destination;
         this.output.disconnect();
-        this.output.connect(destination);
+        if (!this.isAsleep) {
+            this.output.connect(destination);
+        }
+    }
+
+    /**
+     * Takes the bus out of the mix and throws its effect nodes away (the values stay), for a container that has
+     * nothing to play (see `hibernate.ts`). Only once nothing it carries can still be heard: the sound stops dead.
+     */
+    sleep(): void {
+        if (this.isAsleep) {
+            return;
+        }
+        this.isAsleep = true;
+        this.output.disconnect();
+        this.effects.suspend();
+    }
+
+    /** Rebuilds the effects and goes back into the mix. */
+    wake(): void {
+        if (!this.isAsleep) {
+            return;
+        }
+        this.isAsleep = false;
+        this.effects.resume();
+        if (this.destination) {
+            this.output.connect(this.destination);
+        }
     }
 
     /** Sends this bus straight to the speakers. */
@@ -74,6 +110,10 @@ export class MixBus implements Automatable {
         this.setVolume(snapshot.volume);
         this.setPan(snapshot.pan);
         this.effects.restore(snapshot.effects);
+    }
+
+    parameter(key: string): AutomationParam | undefined {
+        return BUS_PARAMETERS.byKey.get(key);
     }
 
     getParameter(key: string): number {
