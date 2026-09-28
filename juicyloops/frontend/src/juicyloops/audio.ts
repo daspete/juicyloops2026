@@ -13,5 +13,4 @@ export const decodeBlob = async (blob: Blob): Promise<AudioBuffer> => {
     return context.decodeAudioData(data.slice(0));
 };
 
-export const createId = (): string =>
-    typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11);
+export { createId } from './ids';

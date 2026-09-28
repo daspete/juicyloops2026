@@ -3,6 +3,8 @@ import { Icon } from '@iconify/vue';
 import { computed } from 'vue';
 import { useHistory } from '@/composables/useHistory';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { provideLearnOwner } from '@/composables/useMidiLearn';
+import type { AutomationTarget } from '@/juicyloops/automation';
 import { useWorkspace, type TrackTab } from '@/composables/useWorkspace';
 import EffectRack from '../effects/EffectRack.vue';
 import TrackPatternSettings from '../tracks/settings/TrackPatternSettings.vue';
@@ -13,7 +15,7 @@ import { TRACK_META } from '../tracks/trackMeta';
  * The track panel (Tweak), docked to the left of the workspace: the sound, pattern tools and effects
  * of the selected track. Nothing else lives here; the container and master channels have the mixer on the right.
  */
-const { tracks } = useJuicyLoops();
+const { tracks, currentContainer } = useJuicyLoops();
 const { selectedTrack, trackTab, toggleDetail } = useWorkspace();
 const { version } = useHistory();
 
@@ -26,6 +28,11 @@ const TRACK_TABS: readonly { key: TrackTab; label: string; icon: string; note: s
     { key: 'pattern', label: 'Pattern', icon: 'mdi:dots-grid', note: 'Length and quick edits of the whole loop.' },
     { key: 'effects', label: 'Effects', icon: 'mdi:auto-fix', note: 'In signal order. Drag a chip to reorder the chain.' },
 ];
+
+/** MIDI learn: every knob in here turns a parameter of the selected track. */
+provideLearnOwner(
+    computed<AutomationTarget | null>(() => (selectedTrack.value ? { kind: 'track', containerId: currentContainer.value.id, trackId: selectedTrack.value.id } : null)),
+);
 
 const meta = computed(() => (selectedTrack.value ? TRACK_META[selectedTrack.value.type] : null));
 const trackIndex = computed(() => (selectedTrack.value ? tracks.value.indexOf(selectedTrack.value) + 1 : 0));

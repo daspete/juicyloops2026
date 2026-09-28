@@ -7,7 +7,7 @@
  */
 
 /** The ABI of `synth-worklet.wasm` this code speaks; the processor checks `abi_version()` against it. */
-export const SYNTH_ABI = 2;
+export const SYNTH_ABI = 3;
 
 /** The name the processor registers under. `synthProcessor.ts` repeats it (it may not import anything at runtime). */
 export const SYNTH_PROCESSOR = 'juicyloops-synth';
@@ -19,6 +19,8 @@ export const SynthParam = {
     decay: 2,
     sustain: 3,
     release: 4,
+    /** Pitch bend of every voice, in semitones. */
+    bend: 5,
 } as const;
 
 export type SynthParamName = keyof typeof SynthParam;
@@ -31,7 +33,12 @@ export const WAVEFORMS = { sine: 0, square: 1, triangle: 2, sawtooth: 3 } as con
  * anything in the past) means "at the start of the next block".
  */
 export type SynthMessage =
-    | { type: 'note'; time: number; frequency: number; velocity: number; duration: number }
+    /**
+     * `id` 0 is a scheduled note (released after `duration` seconds). A live note has an id above 0 and may be held:
+     * a negative `duration` keeps it sounding until a `noteOff` with its id.
+     */
+    | { type: 'note'; time: number; id: number; frequency: number; velocity: number; duration: number }
+    | { type: 'noteOff'; time: number; id: number }
     | { type: 'param'; time: number; id: number; value: number }
     | { type: 'mode'; mono: boolean }
     /** The node is going away: the processor stops asking to be called, so the browser can collect it. */
@@ -75,8 +82,18 @@ export class SynthEvents {
     /** Plays `note` at `time` for `duration`; `velocity` is 0..1. Returns the length in seconds. */
     note(note: string | number, duration: string | number, time: number, velocity = 1): number {
         const seconds = this.convert.seconds(duration);
-        this.send({ type: 'note', time, frequency: this.convert.frequency(note), velocity, duration: seconds });
+        this.send({ type: 'note', time, id: 0, frequency: this.convert.frequency(note), velocity, duration: seconds });
         return seconds;
+    }
+
+    /** Starts a live note that sounds until `noteOff(id)`. `id` must be above 0. */
+    noteOn(id: number, note: string | number, time: number, velocity = 1): void {
+        this.send({ type: 'note', time, id, frequency: this.convert.frequency(note), velocity, duration: -1 });
+    }
+
+    /** Releases the live note `id` at `time`. */
+    noteOff(id: number, time: number): void {
+        this.send({ type: 'noteOff', time, id });
     }
 
     /** Sets a parameter at `time`, or right away. */

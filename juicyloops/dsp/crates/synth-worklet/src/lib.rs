@@ -2,16 +2,18 @@
 //! The engine itself is `juicyloops_dsp_core::Synth`; this crate is the ABI around it. The host side is
 //! `frontend/src/juicyloops/dsp/synthProcessor.ts`.
 //!
-//! Host contract (ABI version 2):
+//! Host contract (ABI version 3):
 //! 1. `init(sample_rate)` once after instantiation.
 //! 2. `out_ptr()` points at `MAX_BLOCK` f32s in linear memory; the host views it as a Float32Array. Memory never
 //!    grows after `init`, so the view stays valid.
 //! 3. Events carry absolute frames (the audio context's frame counter, `currentFrame`), passed as whole numbers in
 //!    f64 so JS needs no BigInt:
-//!    - `note_on(frame, hz, velocity, duration_frames)`: a note from `frame`, released `duration_frames` later;
+//!    - `note_on(frame, id, hz, velocity, duration_frames)`: a note from `frame`, released `duration_frames` later,
+//!      or held until `note_off(frame, id)` when `duration_frames` is negative. `id` 0 is "no id" (scheduled notes);
+//!    - `note_off(frame, id)`: releases every held voice playing note `id` (id 0 is ignored and returns 0);
 //!    - `set_param(frame, id, value)`: ids as in `juicyloops_dsp_core::Param` (0 waveform, 1 attack s, 2 decay s,
-//!      3 sustain level, 4 release s);
-//!    both return 1 when queued, 0 when rejected (invalid, or the queue is full).
+//!      3 sustain level, 4 release s, 5 pitch bend in semitones);
+//!    all return 1 when queued, 0 when rejected (invalid, or the queue is full).
 //!    - `set_mode(mono)`: 1 = notes cut (one voice, legato), 0 = notes overlap (16 voices). Applies at once.
 //! 4. `process(start_frame, frames)` renders `frames` (<= `MAX_BLOCK`) mono samples starting at `start_frame` into
 //!    the out buffer. It returns the number of sounding voices plus queued events: 0 means silence until the next
@@ -29,7 +31,7 @@ pub use juicyloops_dsp_core::synth::MAX_BLOCK;
 mod wasm_rt;
 
 /// Bumped whenever an export changes shape. The processor checks it after instantiation.
-pub const ABI_VERSION: u32 = 2;
+pub const ABI_VERSION: u32 = 3;
 
 pub struct Engine {
     synth: Synth,
@@ -68,8 +70,13 @@ pub extern "C" fn out_ptr() -> *mut f32 {
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn note_on(start_frame: f64, hz: f32, velocity: f32, duration_frames: f64) -> u32 {
-    engine().is_some_and(|e| e.synth.note_on(frame(start_frame), hz, velocity, frame(duration_frames))) as u32
+pub extern "C" fn note_on(start_frame: f64, id: u32, hz: f32, velocity: f32, duration_frames: f64) -> u32 {
+    engine().is_some_and(|e| e.synth.note_on(frame(start_frame), id, hz, velocity, frame(duration_frames))) as u32
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn note_off(at_frame: f64, id: u32) -> u32 {
+    engine().is_some_and(|e| e.synth.note_off(frame(at_frame), id)) as u32
 }
 
 #[unsafe(no_mangle)]
@@ -112,11 +119,27 @@ mod tests {
         set_mode(1);
         assert_eq!(set_param(0.0, 3, 1.0), 1);
         assert_eq!(set_param(0.0, 42, 1.0), 0);
-        assert_eq!(note_on(200.0, 440.0, 1.0, 4_800.0), 1);
+        assert_eq!(note_on(200.0, 0, 440.0, 1.0, 4_800.0), 1);
         assert_eq!(process(0.0, 128), 1, "the note waits in the queue");
         assert!(out().iter().all(|&s| s == 0.0));
         assert_eq!(process(128.0, 128), 1, "one voice sounds");
         assert_eq!(out()[..73].iter().filter(|&&s| s != 0.0).count(), 0);
         assert!(out()[73..].iter().any(|&s| s != 0.0));
+
+        // A held note (negative duration) until its note_off; bend is param 5.
+        set_mode(0);
+        assert_eq!(note_on(256.0, 9, 220.0, 1.0, -1.0), 1);
+        assert_eq!(set_param(256.0, 5, -2.0), 1);
+        assert_eq!(note_off(256.0, 0), 0, "id 0 is never a live note");
+        for block in 2..400 {
+            process(block as f64 * 128.0, 128);
+        }
+        assert!(out().iter().any(|&s| s != 0.0), "the held note still sounds");
+        assert_eq!(note_off(400.0 * 128.0, 9), 1);
+        let mut busy = 1;
+        for block in 400..1_000 {
+            busy = process(block as f64 * 128.0, 128);
+        }
+        assert_eq!(busy, 0, "released and silent");
     }
 }

@@ -1,8 +1,9 @@
 import { PanVol, type ToneAudioNode } from 'tone';
-import { markRaw } from 'vue';
+import { markRaw, toRaw } from 'vue';
 import { createId } from '../audio';
 import {
     createParameterTable,
+    firstPointAfter,
     MIX_PARAMS,
     toNormalized,
     toValue,
@@ -14,15 +15,22 @@ import {
     type StepAutomationLane,
     type StepAutomationSnapshot,
 } from '../automation';
-import { normalizeTrackLength, PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
+import { PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
 import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from '../effects/effects';
-import type { BaseTick, TickSnapshot } from '../ticks/BaseTick';
+import { SustainGate } from '../midi/liveNotes';
+import type { LiveTrack } from '../midi/router';
+import { upgradeTrackState, type LegacyTrackState } from '../notes/migrate';
+import type { PatternNote } from '../notes/Note';
+import { NotePattern } from '../notes/NotePattern';
 import type { TrackType } from './registry';
 
 export interface TrackSnapshot {
     id: string;
     type: TrackType;
-    ticks: TickSnapshot[];
+    /** Length of the pattern in steps. */
+    length: number;
+    /** Sorted by start. */
+    notes: PatternNote[];
     volume: number;
     pan: number;
     automation: StepAutomationSnapshot[];
@@ -39,8 +47,20 @@ export interface TrackState extends TrackSnapshot {
 /** Every parameter of a track type, in menu order and by key. Frozen, so Vue hands it out without proxying it. */
 const PARAMETER_TABLES = new WeakMap<object, ParameterTable>();
 
+/** A tempo lookup that needs no allocation: the transport's BPM param. */
+interface TempoSource {
+    getValueAtTime(time: number): number;
+}
+
 /**
- * Common behaviour of every track: a row of ticks, an effect chain and a volume/pan stage that feeds the container's bus.
+ * The last tempo lookup. Tone's `getValueAtTime` costs close to a microsecond, and in one step callback every track
+ * of a context asks the same transport about the same time, so they share one lookup per step.
+ */
+const lastTempo: { source: TempoSource | null; time: number; stepSeconds: number } = { source: null, time: Number.NaN, stepSeconds: 0 };
+
+/**
+ * Common behaviour of every track: a pattern of notes (see `NotePattern`), an effect chain and a volume/pan stage
+ * that feeds the container's bus.
  *
  * Every track has its own length. The sequencer hands every track the same running step,
  * and the track wraps it around its own pattern, so a 16-step track repeats twice per section
@@ -53,12 +73,10 @@ const PARAMETER_TABLES = new WeakMap<object, ParameterTable>();
  * (they are expensive to proxy and rely on private state). Everything else on a track
  * is plain data and can be observed by the UI.
  */
-export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Automatable {
+export abstract class BaseTrack extends NotePattern implements Automatable, LiveTrack {
     readonly id: string;
 
     abstract readonly type: TrackType;
-
-    readonly ticks: TTick[];
 
     readonly effects = markRaw(new Effects({ role: 'track' }));
 
@@ -75,42 +93,125 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
     /** Whether a new note stops the one still sounding (cut) or plays on top of it (overlap). */
     cutsNotes = false;
 
+    /** The transport's tempo, looked up once (see `secondsPerStepAt`). */
+    private tempo: TempoSource | null = null;
+
+    /**
+     * Whether MIDI input plays this track (see `midi/router.ts`). Transient: not saved and not in history, so
+     * undo never disarms a track.
+     */
+    isArmed = false;
+
+    /** Live notes (MIDI) that sound, and the sustain pedal holding some of them. Raw: the track itself is reactive. */
+    private readonly liveGate = markRaw(new SustainGate());
+
     constructor(id = createId()) {
+        super(STEP_COUNT);
         this.id = id;
-        this.ticks = Array.from({ length: STEP_COUNT }, () => this.createTick());
     }
 
-    protected abstract createTick(): TTick;
-
-    /** Length of the pattern in steps. */
-    get length(): number {
-        return this.ticks.length;
-    }
-
-    /** Changes the length of the pattern. New steps start silent, removed steps are gone. Automation lanes follow. */
-    setLength(length: number): void {
-        const target = normalizeTrackLength(length);
-        if (target > this.ticks.length) {
-            this.ticks.push(...Array.from({ length: target - this.ticks.length }, () => this.createTick()));
-        } else {
-            this.ticks.splice(target);
-        }
-        this.automation.resize(target);
+    /** Changes the length of the pattern (see `NotePattern.setLength`). Automation lanes follow. */
+    override setLength(length: number): void {
+        super.setLength(length);
+        this.automation.resize(this.length);
     }
 
     /** The position inside this pattern for a running step count. */
     stepOf(step: number): number {
-        return ((step % this.ticks.length) + this.ticks.length) % this.ticks.length;
+        return ((step % this.length) + this.length) % this.length;
     }
 
-    /** Called by the sequencer for every step: applies the step's automation, then plays whatever the tick holds. */
+    /**
+     * Called by the sequencer for every step (on the raw track, never through Vue's proxy): applies the step's
+     * automation, then schedules every note that starts in `[p, p + 1)`, where `p` is the step's position in the
+     * pattern, at its exact offset inside the step. Allocates nothing: the notes come from the bucket index.
+     */
     play(step: number, time: number): void {
-        this.applyAutomation(this.stepOf(step), time);
-        this.trigger(step, time);
+        const position = this.stepOf(step);
+        this.applyAutomation(position, time);
+        if (this.isMuted) {
+            return;
+        }
+        const notes = this.notesStartingAt(position);
+        if (!notes.length) {
+            return;
+        }
+        const stepSeconds = this.secondsPerStepAt(time);
+        for (let i = 0; i < notes.length; i++) {
+            const note = notes[i]!;
+            this.trigger(note, time + (note.start - position) * stepSeconds, note.length * stepSeconds);
+        }
     }
 
-    /** Makes the sound of a step. `step` keeps counting past the pattern; `time` is the audio-context time to schedule at. */
-    protected abstract trigger(step: number, time: number): void;
+    /** Seconds one step (a 16th) lasts at `time`, from the tempo of the transport this track's context runs. */
+    protected secondsPerStepAt(time: number): number {
+        const tempo = (this.tempo ??= markRaw(this.output.context.transport.bpm));
+        if (lastTempo.source !== tempo || lastTempo.time !== time) {
+            lastTempo.source = tempo;
+            lastTempo.time = time;
+            lastTempo.stepSeconds = 15 / tempo.getValueAtTime(time);
+        }
+        return lastTempo.stepSeconds;
+    }
+
+    /** Plays one note at `time` (audio-context seconds) for `duration` seconds. */
+    protected abstract trigger(note: PatternNote, time: number, duration: number): void;
+
+    /* ---- live notes (MIDI), see `midi/router.ts` ---- */
+
+    /** How many live notes sound, held by their key or by the sustain pedal. */
+    get liveNoteCount(): number {
+        return this.liveGate.size;
+    }
+
+    /**
+     * Starts a live note at `time` (normally `context.currentTime`: live notes skip the look-ahead) and holds it until
+     * `noteOff` with the same `id`. The same id again restarts the note. A muted track keeps count but stays silent.
+     */
+    noteOn(id: string, note: string, velocity: number, time: number): void {
+        if (this.liveGate.press(id)) {
+            this.stopLiveNote(id, time);
+        }
+        if (!this.isMuted) {
+            this.startLiveNote(id, note, velocity, time);
+        }
+    }
+
+    /** Releases a live note, unless the sustain pedal is down: then it rings until the pedal comes up. */
+    noteOff(id: string, time: number): void {
+        if (this.liveGate.release(id)) {
+            this.stopLiveNote(id, time);
+        }
+    }
+
+    /** The sustain pedal: note-offs while it is down are held back and released when it comes up. */
+    setSustain(down: boolean, time: number): void {
+        for (const id of this.liveGate.pedal(down)) {
+            this.stopLiveNote(id, time);
+        }
+    }
+
+    /** Releases every live note (a panic, an input that went away); the pedal state stays. */
+    allNotesOff(time: number): void {
+        for (const id of this.liveGate.clear()) {
+            this.stopLiveNote(id, time);
+        }
+    }
+
+    /** Live pitch bend, -1..1. Only synths bend (by their own range); the value is played, not stored. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    setLiveBend(value: number, time: number): void {}
+
+    /** Makes a live note sound. The track type decides how (a synth voice, a sample voice). */
+    protected abstract startLiveNote(id: string, note: string, velocity: number, time: number): void;
+
+    /** Stops a live note (its release, or a gate fade). Unknown ids are ignored. */
+    protected abstract stopLiveNote(id: string, time: number): void;
+
+    /** The audio-context time now, for changes that must reach live notes right away. */
+    protected get now(): number {
+        return this.output.context.currentTime;
+    }
 
     /** Wires `source -> effects -> output`. Subclasses call this once with their sound source; `connectTo` decides where the output goes. */
     protected connectSource(source: ToneAudioNode): void {
@@ -146,16 +247,6 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         return Promise.resolve();
     }
 
-    /** Returns the tick for a step if it should sound, otherwise null. */
-    protected activeTick(step: number): TTick | null {
-        if (this.isMuted) {
-            return null;
-        }
-
-        const tick = this.ticks[this.stepOf(step)];
-        return tick?.isActive ? tick : null;
-    }
-
     /** With a `time` the level is only played, not stored (automation); see `settle`. */
     setVolume(volume: number, time?: number): void {
         this.output.volume.rampTo(volume, PARAM_RAMP_TIME, time);
@@ -173,6 +264,11 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
 
     toggleMute(): void {
         this.isMuted = !this.isMuted;
+    }
+
+    /** Arms or disarms the track for MIDI input. Disarming does not stop notes still held: their note-offs still arrive. */
+    setArmed(armed: boolean): void {
+        this.isArmed = armed;
     }
 
     setCutsNotes(cuts: boolean): void {
@@ -244,50 +340,63 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         return param ? this.automation.add(key, toNormalized(param, this.getParameter(key))) : null;
     }
 
-    private applyAutomation(index: number, time: number): void {
-        for (const lane of this.automation.lanes) {
-            const param = this.parameter(lane.param);
-            const position = valueAt(lane.points, index);
-            if (param && position !== null) {
-                this.setParameter(lane.param, toValue(param, position), time);
-            }
+    /**
+     * Parameters whose lanes are being recorded (MIDI controllers, pitch bend): their lanes do not play meanwhile, so
+     * the controller is heard, not the old curve ("touch"). Transient and raw; see `holdAutomation`.
+     */
+    private readonly heldLanes: Set<string> = markRaw(new Set<string>());
+
+    /** Stops a parameter's lane from playing while it is recorded. */
+    holdAutomation(key: string): void {
+        toRaw(this).heldLanes.add(key);
+    }
+
+    /** Lets a held lane play again and puts the parameter back to its stored value until the lane's next step. */
+    releaseAutomation(key: string): void {
+        if (toRaw(this).heldLanes.delete(key)) {
+            this.settle(key);
         }
     }
 
-    /* ---- pattern tools ---- */
-
-    /** Activates every n-th tick and deactivates all others. */
-    activateEveryNth(interval: number): void {
-        this.ticks.forEach((tick, index) => {
-            tick.isActive = index % interval === 0;
-        });
-    }
-
-    /** Deactivates every tick. */
-    clear(): void {
-        this.ticks.forEach((tick) => (tick.isActive = false));
-    }
-
-    /** Activates a random selection of ticks. `density` is the share of ticks that end up active (0..1). */
-    randomize(density = 0.4): void {
-        this.ticks.forEach((tick) => (tick.isActive = Math.random() < density));
-    }
-
-    /** Rotates the pattern by one step to the right (`1`) or to the left (`-1`). */
-    rotateTicks(direction: 1 | -1): void {
-        if (direction === 1) {
-            this.ticks.unshift(this.ticks.pop()!);
-        } else {
-            this.ticks.push(this.ticks.shift()!);
+    /**
+     * Applies the step lanes for the step window `[index, index + 1)` starting at `time`: the curve's value at the step,
+     * then every point inside the window at its own time (recorded controller moves sit between steps). No allocation.
+     */
+    private applyAutomation(index: number, time: number): void {
+        const lanes = this.automation.lanes;
+        const held = this.heldLanes;
+        let stepSeconds = 0;
+        for (let l = 0; l < lanes.length; l++) {
+            const lane = lanes[l]!;
+            const param = this.parameter(lane.param);
+            if (!param || (held.size && held.has(lane.param))) {
+                continue;
+            }
+            const points = lane.points;
+            const position = valueAt(points, index);
+            if (position === null) {
+                continue;
+            }
+            this.setParameter(lane.param, toValue(param, position), time);
+            const end = index + 1;
+            for (let i = firstPointAfter(points, index); i < points.length; i++) {
+                const point = points[i]!;
+                if (point.step >= end) {
+                    break;
+                }
+                stepSeconds ||= this.secondsPerStepAt(time);
+                this.setParameter(lane.param, toValue(param, point.value), time + (point.step - index) * stepSeconds);
+            }
         }
     }
 
     /** Copies the pattern, effects, automation and settings of another track of the same type onto this one. */
     async copyFrom(source: this): Promise<void> {
         this.setLength(source.length);
-        source.ticks.forEach((tick, index) => {
-            this.ticks[index] = tick.clone();
-        });
+        // New ids: a note belongs to one track.
+        this.setNotes(source.notes.map((note) => ({ note: note.note, start: note.start, length: note.length, velocity: note.velocity })));
+        this.stepNote = source.stepNote;
+        this.stepLength = source.stepLength;
         this.effects.copyFrom(source.effects);
         this.automation.copyFrom(source.automation);
         this.setVolume(source.volume);
@@ -307,7 +416,8 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         return {
             id: this.id,
             type: this.type,
-            ticks: this.ticks.map((tick) => tick.serialize()),
+            length: this.length,
+            notes: this.serializeNotes(),
             volume: this.volume,
             pan: this.pan,
             isMuted: this.isMuted,
@@ -317,10 +427,14 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         };
     }
 
-    /** Takes a captured state back. Ticks keep their objects, so the grid does not re-render from scratch. */
-    restore(state: TrackState): void {
-        this.setLength(state.ticks.length);
-        state.ticks.forEach((tick, index) => this.ticks[index]!.restore(tick));
+    /**
+     * Takes a captured state back. Notes that are still there keep their objects, so the grid does not re-render from
+     * scratch. A state from before notes (ticks) is converted first.
+     */
+    restore(saved: TrackState | LegacyTrackState): void {
+        const state = upgradeTrackState(saved);
+        this.setLength(state.length);
+        this.setNotes(state.notes);
         this.setVolume(state.volume);
         this.setPan(state.pan);
         this.isMuted = state.isMuted;
@@ -335,7 +449,8 @@ export abstract class BaseTrack<TTick extends BaseTick = BaseTick> implements Au
         return {
             id: this.id,
             type: this.type,
-            ticks: this.ticks.map((tick) => tick.serialize()),
+            length: this.length,
+            notes: this.serializeNotes(),
             volume: this.volume,
             pan: this.pan,
             automation: this.automation.serialize(),

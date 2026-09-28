@@ -11,6 +11,10 @@
 //!
 //! A taken-over voice glides to the new velocity, and the sustain level glides when it changes, so neither zips.
 //! Attack, decay and release times apply to sounding voices at once; a new time only changes the rate.
+//!
+//! **Live notes** (a MIDI keyboard): a note can carry an id and be held until `note_off` with that id releases it
+//! (`note_on` with a negative duration). Scheduled notes use id 0, which `note_off` never matches. **Pitch bend**
+//! (`Param::Bend`, semitones) shifts every voice, gliding over `BEND_GLIDE_S` so a wheel move does not zip.
 
 use crate::{Adsr, AdsrParams, OnePole, PolyBlepOsc, Waveform};
 
@@ -25,6 +29,10 @@ pub const MAX_BLOCK: usize = 128;
 const VELOCITY_GLIDE_S: f32 = 0.003;
 /// Time constant of the sustain level glide, in seconds.
 const SUSTAIN_GLIDE_S: f32 = 0.005;
+/// Time constant of the pitch bend glide, in seconds.
+const BEND_GLIDE_S: f32 = 0.004;
+/// Bends beyond this many semitones either way are clamped.
+const MAX_BEND: f32 = 48.0;
 
 const NEVER: i64 = i64::MAX;
 
@@ -52,6 +60,8 @@ pub enum Param {
     Sustain = 3,
     /// Seconds.
     Release = 4,
+    /// Pitch bend of every voice, in semitones (0 = none).
+    Bend = 5,
 }
 
 impl Param {
@@ -62,6 +72,7 @@ impl Param {
             2 => Param::Decay,
             3 => Param::Sustain,
             4 => Param::Release,
+            5 => Param::Bend,
             _ => return None,
         })
     }
@@ -69,7 +80,9 @@ impl Param {
 
 #[derive(Clone, Copy, Debug)]
 enum Event {
-    NoteOn { hz: f32, velocity: f32, release_at: i64 },
+    /// `release_at` is `NEVER` for a held note (released by `NoteOff`).
+    NoteOn { id: u32, hz: f32, velocity: f32, release_at: i64 },
+    NoteOff { id: u32 },
     Param { param: Param, value: f32 },
 }
 
@@ -92,8 +105,14 @@ struct Voice {
     velocity: OnePole,
     /// When the voice was (re)started, for oldest-first stealing and for finding the mono voice.
     order: u64,
-    /// Absolute frame the gate closes at, `NEVER` once it has.
+    /// Absolute frame the gate closes at, `NEVER` when no release is scheduled (held, or released already).
     release_at: i64,
+    /// Whether the gate is open (the note is held); false once released.
+    gate: bool,
+    /// The id of the note it plays, for `note_off`; 0 for scheduled notes.
+    id: u32,
+    /// The note's own frequency, before the bend.
+    hz: f32,
 }
 
 impl Voice {
@@ -104,6 +123,9 @@ impl Voice {
             velocity: OnePole::new(sample_rate, VELOCITY_GLIDE_S, 0.0),
             order: 0,
             release_at: NEVER,
+            gate: false,
+            id: 0,
+            hz: 0.0,
         }
     }
 
@@ -111,7 +133,7 @@ impl Voice {
         self.env.is_idle()
     }
 
-    fn start(&mut self, hz: f32, velocity: f32, release_at: i64, order: u64) {
+    fn start(&mut self, id: u32, hz: f32, bend: f32, velocity: f32, release_at: i64, order: u64) {
         if self.is_idle() {
             // A fresh voice starts at phase 0 and level 0, so its first samples ramp up from silence.
             self.osc.reset(0.0);
@@ -119,20 +141,24 @@ impl Voice {
         } else {
             self.velocity.set_target(velocity);
         }
-        self.osc.set_frequency(hz);
+        self.hz = hz;
+        self.osc.set_frequency(hz * bend);
         self.env.gate_on();
         self.release_at = release_at;
+        self.gate = true;
+        self.id = id;
         self.order = order;
     }
 
     fn release(&mut self) {
         self.env.gate_off();
         self.release_at = NEVER;
+        self.gate = false;
     }
 
     /// Adds the voice to `out`, which starts at absolute frame `start`. `sustain` holds per-sample sustain levels
-    /// while the level glides.
-    fn render_add(&mut self, out: &mut [f32], start: i64, sustain: Option<&[f32]>) {
+    /// while the level glides, `bend` per-sample frequency ratios while the bend glides.
+    fn render_add(&mut self, out: &mut [f32], start: i64, sustain: Option<&[f32]>, bend: Option<&[f32]>) {
         if self.is_idle() {
             return;
         }
@@ -140,15 +166,26 @@ impl Voice {
         let mut from = 0;
         if self.release_at < end {
             let at = (self.release_at - start).max(0) as usize;
-            self.run(&mut out[..at], sustain.map(|levels| &levels[..at]));
+            self.run(&mut out[..at], sustain.map(|levels| &levels[..at]), bend.map(|ratios| &ratios[..at]));
             self.release();
             from = at;
         }
-        self.run(&mut out[from..], sustain.map(|levels| &levels[from..]));
+        self.run(&mut out[from..], sustain.map(|levels| &levels[from..]), bend.map(|ratios| &ratios[from..]));
     }
 
     #[inline]
-    fn run(&mut self, out: &mut [f32], sustain: Option<&[f32]>) {
+    fn run(&mut self, out: &mut [f32], sustain: Option<&[f32]>, bend: Option<&[f32]>) {
+        if let Some(ratios) = bend {
+            // Rare (only while the bend glides): the general loop, frequency and sustain per sample.
+            for (i, sample) in out.iter_mut().enumerate() {
+                if let Some(levels) = sustain {
+                    self.env.set_sustain(levels[i]);
+                }
+                self.osc.set_frequency(self.hz * ratios[i]);
+                *sample += self.osc.next_sample() * self.env.next_sample() * self.velocity.next_sample();
+            }
+            return;
+        }
         match sustain {
             Some(levels) => {
                 for (sample, &level) in out.iter_mut().zip(levels) {
@@ -177,6 +214,11 @@ pub struct Synth {
     params: AdsrParams,
     sustain: OnePole,
     sustain_levels: [f32; MAX_BLOCK],
+    /// Pitch bend in semitones, gliding.
+    bend: OnePole,
+    /// The frequency ratio of the settled bend.
+    bend_ratio: f32,
+    bend_ratios: [f32; MAX_BLOCK],
     queue: [Queued; MAX_EVENTS],
     queued: usize,
     seq: u64,
@@ -193,6 +235,9 @@ impl Synth {
             params,
             sustain: OnePole::new(sample_rate, SUSTAIN_GLIDE_S, params.sustain),
             sustain_levels: [0.0; MAX_BLOCK],
+            bend: OnePole::new(sample_rate, BEND_GLIDE_S, 0.0),
+            bend_ratio: 1.0,
+            bend_ratios: [1.0; MAX_BLOCK],
             queue: [Queued::EMPTY; MAX_EVENTS],
             queued: 0,
             seq: 0,
@@ -200,13 +245,21 @@ impl Synth {
         }
     }
 
-    /// Queues a note at `frame` that is released `duration_frames` later. False when it is invalid or the queue is full.
-    pub fn note_on(&mut self, frame: i64, hz: f32, velocity: f32, duration_frames: i64) -> bool {
+    /// Queues a note at `frame` that is released `duration_frames` later, or held until `note_off(id)` when
+    /// `duration_frames` is negative. `id` 0 means "no id" (a scheduled note). False when it is invalid or the queue
+    /// is full.
+    pub fn note_on(&mut self, frame: i64, id: u32, hz: f32, velocity: f32, duration_frames: i64) -> bool {
         if !(hz.is_finite() && hz > 0.0 && velocity.is_finite()) {
             return false;
         }
-        let release_at = frame.saturating_add(duration_frames.max(0));
-        self.push(frame, Event::NoteOn { hz, velocity: velocity.clamp(0.0, 1.0), release_at })
+        let release_at = if duration_frames < 0 { NEVER } else { frame.saturating_add(duration_frames) };
+        self.push(frame, Event::NoteOn { id, hz, velocity: velocity.clamp(0.0, 1.0), release_at })
+    }
+
+    /// Queues the release of every held voice playing note `id` at `frame`. Id 0 is never matched. False when the
+    /// queue is full.
+    pub fn note_off(&mut self, frame: i64, id: u32) -> bool {
+        id != 0 && self.push(frame, Event::NoteOff { id })
     }
 
     /// Queues a parameter change at `frame`. False for an unknown id, a non-finite value or a full queue.
@@ -268,8 +321,21 @@ impl Synth {
             }
         }
         let levels = if gliding { Some(&self.sustain_levels[..out.len()]) } else { None };
+        let bending = !self.bend.is_settled();
+        if bending {
+            for ratio in &mut self.bend_ratios[..out.len()] {
+                *ratio = semitones_ratio(self.bend.next_sample());
+            }
+        }
+        let ratios = if bending { Some(&self.bend_ratios[..out.len()]) } else { None };
         for voice in &mut self.voices {
-            voice.render_add(out, start, levels);
+            voice.render_add(out, start, levels, ratios);
+        }
+        if bending && self.bend.is_settled() {
+            self.bend_ratio = semitones_ratio(self.bend.value());
+            for voice in &mut self.voices {
+                voice.osc.set_frequency(voice.hz * self.bend_ratio);
+            }
         }
         if self.level != 1.0 {
             for sample in out.iter_mut() {
@@ -317,7 +383,7 @@ impl Synth {
 
     fn apply(&mut self, queued: Queued, now: i64) {
         match queued.event {
-            Event::NoteOn { hz, velocity, release_at } => {
+            Event::NoteOn { id, hz, velocity, release_at } => {
                 // A note that arrives after its own end (a very late message) is dropped rather than blipped.
                 if release_at <= now {
                     return;
@@ -332,7 +398,15 @@ impl Synth {
                         }
                     }
                 }
-                self.voices[index].start(hz, velocity, release_at, order);
+                let bend = self.current_bend_ratio();
+                self.voices[index].start(id, hz, bend, velocity, release_at, order);
+            }
+            Event::NoteOff { id } => {
+                for voice in &mut self.voices {
+                    if voice.id == id && voice.gate && !voice.is_idle() {
+                        voice.release();
+                    }
+                }
             }
             Event::Param { param, value } => self.apply_param(param, value),
         }
@@ -363,7 +437,13 @@ impl Synth {
                     voice.env.set_params(params);
                 }
             }
+            Param::Bend => self.bend.set_target(value.clamp(-MAX_BEND, MAX_BEND)),
         }
+    }
+
+    /// The bend ratio a note starting now plays at (the glide's current value).
+    fn current_bend_ratio(&self) -> f32 {
+        if self.bend.is_settled() { self.bend_ratio } else { semitones_ratio(self.bend.value()) }
     }
 
     /// Mono: the voice that sounds (the latest one). Poly: a free voice, else the oldest releasing one, else the oldest.
@@ -374,7 +454,7 @@ impl Synth {
         let free = || (0..MAX_VOICES).find(|&i| self.voices[i].is_idle());
         let oldest = |released_only: bool| {
             (0..MAX_VOICES)
-                .filter(|&i| !released_only || self.voices[i].release_at == NEVER)
+                .filter(|&i| !released_only || !self.voices[i].gate)
                 .min_by_key(|&i| self.voices[i].order)
         };
         if self.mono {
@@ -384,6 +464,12 @@ impl Synth {
         }
         free().or_else(|| oldest(true)).or_else(|| oldest(false)).unwrap_or(0)
     }
+}
+
+/// The frequency ratio of a shift by `semitones`.
+#[inline]
+fn semitones_ratio(semitones: f32) -> f32 {
+    libm::exp2f(semitones / 12.0)
 }
 
 #[cfg(test)]
@@ -432,7 +518,7 @@ mod tests {
     fn a4_sounds_at_440_hz_with_full_level() {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Sustain as u32, 1.0);
-        assert!(synth.note_on(0, 440.0, 1.0, 48_000));
+        assert!(synth.note_on(0, 0, 440.0, 1.0, 48_000));
         let out = render(&mut synth, 0, 48_000);
         let body = &out[4_800..43_200];
         let hz = estimate_hz(body);
@@ -445,7 +531,7 @@ mod tests {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Waveform as u32, Waveform::Square as u32 as f32);
         // Frame 1_000 is in the middle of the 8th 128-frame block.
-        synth.note_on(1_000, 220.0, 1.0, 4_800);
+        synth.note_on(1_000, 0, 220.0, 1.0, 4_800);
         let mut out = Vec::new();
         for block in 0..20 {
             out.extend(render(&mut synth, block * 128, 128));
@@ -460,8 +546,8 @@ mod tests {
     #[test]
     fn late_events_apply_at_the_block_start_and_expired_notes_are_dropped() {
         let mut synth = Synth::new(SR);
-        synth.note_on(100, 440.0, 1.0, 10_000);
-        synth.note_on(0, 440.0, 1.0, 50);
+        synth.note_on(100, 0, 440.0, 1.0, 10_000);
+        synth.note_on(0, 0, 440.0, 1.0, 50);
         let out = render(&mut synth, 1_000, 128);
         assert_eq!(first_sound(&out), Some(1));
         assert_eq!(synth.active_voices(), 1);
@@ -472,7 +558,7 @@ mod tests {
     fn velocity_scales_the_level() {
         let level = |velocity: f32| {
             let mut synth = Synth::new(SR);
-            synth.note_on(0, 440.0, velocity, 48_000);
+            synth.note_on(0, 0, 440.0, velocity, 48_000);
             rms(&render(&mut synth, 0, 24_000)[4_800..])
         };
         let ratio = level(0.5) / level(1.0);
@@ -483,7 +569,7 @@ mod tests {
     fn note_releases_after_its_duration() {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Release as u32, 0.1);
-        synth.note_on(0, 440.0, 1.0, 4_800);
+        synth.note_on(0, 0, 440.0, 1.0, 4_800);
         let out = render(&mut synth, 0, 24_000);
         assert!(peak(&out[4_000..4_800]) > 0.25);
         assert!(peak(&out[9_700..10_000]) < 0.01, "{}", peak(&out[9_700..10_000]));
@@ -494,8 +580,8 @@ mod tests {
     #[test]
     fn poly_mode_overlaps_notes() {
         let mut synth = Synth::new(SR);
-        synth.note_on(0, 440.0, 1.0, 24_000);
-        synth.note_on(4_800, 660.0, 1.0, 24_000);
+        synth.note_on(0, 0, 440.0, 1.0, 24_000);
+        synth.note_on(4_800, 0, 660.0, 1.0, 24_000);
         render(&mut synth, 0, 9_600);
         assert_eq!(synth.active_voices(), 2);
     }
@@ -504,12 +590,12 @@ mod tests {
     fn poly_mode_steals_the_oldest_voice() {
         let mut synth = Synth::new(SR);
         for i in 0..MAX_VOICES as i64 {
-            synth.note_on(i * 10, 100.0 + i as f32, 1.0, 48_000);
+            synth.note_on(i * 10, 0, 100.0 + i as f32, 1.0, 48_000);
         }
         render(&mut synth, 0, 1_000);
         assert_eq!(synth.active_voices(), MAX_VOICES);
         let oldest = synth.voices.iter().position(|voice| voice.order == 1).unwrap();
-        synth.note_on(1_000, 999.0, 1.0, 48_000);
+        synth.note_on(1_000, 0, 999.0, 1.0, 48_000);
         render(&mut synth, 1_000, 128);
         assert_eq!(synth.active_voices(), MAX_VOICES);
         assert_eq!(synth.voices[oldest].order, MAX_VOICES as u64 + 1);
@@ -518,13 +604,13 @@ mod tests {
     #[test]
     fn stealing_prefers_a_releasing_voice() {
         let mut synth = Synth::new(SR);
-        synth.note_on(0, 100.0, 1.0, 48_000);
+        synth.note_on(0, 0, 100.0, 1.0, 48_000);
         for i in 1..MAX_VOICES as i64 {
             // Short notes, still ringing (release 1 s) when the next note comes.
-            synth.note_on(i * 10, 100.0 + i as f32, 1.0, 100);
+            synth.note_on(i * 10, 0, 100.0 + i as f32, 1.0, 100);
         }
         render(&mut synth, 0, 1_000);
-        synth.note_on(1_000, 999.0, 1.0, 48_000);
+        synth.note_on(1_000, 0, 999.0, 1.0, 48_000);
         render(&mut synth, 1_000, 128);
         // The long note (the oldest, still held) survives; the oldest released one (order 2) was taken.
         assert_eq!(synth.voices.iter().filter(|voice| voice.order == 1).count(), 1);
@@ -536,8 +622,8 @@ mod tests {
         let mut synth = Synth::new(SR);
         synth.set_mono(true);
         synth.set_param(0, Param::Sustain as u32, 1.0);
-        synth.note_on(0, 440.0, 1.0, 48_000);
-        synth.note_on(9_600, 660.0, 1.0, 4_800);
+        synth.note_on(0, 0, 440.0, 1.0, 48_000);
+        synth.note_on(9_600, 0, 660.0, 1.0, 4_800);
         let out = render(&mut synth, 0, 24_000);
         assert_eq!(synth.active_voices(), 1);
         // No jump where the second note takes over.
@@ -556,13 +642,13 @@ mod tests {
     #[test]
     fn switching_to_mono_releases_the_other_voices_on_the_next_note() {
         let mut synth = Synth::new(SR);
-        synth.note_on(0, 440.0, 1.0, 48_000);
-        synth.note_on(10, 550.0, 1.0, 48_000);
+        synth.note_on(0, 0, 440.0, 1.0, 48_000);
+        synth.note_on(10, 0, 550.0, 1.0, 48_000);
         render(&mut synth, 0, 128);
         synth.set_mono(true);
-        synth.note_on(200, 660.0, 1.0, 48_000);
+        synth.note_on(200, 0, 660.0, 1.0, 48_000);
         render(&mut synth, 128, 128);
-        let held = synth.voices.iter().filter(|voice| !voice.is_idle() && voice.release_at != NEVER).count();
+        let held = synth.voices.iter().filter(|voice| !voice.is_idle() && voice.gate).count();
         assert_eq!(held, 1);
     }
 
@@ -570,7 +656,7 @@ mod tests {
     fn timed_params_apply_on_their_frame() {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Sustain as u32, 1.0);
-        synth.note_on(0, 440.0, 1.0, 96_000);
+        synth.note_on(0, 0, 440.0, 1.0, 96_000);
         synth.set_param(24_000, Param::Sustain as u32, 0.25);
         let out = render(&mut synth, 0, 48_000);
         assert!((peak(&out[20_000..24_000]) - 1.0).abs() < 0.01);
@@ -585,7 +671,7 @@ mod tests {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Sustain as u32, 1.0);
         synth.set_param(0, Param::Waveform as u32, Waveform::Square as u32 as f32);
-        synth.note_on(0, 100.0, 1.0, 48_000);
+        synth.note_on(0, 0, 100.0, 1.0, 48_000);
         let out = render(&mut synth, 0, 24_000);
         assert!((rms(&out[4_800..]) - 0.85).abs() < 0.03, "{}", rms(&out[4_800..]));
     }
@@ -593,8 +679,8 @@ mod tests {
     #[test]
     fn rejects_bad_input_and_a_full_queue() {
         let mut synth = Synth::new(SR);
-        assert!(!synth.note_on(0, f32::NAN, 1.0, 10));
-        assert!(!synth.note_on(0, 0.0, 1.0, 10));
+        assert!(!synth.note_on(0, 0, f32::NAN, 1.0, 10));
+        assert!(!synth.note_on(0, 0, 0.0, 1.0, 10));
         assert!(!synth.set_param(0, 99, 1.0));
         for i in 0..MAX_EVENTS as i64 {
             assert!(synth.set_param(i, Param::Attack as u32, 0.01));
@@ -608,8 +694,86 @@ mod tests {
         let mut synth = Synth::new(SR);
         synth.set_param(0, Param::Sustain as u32, 0.2);
         synth.set_param(0, Param::Sustain as u32, 0.8);
-        synth.note_on(0, 440.0, 1.0, 48_000);
+        synth.note_on(0, 0, 440.0, 1.0, 48_000);
         let out = render(&mut synth, 0, 24_000);
         assert!((peak(&out[20_000..]) - 0.8).abs() < 0.01);
+    }
+
+    #[test]
+    fn held_note_sounds_until_its_note_off() {
+        let mut synth = Synth::new(SR);
+        synth.set_param(0, Param::Release as u32, 0.1);
+        assert!(synth.note_on(0, 7, 440.0, 1.0, -1));
+        let out = render(&mut synth, 0, 96_000);
+        assert!(peak(&out[90_000..]) > 0.25, "still held after 2 s");
+        assert_eq!(synth.active_voices(), 1);
+        // Id 0 and another id do not release it.
+        assert!(!synth.note_off(96_000, 0));
+        assert!(synth.note_off(96_000, 8));
+        let out = render(&mut synth, 96_000, 4_800);
+        assert!(peak(&out[4_000..]) > 0.25);
+        assert!(synth.note_off(100_800, 7));
+        let out = render(&mut synth, 100_800, 24_000);
+        assert!(peak(&out[..200]) > 0.2);
+        assert!(peak(&out[5_000..5_600]) < 0.01, "{}", peak(&out[5_000..5_600]));
+        assert_eq!(synth.active_voices(), 0);
+    }
+
+    #[test]
+    fn note_off_applies_on_its_frame() {
+        let mut synth = Synth::new(SR);
+        synth.set_param(0, Param::Sustain as u32, 1.0);
+        synth.set_param(0, Param::Release as u32, 0.01);
+        synth.note_on(0, 3, 440.0, 1.0, -1);
+        synth.note_off(10_000, 3);
+        let out = render(&mut synth, 0, 12_000);
+        assert!(peak(&out[9_000..10_000]) > 0.99);
+        // Exponential release over 10 ms: well down 5 ms after the note-off.
+        assert!(peak(&out[10_240..10_500]) < 0.5, "{}", peak(&out[10_240..10_500]));
+    }
+
+    #[test]
+    fn mono_takeover_passes_the_voice_to_the_new_id() {
+        let mut synth = Synth::new(SR);
+        synth.set_mono(true);
+        synth.set_param(0, Param::Sustain as u32, 1.0);
+        synth.note_on(0, 1, 440.0, 1.0, -1);
+        synth.note_on(4_800, 2, 660.0, 1.0, -1);
+        // The first key comes up: the voice now plays note 2 and keeps sounding.
+        synth.note_off(9_600, 1);
+        let out = render(&mut synth, 0, 24_000);
+        assert_eq!(synth.active_voices(), 1);
+        assert!((estimate_hz(&out[12_000..24_000]) - 660.0).abs() < 1.0);
+        assert!(peak(&out[20_000..]) > 0.99);
+        synth.note_off(24_000, 2);
+        render(&mut synth, 24_000, 96_000);
+        assert_eq!(synth.active_voices(), 0);
+    }
+
+    #[test]
+    fn bend_shifts_every_voice_and_glides() {
+        let mut synth = Synth::new(SR);
+        synth.set_param(0, Param::Sustain as u32, 1.0);
+        synth.set_param(0, Param::Release as u32, 0.01);
+        synth.note_on(0, 1, 440.0, 1.0, -1);
+        synth.set_param(24_000, Param::Bend as u32, 2.0);
+        let out = render(&mut synth, 0, 48_000);
+        assert!((estimate_hz(&out[4_800..23_900]) - 440.0).abs() < 0.1);
+        let bent = 440.0 * libm::exp2f(2.0 / 12.0);
+        let hz = estimate_hz(&out[26_000..48_000]);
+        assert!((hz - bent).abs() < 0.2, "{hz} vs {bent}");
+        // No jump: the glide keeps sample steps within the slope of the bent sine.
+        let max_step = out[23_900..25_000].windows(2).map(|w| (w[1] - w[0]).abs()).fold(0.0f32, f32::max);
+        assert!(max_step <= 2.0 * core::f32::consts::PI * bent / SR * 1.05, "{max_step}");
+        // A note started under the bend is bent too.
+        synth.note_on(48_000, 2, 220.0, 1.0, -1);
+        synth.note_off(48_000, 1);
+        let out = render(&mut synth, 48_000, 96_000);
+        let hz = estimate_hz(&out[72_000..]);
+        assert!((hz - 220.0 * libm::exp2f(2.0 / 12.0)).abs() < 0.2, "{hz}");
+        // And bending back returns it to its own pitch.
+        synth.set_param(144_000, Param::Bend as u32, 0.0);
+        let out = render(&mut synth, 144_000, 24_000);
+        assert!((estimate_hz(&out[4_800..]) - 220.0).abs() < 0.1);
     }
 }

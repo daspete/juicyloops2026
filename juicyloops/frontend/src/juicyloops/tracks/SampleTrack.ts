@@ -2,10 +2,11 @@ import { Gain, ToneBufferSource } from 'tone';
 import { markRaw } from 'vue';
 import { decodeBlob } from '../audio';
 import { sampleJobs } from '../dsp/sampleJobs';
-import { semitonesBetween } from '../notes';
+import { SAMPLE_ROOT_NOTE, semitonesBetween } from '../notes';
+import type { PatternNote } from '../notes/Note';
 import { evenCuts, normalizeCuts, sliceRanges, type OnsetOptions, type SliceRange } from '../slices';
 import { semitoneRatio } from '../stretch';
-import { SAMPLE_ROOT_NOTE, SampleTick } from '../ticks/SampleTick';
+import type { LegacyTrackState } from '../notes/migrate';
 import { BaseTrack, type TrackSnapshot, type TrackState } from './BaseTrack';
 
 export interface SampleTrackSnapshot extends TrackSnapshot {
@@ -15,6 +16,8 @@ export interface SampleTrackSnapshot extends TrackSnapshot {
     pitch: number;
     speed: number;
     cuts: number[];
+    /** Missing in snapshots from before the setting; one-shot then. */
+    gate?: boolean;
     buffer: ArrayBuffer | null;
 }
 
@@ -29,6 +32,7 @@ export interface SampleTrackState extends TrackState {
     pitch?: number;
     speed?: number;
     cuts?: number[];
+    gate?: boolean;
 }
 
 /** Semitones the pitch knob reaches either way. */
@@ -71,17 +75,21 @@ const IDENTITY_EPSILON = 1e-4;
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 /**
- * A track that plays a slice of an audio buffer on every active tick.
+ * A track that plays a slice of an audio buffer for every note of its pattern.
  * Where the buffer comes from (a file, the microphone, ...) is up to the subclass.
  *
  * Pitch and speed are independent: the played region is time-stretched so that, played back at the pitch
  * ratio, it lasts exactly as long as the speed says. With neither turned, the sample plays untouched.
  *
- * Every step starts a voice of its own, the step's velocity sets its level and its note decides what it plays
- * (see `SampleTick`). A long slice rings on under the next one, unless the track cuts notes: then a new step
- * stops whatever is still sounding.
+ * Every note starts a voice of its own, the note's velocity sets its level and its pitch decides what it plays: a
+ * sample that is not sliced is played higher or lower by the distance from `SAMPLE_ROOT_NOTE`; a sliced one plays
+ * the slice that sits on that key (the root is the first slice, every semitone up the next).
+ *
+ * One-shot (the default) plays the slice out whatever the note's length; `gate` stops the voice with a short fade
+ * at the end of the note. A long slice rings on under the next note, unless the track cuts notes: then a new note
+ * stops whatever is still sounding (notes starting at the same time, a chord, all play).
  */
-export abstract class SampleTrack extends BaseTrack<SampleTick> {
+export abstract class SampleTrack extends BaseTrack {
     /** Where every voice goes; the effect chain starts here. */
     private readonly input = markRaw(new Gain());
 
@@ -104,6 +112,9 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
     /** Cut points (seconds in the sample) that split the region into slices. See `slices.ts`. */
     cuts: number[] = [];
 
+    /** Gate: a voice stops (with a short fade) at the end of its note. Off (one-shot) plays every slice out. */
+    gate = false;
+
     /** The decoded sample. */
     private buffer: AudioBuffer | null = null;
     private rendition: Rendition | null = null;
@@ -121,16 +132,15 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
      */
     private readonly voices = markRaw(new Map<ToneBufferSource, { start: number; end: number }>());
 
+    /** Live notes (MIDI) in gate mode, by id: the voice a note-off stops. One-shot notes are not kept. Raw, as `voices`. */
+    private readonly liveVoices = markRaw(new Map<string, ToneBufferSource>());
+
     /** The last sample load that was started; `whenReady` waits for it. */
     private loading: Promise<void> = Promise.resolve();
 
     constructor(id?: string) {
         super(id);
         this.connectSource(this.input);
-    }
-
-    protected createTick(): SampleTick {
-        return new SampleTick();
     }
 
     /** Decodes `blob`, makes it the sample and resets the region to the whole sample. Slices are dropped, pitch and speed stay. */
@@ -374,15 +384,48 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         return slices[0] ? { range: slices[0], semitones: semitonesBetween(SAMPLE_ROOT_NOTE, note) } : null;
     }
 
-    protected trigger(step: number, time: number): void {
-        const tick = this.activeTick(step);
-        const rendition = this.rendition;
-        if (!tick || !rendition) {
+    setGate(gate: boolean): void {
+        this.gate = gate;
+    }
+
+    protected trigger(note: PatternNote, time: number, noteDuration: number): void {
+        this.startVoice(note.note, note.velocity, time, noteDuration);
+    }
+
+    /**
+     * A live note plays like a pattern note whose end is not known yet: in gate mode the voice plays until the
+     * note-off stops it (or its slice ends), one-shot plays the slice out and ignores the note-off.
+     */
+    protected startLiveNote(id: string, note: string, velocity: number, time: number): void {
+        const source = this.startVoice(note, velocity, time, Infinity);
+        if (source && this.gate) {
+            this.liveVoices.set(id, source);
+        }
+    }
+
+    protected stopLiveNote(id: string, time: number): void {
+        const source = this.liveVoices.get(id);
+        if (!source) {
             return;
         }
-        const voice = this.voiceOf(tick.note);
+        this.liveVoices.delete(id);
+        const span = this.voices.get(source);
+        if (span && span.end > time) {
+            // The fade-out follows the stop, as when cutting notes.
+            source.stop(Math.max(time, span.start));
+            span.end = time;
+        }
+    }
+
+    /** Starts the voice for a note (see the class comment); in gate mode it stops after `noteDuration` seconds. */
+    private startVoice(noteName: string, velocity: number, time: number, noteDuration: number): ToneBufferSource | null {
+        const rendition = this.rendition;
+        if (!rendition) {
+            return null;
+        }
+        const voice = this.voiceOf(noteName);
         if (!voice || voice.range.end <= voice.range.start) {
-            return;
+            return null;
         }
 
         let buffer = rendition.buffer;
@@ -416,15 +459,20 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
                 }
             },
         }).connect(this.input);
-        const playFor = Math.max(0, duration - VOICE_FADE);
+        // The fade-out follows the stop, so it ends with the slice, or in gate mode with the note.
+        const playFor = Math.max(0, (this.gate ? Math.min(duration, noteDuration) : duration) - VOICE_FADE);
         this.voices.set(source, { start: time, end: time + playFor });
-        source.start(time, offset, playFor, tick.volume);
+        source.start(time, offset, playFor, velocity);
+        return source;
     }
 
-    /** Fades out every voice that would still sound at `time`. Voices that end before it are left alone. */
+    /**
+     * Fades out every voice that would still sound at `time`. Voices that end before it are left alone, and so are
+     * voices starting at `time` itself: those are notes of the same chord.
+     */
     private cutVoices(time: number): void {
         for (const [voice, span] of this.voices) {
-            if (span.end > time) {
+            if (span.end > time && span.start < time) {
                 voice.stop(time);
                 span.end = time;
             }
@@ -447,6 +495,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
      * disposes a finished source (see `trigger`), so there every voice goes at once.
      */
     private stopVoices(): void {
+        this.liveVoices.clear();
         const context = this.input.context;
         const now = context.currentTime;
         for (const [voice, span] of this.voices) {
@@ -461,6 +510,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
 
     /** Drops every voice at once; the track's own output goes with it, so there is nothing left to fade. */
     private disposeVoices(): void {
+        this.liveVoices.clear();
         for (const voice of this.voices.keys()) {
             voice.dispose();
         }
@@ -479,6 +529,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
         this.setPitch(source.pitch);
         this.setSpeed(source.speed);
         this.setCuts(source.cuts);
+        this.setGate(source.gate);
     }
 
     dispose(): void {
@@ -501,10 +552,11 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
             pitch: this.pitch,
             speed: this.speed,
             cuts: [...this.cuts],
+            gate: this.gate,
         };
     }
 
-    restore(state: TrackState): void {
+    restore(state: TrackState | LegacyTrackState): void {
         super.restore(state);
         const sample = state as SampleTrackState;
         const settle = () => {
@@ -528,6 +580,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
             settle();
         }
         this.setReversed(sample.isReversed);
+        this.setGate(sample.gate ?? false);
     }
 
     async serialize(): Promise<SampleTrackSnapshot> {
@@ -539,6 +592,7 @@ export abstract class SampleTrack extends BaseTrack<SampleTick> {
             pitch: this.pitch,
             speed: this.speed,
             cuts: [...this.cuts],
+            gate: this.gate,
             buffer: (await this.sampleBlob?.arrayBuffer()) ?? null,
         };
     }

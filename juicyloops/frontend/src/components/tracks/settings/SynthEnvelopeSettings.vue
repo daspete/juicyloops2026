@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { DEFAULT_ENVELOPE, ENVELOPE_PARAMS, type SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import JuicyKnob from '@/components/ui/JuicyKnob.vue';
+import { injectLearnOwner } from '@/composables/useMidiLearn';
 import { computed } from 'vue';
 
 /** Attack / decay / sustain / release knobs with a live drawing of the resulting curve. */
 const props = defineProps<{
     track: SynthTrack;
 }>();
+
+/** MIDI learn: the knobs belong to the track the panel shows. */
+const owner = injectLearnOwner();
 
 /* The curve: each stage gets horizontal room in proportion to its time (log-scaled so tiny attacks still show). */
 const WIDTH = 220;
@@ -59,6 +63,7 @@ const curve = computed(() => {
                     :reset-value="DEFAULT_ENVELOPE[stage.stage]"
                     :label="stage.label"
                     :hint="stage.hint"
+                    :learn="owner ? { target: owner, param: stage.key } : null"
                     :size="60"
                 />
             </div>

@@ -3,6 +3,7 @@ import type { Automatable, AutomationTarget } from './automation';
 /* Dev-only live node count for leak hunting and `yarn perf`; compiles to nothing in production. */
 import './debug/nodeCounter';
 import { DEFAULT_BPM } from './constants';
+import { latencyHintFor, readLowLatency, type LatencyHint } from './latency';
 import type { MixBus } from './mixBus';
 import { Sequencer, type PlaybackMode, type SessionState, type StepListener } from './sequencer';
 import type { TrackContainer } from './trackContainer';
@@ -17,8 +18,15 @@ import { SampleTrack } from './tracks/SampleTrack';
 /*
  * Notes are scheduled this far ahead of time. A step sequencer does not need low latency,
  * so a generous window keeps the audio steady while the main thread is busy with the UI.
+ * Live (MIDI) notes skip it: they play at the context's current time.
  */
 const LOOK_AHEAD_SECONDS = 0.2;
+
+/**
+ * The latency the context was made with (see `latency.ts`): 'interactive' unless "low latency" was switched off.
+ * Fixed for the life of the page; a changed setting applies on the next start.
+ */
+export const ENGINE_LATENCY_HINT: LatencyHint = latencyHintFor(readLowLatency());
 
 /** Marks the contexts made here, so a module re-run (dev hot reload) never closes the one the running app still plays on. */
 const ENGINE_CONTEXT = Symbol.for('juicyloops.engineContext');
@@ -30,7 +38,7 @@ const ENGINE_CONTEXT = Symbol.for('juicyloops.engineContext');
  * context then), so it is disposed: that closes its AudioContext and frees its transport, destination and draw loop.
  */
 const defaultContext = getContext();
-const engineContext = new Context({ latencyHint: 'balanced', lookAhead: LOOK_AHEAD_SECONDS });
+const engineContext = new Context({ latencyHint: ENGINE_LATENCY_HINT, lookAhead: LOOK_AHEAD_SECONDS });
 Object.defineProperty(engineContext, ENGINE_CONTEXT, { value: true });
 setContext(engineContext);
 if (defaultContext !== engineContext && !(ENGINE_CONTEXT in defaultContext)) {
@@ -58,8 +66,9 @@ export class Engine {
         this.isInitialized = true;
     }
 
-    play(): void {
-        this.transport.start();
+    /** Starts the transport now, or at an audio-context time (after a count-in). */
+    play(at?: number): void {
+        this.transport.start(at);
     }
 
     /** Stops, and puts every automated value back to what its knob says. */

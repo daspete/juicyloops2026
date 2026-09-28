@@ -53,8 +53,72 @@ const revision = ref(0);
 const canUndo = computed(() => undoStack.value.length > 0);
 const canRedo = computed(() => redoStack.value.length > 0);
 
+/*
+ * Changes that stream in without a gesture (a MIDI controller turning a knob sends dozens of messages a second) are
+ * one undo step: while such a stream goes on, commits wait, and one commit follows once it has been quiet a moment.
+ */
+const QUIET_MS = 400;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Holds commits back until `commitWhenQuiet` has not been called for a moment, then commits once. */
+const commitWhenQuiet = (ms = QUIET_MS): void => {
+    if (quietTimer) {
+        clearTimeout(quietTimer);
+    }
+    quietTimer = setTimeout(() => {
+        quietTimer = null;
+        commit();
+    }, ms);
+};
+
+/** Ends a held stream now (undo and redo must not wait for it). */
+const flushQuiet = (): void => {
+    if (quietTimer) {
+        clearTimeout(quietTimer);
+        quietTimer = null;
+    }
+};
+
+/*
+ * A hold makes a longer stretch one undo step (a recorded take, from record start to stop): the session is committed
+ * when the hold starts, commits wait while it lasts, and one commit follows when it ends. Undo, redo and a reset end
+ * it first, through the holder's `onBreak`.
+ */
+let holder: (() => void) | null = null;
+
+/**
+ * Starts a hold: whatever changed before is committed now, then commits wait until `release`. `onBreak` is called when
+ * undo, redo or a reset needs the hold to end; it must call `release`.
+ */
+const hold = (onBreak: () => void): void => {
+    flushQuiet();
+    commit();
+    holder = onBreak;
+};
+
+/** Ends a hold and commits everything that changed during it as one step. */
+const release = (): void => {
+    if (!holder) {
+        return;
+    }
+    holder = null;
+    commit();
+};
+
+/** Ends a hold through its holder (who calls `release`), before undo, redo or a reset. */
+const breakHold = (): void => {
+    const onBreak = holder;
+    if (onBreak) {
+        onBreak();
+        holder = null;
+    }
+};
+
 /** Records the session as one undo step, if it changed since the last one. Safe to call as often as you like. */
 const commit = (): boolean => {
+    if (quietTimer || holder) {
+        return false;
+    }
     const next = capture();
     if (next.key === current.key) {
         return false;
@@ -79,7 +143,9 @@ const apply = (entry: Entry) => {
 };
 
 const undo = (): void => {
+    breakHold();
     // Whatever happened since the last commit is a step of its own, so it can be redone.
+    flushQuiet();
     commit();
     const entry = undoStack.value.pop();
     if (entry) {
@@ -89,6 +155,8 @@ const undo = (): void => {
 };
 
 const redo = (): void => {
+    breakHold();
+    flushQuiet();
     const entry = redoStack.value.pop();
     if (entry) {
         undoStack.value.push(current);
@@ -98,6 +166,8 @@ const redo = (): void => {
 
 /** Forgets the history and starts again from the session as it is now (after a file was opened). */
 const reset = (): void => {
+    breakHold();
+    flushQuiet();
     undoStack.value = [];
     redoStack.value = [];
     current = capture();
@@ -105,4 +175,4 @@ const reset = (): void => {
     revision.value++;
 };
 
-export const useHistory = () => ({ canUndo, canRedo, commit, undo, redo, reset, version, revision });
+export const useHistory = () => ({ canUndo, canRedo, commit, commitWhenQuiet, hold, release, undo, redo, reset, version, revision });

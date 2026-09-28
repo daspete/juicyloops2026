@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { provideLearnOwner } from '@/composables/useMidiLearn';
+import type { AutomationTarget } from '@/juicyloops/automation';
 import type { MixBus } from '@/juicyloops/mixBus';
 import { Icon } from '@iconify/vue';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import JuicyKnob from '../ui/JuicyKnob.vue';
 import EffectRack from '../effects/EffectRack.vue';
 
@@ -16,7 +18,12 @@ const props = defineProps<{
     icon: string;
     note: string;
     accent: string;
+    /** Whose channel this is, for MIDI learn (the container or the master). */
+    target?: AutomationTarget;
 }>();
+
+const owner = computed(() => props.target ?? null);
+provideLearnOwner(owner);
 
 const volume = ref(props.bus.volume);
 const pan = ref(props.bus.pan);
@@ -39,8 +46,28 @@ const formatPan = (value: number) => (Math.abs(value) < 0.005 ? 'C' : value < 0 
         </header>
         <p class="strip-note">{{ props.note }}</p>
         <div class="strip-level">
-            <JuicyKnob v-model="volume" :min="-40" :max="6" :step="0.1" label="Level" :reset-value="0" :format="formatDecibel" :size="64" />
-            <JuicyKnob v-model="pan" :min="-1" :max="1" :step="0.01" label="Pan" :reset-value="0" :format="formatPan" :size="64" />
+            <JuicyKnob
+                v-model="volume"
+                :min="-40"
+                :max="6"
+                :step="0.1"
+                label="Level"
+                :reset-value="0"
+                :format="formatDecibel"
+                :learn="owner ? { target: owner, param: 'volume' } : null"
+                :size="64"
+            />
+            <JuicyKnob
+                v-model="pan"
+                :min="-1"
+                :max="1"
+                :step="0.01"
+                label="Pan"
+                :reset-value="0"
+                :format="formatPan"
+                :learn="owner ? { target: owner, param: 'pan' } : null"
+                :size="64"
+            />
         </div>
         <div class="strip-rack">
             <span class="eyebrow">Effects</span>

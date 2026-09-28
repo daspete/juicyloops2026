@@ -98,6 +98,17 @@ export class TrackContainer implements Sleeper {
         }
     }
 
+    /** Whether a track here holds a live (MIDI) note; the sequencer keeps the container awake meanwhile. */
+    hasLiveNotes(): boolean {
+        const tracks = toRaw(this.tracks);
+        for (let i = 0; i < tracks.length; i++) {
+            if (toRaw(tracks[i]!).liveNoteCount > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /* ---- hibernation (see `hibernate.ts`); called on the raw object, from the step callback ---- */
 
     /** Takes the container out of the mix and frees its racks and synth voices. Only once nothing it played can still sound. */

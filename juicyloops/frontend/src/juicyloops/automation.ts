@@ -190,6 +190,25 @@ export const valueAt = (points: readonly AutomationPoint[], step: number): numbe
     return points[points.length - 1]!.value;
 };
 
+/**
+ * The index of the first point after `step` (`points.length` when there is none). The points of a step window
+ * `(step, step + 1)` start there: the sequencer schedules those inside a step (recorded controller moves), not only the
+ * value at its start. A binary search; no allocation, for the step callback.
+ */
+export const firstPointAfter = (points: readonly AutomationPoint[], step: number): number => {
+    let low = 0;
+    let high = points.length;
+    while (low < high) {
+        const mid = (low + high) >> 1;
+        if (points[mid]!.step <= step) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+};
+
 /** Sets the shape and tension of the segment that starts at a point. Tension 0 on a curve is stored as nothing, a plain line. */
 export const setSegment = (curve: AutomationCurve, index: number, shape: CurveShape, tension: number): void => {
     const point = curve.points[index];

@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { useMidiLearn, type LearnTarget } from '@/composables/useMidiLearn';
+import { mappingOf, paramKey } from '@/juicyloops/midi/mappings';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 
 /**
  * A knob that behaves like the ones in DAWs and hardware editors:
@@ -9,6 +11,9 @@ import { computed, onBeforeUnmount, ref } from 'vue';
  *  - use the arrow keys when focused, Home/End jump to the ends,
  *  - double-click to reset.
  * `curve: 'log'` spreads small values out, which is what you want for times and frequencies.
+ *
+ * With `learn` (whose parameter it turns) the knob takes part in MIDI learn: in learn mode it is highlighted and a
+ * click picks it for the next controller moved; a controller mapped to it moves it.
  */
 const props = withDefaults(
     defineProps<{
@@ -23,6 +28,8 @@ const props = withDefaults(
         /** Value restored on double-click. Defaults to the value the knob was created with. */
         resetValue?: number;
         format?: (value: number) => string;
+        /** The parameter this knob turns, for MIDI learn. Without it the knob cannot be learned. */
+        learn?: LearnTarget | null;
     }>(),
     { step: 0.01, size: 56, curve: 'linear' },
 );
@@ -66,6 +73,21 @@ const set = (value: number) => {
     }
 };
 
+/* ---- MIDI learn ---- */
+
+const { isLearning, learnTarget, selectLearnTarget, mappings, paramChange } = useMidiLearn();
+const learnKey = computed(() => (props.learn ? paramKey(props.learn.target, props.learn.param) : null));
+const isLearnable = computed(() => isLearning.value && learnKey.value !== null);
+const isLearnPicked = computed(() => !!learnTarget.value && learnKey.value === paramKey(learnTarget.value.target, learnTarget.value.param));
+const mapping = computed(() => (props.learn ? mappingOf(mappings.value, props.learn.target, props.learn.param) : undefined));
+
+/* A controller moved the parameter: follow it (and write it through, which views with their own copy need). */
+watch(paramChange, (change) => {
+    if (change && change.key === learnKey.value) {
+        set(change.value);
+    }
+});
+
 const position = computed(() => toPosition(props.modelValue));
 
 const display = computed(() => (props.format ? props.format(props.modelValue) : props.modelValue.toFixed(decimals)));
@@ -77,6 +99,11 @@ let dragStartPosition = 0;
 
 const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) {
+        return;
+    }
+    if (isLearnable.value && props.learn) {
+        event.preventDefault();
+        selectLearnTarget({ ...props.learn, label: props.learn.label ?? props.label });
         return;
     }
     event.preventDefault();
@@ -170,11 +197,21 @@ const arcPath = computed(() => {
 
 const pointer = computed(() => polar(START_ANGLE + SWEEP * position.value, radius.value));
 
-const tooltip = computed(() => props.hint ?? 'Drag up or down. Hold Shift for fine control. Double-click to reset.');
+const tooltip = computed(() => {
+    if (isLearnable.value) {
+        return isLearnPicked.value ? 'Now move a knob or fader on your MIDI controller' : 'Click, then move a controller to map it here';
+    }
+    const hint = props.hint ?? 'Drag up or down. Hold Shift for fine control. Double-click to reset.';
+    return mapping.value ? `${hint} · MIDI CC ${mapping.value.cc}` : hint;
+});
 </script>
 
 <template>
-    <div class="knob" :class="{ 'knob--dragging': isDragging }" :style="{ width: `${size}px` }">
+    <div
+        class="knob"
+        :class="{ 'knob--dragging': isDragging, 'knob--learnable': isLearnable, 'knob--learning': isLearnable && isLearnPicked }"
+        :style="{ width: `${size}px` }"
+    >
         <div
             class="knob-dial"
             role="slider"
@@ -201,6 +238,7 @@ const tooltip = computed(() => props.hint ?? 'Drag up or down. Hold Shift for fi
                 <circle :cx="pointer.x" :cy="pointer.y" :r="STROKE * 0.8" class="knob-pointer" />
             </svg>
             <div class="knob-readout">{{ display }}</div>
+            <span v-if="isLearnable && mapping" class="knob-cc">CC {{ mapping.cc }}</span>
         </div>
         <div class="knob-label">{{ label }}</div>
     </div>

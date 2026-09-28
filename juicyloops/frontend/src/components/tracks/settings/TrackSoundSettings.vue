@@ -5,6 +5,7 @@ import type { SamplerTrack } from '@/juicyloops/tracks/SamplerTrack';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { computed } from 'vue';
 import SamplerFileUpload from './SamplerFileUpload.vue';
+import SynthBendSettings from './SynthBendSettings.vue';
 import SynthEnvelopeSettings from './SynthEnvelopeSettings.vue';
 import SynthSettings from './SynthSettings.vue';
 import TrackSampleSettings from './TrackSampleSettings.vue';
@@ -24,6 +25,7 @@ const sampler = computed(() => (props.track.type === 'sampler' ? (props.track as
     <template v-if="synth">
         <SynthSettings :track="synth" />
         <SynthEnvelopeSettings :track="synth" />
+        <SynthBendSettings :track="synth" />
         <TrackVoiceSettings :track="synth" />
     </template>
     <template v-else-if="sample">

@@ -21,6 +21,8 @@ export interface SynthVoicesOptions {
     cutsNotes: boolean;
     oscillatorType: OscillatorType;
     envelope: SynthEnvelope;
+    /** Pitch bend in semitones. */
+    bend: number;
     /** Called when the worklet cannot be built after all; the owner switches to another engine. */
     onFailure?: (error: unknown) => void;
 }
@@ -93,7 +95,7 @@ export class SynthVoices extends ToneAudioNode {
     private readonly ready: Promise<void>;
     private isDisposed = false;
 
-    constructor({ context, cutsNotes, oscillatorType, envelope, onFailure }: SynthVoicesOptions) {
+    constructor({ context, cutsNotes, oscillatorType, envelope, bend, onFailure }: SynthVoicesOptions) {
         super({ context });
         this.output = this.context.createGain();
         this.events = new SynthEvents({
@@ -106,12 +108,28 @@ export class SynthVoices extends ToneAudioNode {
         for (const param of Object.keys(envelope) as SynthEnvelopeParam[]) {
             this.events.param(param, envelope[param]);
         }
+        if (bend) {
+            this.events.param('bend', bend);
+        }
         this.ready = this.build(onFailure);
     }
 
     /** Plays a note at `time`; returns its length in seconds. */
     triggerAttackRelease(note: string | number, duration: string | number, time: number, velocity = 1): number {
         return this.events.note(note, duration, time, velocity);
+    }
+
+    noteOn(id: number, note: string | number, time: number, velocity: number): void {
+        this.events.noteOn(id, note, time, velocity);
+    }
+
+    noteOff(id: number, time: number): void {
+        this.events.noteOff(id, time);
+    }
+
+    /** The engine glides to a new bend itself (a few ms), timed to the frame. */
+    setBend(semitones: number, time?: number): void {
+        this.events.param('bend', semitones, time);
     }
 
     setCutsNotes(cuts: boolean): void {

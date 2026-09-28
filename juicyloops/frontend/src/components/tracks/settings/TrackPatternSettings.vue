@@ -76,10 +76,10 @@ const FILLS = [
     <div class="setting">
         <div class="setting-label">Nudge</div>
         <div class="setting-row">
-            <button type="button" class="iconbtn" aria-label="Move the pattern one step earlier" v-tooltip.bottom="'Move the pattern one step earlier'" @click="props.track.rotateTicks(-1)">
+            <button type="button" class="iconbtn" aria-label="Move the pattern one step earlier" v-tooltip.bottom="'Move the pattern one step earlier'" @click="props.track.rotate(-1)">
                 <Icon icon="mdi:arrow-left" class="w-5 h-5" />
             </button>
-            <button type="button" class="iconbtn" aria-label="Move the pattern one step later" v-tooltip.bottom="'Move the pattern one step later'" @click="props.track.rotateTicks(1)">
+            <button type="button" class="iconbtn" aria-label="Move the pattern one step later" v-tooltip.bottom="'Move the pattern one step later'" @click="props.track.rotate(1)">
                 <Icon icon="mdi:arrow-right" class="w-5 h-5" />
             </button>
         </div>

@@ -7,6 +7,9 @@
  * shows up in the numbers, as it would for a new user session). The scratch session is then packed into a
  * `.juicyloops` file and opened through `useSession().openFile`, the same path a user's saved file takes.
  *
+ * Patterns are one-step notes on whole steps at full velocity (what `activateEveryNth` makes), each pitched by its
+ * step, the same as the tick patterns of the fixtures before notes, so results stay comparable.
+ *
  * The sample tracks play a drum loop synthesized here (deterministic, no binary files in the repo), long enough
  * for a pitch change to cost a real `timeStretch`.
  */
@@ -163,7 +166,7 @@ export async function buildFixture({ name, spec }) {
                 track.activateEveryNth([4, 8, 2, 16, 4][t % 5]);
                 if (t === 2) {
                     track.sliceEvenly(8);
-                    track.ticks.forEach((tick, index) => (tick.note = ['C5', 'C#5', 'D5', 'D#5'][index % 4]));
+                    track.setNotes(track.notes.map((note) => ({ ...note, note: ['C5', 'C#5', 'D5', 'D#5'][note.start % 4] })));
                 }
                 samplers++;
             } else {
@@ -171,7 +174,7 @@ export async function buildFixture({ name, spec }) {
                 track.setOscillatorType(oscillators[(c + t) % oscillators.length]);
                 track.setCutsNotes(t % 3 !== 0);
                 track.activateEveryNth([2, 3, 4, 8][(c + t) % 4]);
-                track.ticks.forEach((tick, index) => (tick.note = scale[(index + t + c) % scale.length]));
+                track.setNotes(track.notes.map((note) => ({ ...note, note: scale[(note.start + t + c) % scale.length] })));
             }
             const track = container.tracks[container.tracks.length - 1];
             track.setVolume(-6 - (t % 4) * 2);

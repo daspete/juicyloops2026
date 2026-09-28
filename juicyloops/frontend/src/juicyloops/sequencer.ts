@@ -1,10 +1,11 @@
 import { debug, getDraw, getTransport, type DrawInstance, type TransportInstance } from 'tone';
 import { markRaw, reactive, toRaw } from 'vue';
-import { toValue, valueAt, type Automatable, type AutomationTarget } from './automation';
+import { firstPointAfter, toValue, valueAt, type Automatable, type AutomationTarget } from './automation';
 import { STEP_SUBDIVISION } from './constants';
 import { Hibernation, markDue, upcomingSegments, WAKE_WINDOW_STEPS } from './hibernate';
+import { cloneMappings, type MidiMapping } from './midi/mappings';
 import { MixBus, type BusSnapshot } from './mixBus';
-import { Song, type SongState } from './song';
+import { Song, songStepAt, type SongState } from './song';
 import { TrackContainer, type ContainerState } from './trackContainer';
 
 /** The whole session as history keeps it. Tempo is added by the UI, which owns it. */
@@ -13,6 +14,8 @@ export interface SessionState {
     currentContainerId: string;
     song: SongState;
     master: BusSnapshot;
+    /** MIDI learn: which controller turns which knob. Missing in states from before MIDI. */
+    midiMappings?: MidiMapping[];
 }
 
 /**
@@ -28,6 +31,14 @@ export type PlaybackMode = 'loop' | 'song';
 export type StepListener = (step: number) => void;
 
 /**
+ * Runs inside the step callback, ahead of time like the step itself, before anything is scheduled for the step: `step`
+ * is the play position (as step listeners get it), `time` the audio-context time the step will be heard at. The
+ * recorder uses it for the metronome and for clearing what a replace take passes. Only the live engine's sequencer has
+ * one; offline renders never do.
+ */
+export type StepHook = (step: number, time: number) => void;
+
+/**
  * Owns the containers, the song and the master bus, and drives playback from a repeating transport event.
  *
  * The containers and the song are reactive, so the UI sees every change made here (adding, removing,
@@ -36,6 +47,9 @@ export type StepListener = (step: number) => void;
 export class Sequencer {
     readonly containers: TrackContainer[] = reactive([]);
     readonly song: Song = reactive(new Song()) as Song;
+
+    /** MIDI learn mappings of the session (see `midi/mappings.ts`). Replaced as a whole on every change. */
+    midiMappings: MidiMapping[] = reactive([]);
 
     /** The master channel: every container feeds it, it feeds the speakers. */
     readonly master = markRaw(new MixBus('master'));
@@ -59,6 +73,7 @@ export class Sequencer {
     currentContainer: TrackContainer;
 
     private eventId: number | null = null;
+    private stepHook: StepHook | null = null;
     private readonly stepListeners = new Set<StepListener>();
     /** Reused by every song-mode step for the containers playing there, so the step callback does not allocate a map each time. */
     private readonly playing = new Map<string, number>();
@@ -72,6 +87,8 @@ export class Sequencer {
     private readonly due = new Set<string>();
     private readonly window: number[] = [0, 0, 0, 0];
     private readonly stepSeconds = (): number => 60 / this.transport.bpm.value / 4;
+    /** Containers a track was played live in (MIDI); due while one of their tracks holds a note. */
+    private readonly live = new Set<string>();
 
     constructor() {
         this.master.toDestination();
@@ -146,6 +163,29 @@ export class Sequencer {
         }
     }
 
+    /**
+     * Wakes the container of a track played live (MIDI) right away, so a note on a sleeping container sounds, and
+     * keeps it awake while any of its tracks holds a live note. Afterwards it sleeps as usual, once its tail has rung out.
+     */
+    wakeForLive(containerId: string): void {
+        const container = this.rawContainer(containerId);
+        if (!container || !this.hibernation) {
+            return;
+        }
+        this.live.add(containerId);
+        this.hibernation.wake(container);
+    }
+
+    /** Sets (or with null removes) the hook that runs in the step callback before the step is scheduled. */
+    setStepHook(hook: StepHook | null): void {
+        this.stepHook = hook;
+    }
+
+    /** Replaces the MIDI mappings (a learned or removed mapping). */
+    setMidiMappings(mappings: readonly MidiMapping[]): void {
+        this.midiMappings.splice(0, this.midiMappings.length, ...cloneMappings(mappings));
+    }
+
     /** Resolves once every sample is decoded and every effect can sound; what an offline render waits for. */
     async whenReady(): Promise<void> {
         const containers = toRaw(this.containers).map((container) => toRaw(container));
@@ -191,6 +231,7 @@ export class Sequencer {
             currentContainerId: this.currentContainer.id,
             song: this.song.capture(),
             master: this.master.capture(),
+            midiMappings: cloneMappings(this.midiMappings),
         };
     }
 
@@ -216,6 +257,7 @@ export class Sequencer {
         this.containers.splice(0, this.containers.length, ...next);
         this.song.restore(state.song);
         this.master.restore(state.master);
+        this.setMidiMappings(state.midiMappings ?? []);
         this.setCurrentContainer(state.currentContainerId);
         if (!this.containers.some((container) => container.id === this.currentContainer.id)) {
             this.setCurrentContainer(this.containers[0]!.id);
@@ -274,13 +316,28 @@ export class Sequencer {
         return copy;
     }
 
+    /** Song lanes for the step window `[step, step + 1)`: the value at the step, then every point inside the window at its own time. */
     private applySongAutomation(song: Song, step: number, time: number): void {
-        for (const lane of song.automation) {
+        const lanes = song.automation;
+        let stepSeconds = 0;
+        for (let l = 0; l < lanes.length; l++) {
+            const lane = lanes[l]!;
             const target = this.resolveTarget(lane.target);
             const param = target?.parameter(lane.param);
-            const position = valueAt(lane.points, step);
-            if (target && param && position !== null) {
-                target.setParameter(lane.param, toValue(param, position), time);
+            const points = lane.points;
+            const position = valueAt(points, step);
+            if (!target || !param || position === null) {
+                continue;
+            }
+            target.setParameter(lane.param, toValue(param, position), time);
+            const end = step + 1;
+            for (let i = firstPointAfter(points, step); i < points.length; i++) {
+                const point = points[i]!;
+                if (point.step >= end) {
+                    break;
+                }
+                stepSeconds ||= 15 / this.transport.bpm.getValueAtTime(time);
+                target.setParameter(lane.param, toValue(param, point.value), time + (point.step - step) * stepSeconds);
             }
         }
     }
@@ -292,11 +349,7 @@ export class Sequencer {
 
     /** The song step for a running transport step: inside the loop region once it was reached, else wrapped at the song's end. */
     private songStep(absoluteStep: number, songLength: number): number {
-        const loop = this.loop;
-        if (loop) {
-            return absoluteStep < loop.end ? absoluteStep : loop.start + ((absoluteStep - loop.start) % (loop.end - loop.start));
-        }
-        return songLength ? absoluteStep % songLength : 0;
+        return songStepAt(absoluteStep, songLength, this.loop);
     }
 
     /** Fills `due` with the containers that play in song mode from `step` on, within the wake window (the loop region and the song's end wrap it). */
@@ -327,6 +380,15 @@ export class Sequencer {
             } else {
                 this.markDue(step, song, songLength);
             }
+            if (this.live.size) {
+                for (const id of this.live) {
+                    if (this.rawContainer(id)?.hasLiveNotes()) {
+                        this.due.add(id);
+                    } else {
+                        this.live.delete(id);
+                    }
+                }
+            }
             // Waking and sleeping build and free nodes; Tone's own constructors and `dispose` start and stop sources
             // without a time, which Tone warns about inside a scheduled callback. Nothing there is meant to be timed.
             debug.enterScheduledCallback(false);
@@ -335,6 +397,10 @@ export class Sequencer {
             } finally {
                 debug.enterScheduledCallback(true);
             }
+        }
+
+        if (this.stepHook) {
+            this.stepHook(step, time);
         }
 
         if (this.mode === 'loop') {

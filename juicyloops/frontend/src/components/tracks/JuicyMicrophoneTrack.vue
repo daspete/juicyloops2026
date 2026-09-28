@@ -8,7 +8,8 @@ import TickGrid from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
 import SampleSliceTools from './settings/SampleSliceTools.vue';
 import TrackWaveform from './settings/TrackWaveform.vue';
-import { sampleTickLabel } from './sampleNotes';
+import { sampleNoteLabel } from './sampleNotes';
+import { setStep, stepCells } from '@/juicyloops/notes/stepView';
 import { TRACK_META } from './trackMeta';
 
 const props = defineProps<{
@@ -21,6 +22,9 @@ const props = defineProps<{
 const playhead = useTrackPlayhead(() => props.track);
 
 const isWaveformExpanded = ref(false);
+
+/** The notes starting in each step: what the grid lights. */
+const cells = computed(() => stepCells(props.track.notes, props.track.length));
 
 /** The piano roll: which slice (or pitch) every step plays. */
 const isPianoRollExpanded = ref(false);
@@ -70,9 +74,9 @@ const toggleRecording = async () => {
             </button>
         </template>
 
-        <TickGrid v-if="props.track.hasSample" :ticks="props.track.ticks" :playhead="playhead" @paint="(tick, _index, active) => (tick.isActive = active)">
-            <template #default="{ tick }">
-                <span class="tick-label">{{ sampleTickLabel(props.track, tick) }}</span>
+        <TickGrid v-if="props.track.hasSample" :cells="cells" :playhead="playhead" @paint="(index, active) => setStep(props.track, index, active)">
+            <template #default="{ notes }">
+                <span class="tick-label">{{ sampleNoteLabel(props.track, notes[0]?.note ?? props.track.stepNote) }}</span>
             </template>
         </TickGrid>
         <div v-else class="track-steps track-empty">

@@ -30,6 +30,7 @@ const { version } = useHistory();
             <BusStrip
                 :key="`${currentContainer.id}-${version}`"
                 :bus="currentContainer.bus"
+                :target="{ kind: 'container', containerId: currentContainer.id }"
                 :name="currentContainer.name"
                 kind="Container channel"
                 icon="mdi:view-grid-outline"
@@ -39,7 +40,7 @@ const { version } = useHistory();
             <div class="mixer-flow" aria-hidden="true">
                 <Icon icon="mdi:arrow-down" class="w-4 h-4" />
             </div>
-            <BusStrip :key="`master-${version}`" :bus="engine.master" name="Master" kind="Master channel" icon="mdi:speaker" note="Everything you hear passes through here last." accent="var(--jl-brand-2)" />
+            <BusStrip :key="`master-${version}`" :bus="engine.master" :target="{ kind: 'master' }" name="Master" kind="Master channel" icon="mdi:speaker" note="Everything you hear passes through here last." accent="var(--jl-brand-2)" />
         </div>
     </aside>
 </template>

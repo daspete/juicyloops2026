@@ -1,5 +1,5 @@
-<script setup lang="ts" generic="T extends BaseTick">
-import type { BaseTick } from '@/juicyloops/ticks/BaseTick';
+<script setup lang="ts">
+import type { PatternNote } from '@/juicyloops/notes/Note';
 import { computed, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 import type { TrackPlayhead } from '@/composables/useContainerView';
 import { usePlayheadClass } from '@/composables/usePlayheadClass';
@@ -7,7 +7,8 @@ import { STEP_COUNT } from '@/juicyloops/constants';
 import { beatsOf } from './steps';
 
 /**
- * One row of step cells, grouped by beat.
+ * One row of step cells, grouped by beat: the step grid, a view onto a pattern's notes. A cell is lit when a note
+ * starts in it (see `notes/stepView.ts`).
  * Press a cell to flip it, keep the pointer down and sweep across to paint the same state onto its neighbours.
  * The optional default slot renders the cell content.
  */
@@ -19,9 +20,10 @@ export interface StepSpan {
 }
 
 const props = defineProps<{
-    ticks: T[];
+    /** Per step of the pattern, the notes starting in it (`stepCells`); its length is the pattern's. */
+    cells: readonly (readonly PatternNote[])[];
     /**
-     * Where the playhead is: inside this pattern (0 .. ticks.length - 1), and inside the section (0 .. STEP_COUNT - 1)
+     * Where the playhead is: inside this pattern (0 .. cells.length - 1), and inside the section (0 .. STEP_COUNT - 1)
      * so the ghost repeats know which one is sounding. -1 while silent.
      */
     playhead: TrackPlayhead;
@@ -29,15 +31,17 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    /** The user wants this tick to become `active`. */
-    paint: [tick: T, index: number, active: boolean];
+    /** The user wants this step's cell to become lit (`active`) or empty. */
+    paint: [index: number, active: boolean];
 }>();
 
 defineSlots<{
-    default?: (props: { tick: T; index: number }) => unknown;
+    default?: (props: { notes: readonly PatternNote[]; index: number }) => unknown;
 }>();
 
-const beats = computed(() => beatsOf(props.ticks.length));
+const isLit = (index: number): boolean => (props.cells[index]?.length ?? 0) > 0;
+
+const beats = computed(() => beatsOf(props.cells.length));
 
 /*
  * A pattern that divides the section repeats until the section is full. The repeats are drawn as ghosts,
@@ -45,8 +49,8 @@ const beats = computed(() => beatsOf(props.ticks.length));
  * the section (12, 24) drift against it, so they get no ghosts.
  */
 const ghostBeats = computed(() =>
-    props.ticks.length < STEP_COUNT && STEP_COUNT % props.ticks.length === 0
-        ? beatsOf(STEP_COUNT - props.ticks.length).map((beat) => beat.map((index) => index + props.ticks.length))
+    props.cells.length < STEP_COUNT && STEP_COUNT % props.cells.length === 0
+        ? beatsOf(STEP_COUNT - props.cells.length).map((beat) => beat.map((index) => index + props.cells.length))
         : [],
 );
 
@@ -76,9 +80,8 @@ const onPointerDown = (event: PointerEvent) => {
         return;
     }
 
-    const tick = props.ticks[index]!;
-    painting.value = !tick.isActive;
-    emit('paint', tick, index, painting.value);
+    painting.value = !isLit(index);
+    emit('paint', index, painting.value);
 };
 
 const onPointerMove = (event: PointerEvent) => {
@@ -91,9 +94,8 @@ const onPointerMove = (event: PointerEvent) => {
         return;
     }
 
-    const tick = props.ticks[index]!;
-    if (tick.isActive !== painting.value) {
-        emit('paint', tick, index, painting.value);
+    if (isLit(index) !== painting.value) {
+        emit('paint', index, painting.value);
     }
 };
 
@@ -102,8 +104,7 @@ const stopPainting = () => (painting.value = null);
 /** Keyboard activation arrives as a click with `detail === 0`; pointer clicks were already handled on pointerdown. */
 const onClick = (event: MouseEvent, index: number) => {
     if (event.detail === 0) {
-        const tick = props.ticks[index]!;
-        emit('paint', tick, index, !tick.isActive);
+        emit('paint', index, !isLit(index));
     }
 };
 
@@ -121,18 +122,18 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                 class="tick"
                 :class="{
                     'tick--downbeat': index % 4 === 0,
-                    'tick--active': ticks[index]!.isActive,
-                    'tick--tail': !ticks[index]!.isActive && spans?.get(index)?.tail,
+                    'tick--active': isLit(index),
+                    'tick--tail': !isLit(index) && spans?.get(index)?.tail,
                     'tick--open-end': spans?.get(index)?.openEnd,
-                    'tick--partial': ticks[index]!.isActive && (spans?.get(index)?.fill ?? 1) < 1,
+                    'tick--partial': isLit(index) && (spans?.get(index)?.fill ?? 1) < 1,
                 }"
                 :style="(spans?.get(index)?.fill ?? 1) < 1 ? { '--fill': spans!.get(index)!.fill } : undefined"
                 :data-step="index"
                 :aria-label="`Step ${index + 1}`"
-                :aria-pressed="ticks[index]!.isActive"
+                :aria-pressed="isLit(index)"
                 @click="onClick($event, index)"
             >
-                <slot :tick="ticks[index]!" :index="index" />
+                <slot :notes="cells[index]!" :index="index" />
             </button>
         </div>
         <div v-for="(beat, beatIndex) in ghostBeats" :key="`ghost-${beatIndex}`" class="beat" aria-hidden="true">
@@ -142,7 +143,7 @@ onBeforeUnmount(() => window.removeEventListener('pointerup', stopPainting));
                 class="tick tick--ghost"
                 :class="{
                     'tick--downbeat': index % 4 === 0,
-                    'tick--active': ticks[index % ticks.length]!.isActive,
+                    'tick--active': isLit(index % cells.length),
                 }"
                 :data-ghost-step="index"
             ></div>

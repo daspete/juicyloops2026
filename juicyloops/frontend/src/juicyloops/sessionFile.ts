@@ -1,3 +1,4 @@
+import { upgradeTrackState, type LegacyTrackState } from './notes/migrate';
 import type { SessionState } from './sequencer';
 import type { ContainerState } from './trackContainer';
 import type { TrackState } from './tracks/BaseTrack';
@@ -16,13 +17,16 @@ import type { SampleTrackState } from './tracks/SampleTrack';
  * The audio is written as it came in (a dropped file stays that file, a recording stays what the recorder
  * produced), so nothing is re-encoded and a saved file opens sounding exactly like it did. Two tracks that
  * share one sample (a duplicated track) share one asset.
+ *
+ * Versions: 1 stored a row of ticks per track (one note per step); 2 stores notes with free starts and lengths
+ * plus the pattern length. Version 1 files are converted when they are read (see `notes/migrate.ts`).
  */
 
 export const SESSION_FILE_EXTENSION = '.juicyloops';
 export const SESSION_FILE_MIME = 'application/x-juicyloops';
 
 const MAGIC = 'JUICYLPS';
-const FORMAT_VERSION = 1;
+const FORMAT_VERSION = 2;
 
 /** What is saved and loaded: the session as history keeps it, plus what the UI owns. */
 export interface SavedSession {
@@ -39,13 +43,16 @@ interface AssetEntry {
 /** `sampleBlob` is not JSON, so the header points at an asset instead. */
 type StoredTrackState = Omit<SampleTrackState, 'sampleBlob'> & { sampleAsset?: number };
 
+/** A track as a version 1 file has it: ticks instead of notes. */
+type StoredLegacyTrackState = Omit<LegacyTrackState, 'type'> & Partial<Omit<StoredTrackState, 'notes' | 'length'>> & { type: TrackState['type'] };
+
 interface Header {
     format: 'juicyloops';
     version: number;
     savedAt: string;
     name: string;
     bpm: number;
-    session: Omit<SessionState, 'containers'> & { containers: (Omit<ContainerState, 'tracks'> & { tracks: StoredTrackState[] })[] };
+    session: Omit<SessionState, 'containers'> & { containers: (Omit<ContainerState, 'tracks'> & { tracks: (StoredTrackState | StoredLegacyTrackState)[] })[] };
     assets: AssetEntry[];
 }
 
@@ -139,7 +146,9 @@ export const unpackSession = (data: ArrayBuffer): SavedSession => {
 
     const containers: ContainerState[] = header.session.containers.map((container) => ({
         ...container,
-        tracks: container.tracks.map((track): TrackState => {
+        tracks: container.tracks.map((stored): TrackState => {
+            // Version 1 stored ticks: they become notes here.
+            const track = upgradeTrackState(stored as StoredTrackState | LegacyTrackState) as StoredTrackState;
             if (track.type !== 'sampler' && track.type !== 'microphone') {
                 return track as TrackState;
             }

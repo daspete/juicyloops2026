@@ -16,7 +16,9 @@ const effects = (role: EffectRackRole = 'track'): EffectsSnapshot => ({
 const track = (id: string, type: TrackState['type'], length: number, isMuted = false): TrackState => ({
     id,
     type,
-    ticks: Array.from({ length }, () => ({ isActive: true, volume: 1 })),
+    length,
+    // A note that rings three times past the pattern's end: the loop still repeats after `length` steps.
+    notes: [{ id: `${id}-n`, note: 'C5', start: length - 1, length: length * 3, velocity: 1 }],
     volume: 0,
     pan: 0,
     isMuted,

@@ -60,18 +60,33 @@ const setBpm = (value: number): void => {
     }
 };
 
-/** Song playback starts at the position marker, loop playback at the top. */
-const play = (): void => {
+/**
+ * Song playback starts at the position marker, loop playback at the top. `at` starts the transport at an audio-context
+ * time instead of right away (the recorder's count-in); it counts as playing from now on.
+ */
+const play = (at?: number): void => {
     if (mode.value === 'song') {
         engine.seekToStep(songCue.value);
         currentStep.value = songCue.value;
     }
-    engine.play();
+    engine.play(at);
     isPlaying.value = true;
+};
+
+/** Called right before the transport stops, while it still knows where it was (the recorder ends its take there). */
+const beforeStop = new Set<() => void>();
+
+/** Registers a callback for right before playback stops. Returns the function that removes it. */
+const onBeforeStop = (callback: () => void): (() => void) => {
+    beforeStop.add(callback);
+    return () => beforeStop.delete(callback);
 };
 
 /** Stopping puts the playhead back where playback started, like a DAW does. */
 const stop = (): void => {
+    for (const callback of beforeStop) {
+        callback();
+    }
     engine.stop();
     isPlaying.value = false;
     currentStep.value = mode.value === 'song' ? songCue.value : 0;
@@ -184,6 +199,7 @@ export const useJuicyLoops = () => ({
     isPlaying,
     play,
     stop,
+    onBeforeStop,
     togglePlay,
     mode,
     setMode,

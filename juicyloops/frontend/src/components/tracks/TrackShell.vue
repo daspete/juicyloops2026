@@ -2,6 +2,7 @@
 import { useContainerView } from '@/composables/useContainerView';
 import { useExport } from '@/composables/useExport';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
+import { useMidi } from '@/composables/useMidi';
 import { useWorkspace } from '@/composables/useWorkspace';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
@@ -37,17 +38,28 @@ const { container } = useContainerView();
 const { openDialog: openExport } = useExport();
 const { selectedTrack, selectTrack, openTrack, isTrackShowing, toggleDetail, isPro } = useWorkspace();
 const confirm = useConfirm();
+const { isAnyArmed } = useMidi();
 
 const meta = computed(() => TRACK_META[props.track.type]);
 const isSelected = computed(() => selectedTrack.value?.id === props.track.id);
 const isTweakOpen = computed(() => isTrackShowing(props.track.id));
+/** With no track armed, the selected one plays MIDI: its arm button shows that, dimmer than a real arm. */
+const isArmedImplicitly = computed(() => !isAnyArmed.value && isSelected.value);
+const armHint = computed(() => {
+    if (props.track.isArmed) {
+        return 'Armed: your MIDI keyboard plays this track. Click to disarm';
+    }
+    return isArmedImplicitly.value
+        ? 'Plays your MIDI keyboard because it is selected and no track is armed. Click to arm it'
+        : 'Arm: play this track from a MIDI keyboard (several can be armed)';
+});
 
 const isVelocityOpen = ref(false);
 /** The automation lanes under the grid. A track that already has lanes (a duplicate) starts with them open. */
 const isAutomationOpen = ref(props.track.automation.lanes.length > 0);
 const showsAutomation = computed(() => isPro.value && isAutomationOpen.value);
 
-const isPatternEmpty = computed(() => !props.track.ticks.some((tick) => tick.isActive));
+const isPatternEmpty = computed(() => !props.track.notes.length);
 
 const volumeLabel = computed(() => `${props.track.volume > 0 ? '+' : ''}${props.track.volume.toFixed(1)} dB`);
 
@@ -124,6 +136,18 @@ const confirmRemove = (target?: HTMLElement) => {
                 </div>
 
                 <div class="track-mix">
+                    <button
+                        type="button"
+                        class="mutebtn armbtn"
+                        :data-active="props.track.isArmed"
+                        :data-implicit="isArmedImplicitly"
+                        v-tooltip.bottom="armHint"
+                        :aria-label="props.track.isArmed ? 'Disarm for MIDI' : 'Arm for MIDI'"
+                        :aria-pressed="props.track.isArmed"
+                        @click="props.track.setArmed(!props.track.isArmed)"
+                    >
+                        <Icon icon="mdi:record-circle-outline" class="w-3.5 h-3.5" />
+                    </button>
                     <button
                         type="button"
                         class="mutebtn"

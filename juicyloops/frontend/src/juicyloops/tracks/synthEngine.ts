@@ -1,4 +1,5 @@
 import { PolySynth, Synth, type BaseContext, type InputNode } from 'tone';
+import { PARAM_RAMP_TIME } from '../constants';
 import { markRaw } from 'vue';
 import { atTime } from '../automation';
 import { isSynthWorkletUsable, SynthVoices } from '../dsp/SynthVoices';
@@ -20,12 +21,22 @@ export interface SynthEngineSettings {
     cutsNotes: boolean;
     oscillatorType: OscillatorType;
     envelope: SynthEnvelope;
+    /** Pitch bend of every voice, in semitones. */
+    bend: number;
 }
 
 /** The sound source of a `SynthTrack`: every voice of the track, behind one output. */
 export interface SynthEngine {
     /** Plays a note (name or Hz) at `time` for `duration` (a note length or seconds); returns the length in seconds. */
     triggerAttackRelease(note: string | number, duration: string | number, time: number, velocity?: number): number;
+    /**
+     * Starts a live note (MIDI) that sounds until `noteOff` with the same `id` (a whole number above 0). In cut mode
+     * a new note takes over the one that sounds, and a `noteOff` for a note that was taken over does nothing.
+     */
+    noteOn(id: number, note: string | number, time: number, velocity: number): void;
+    noteOff(id: number, time: number): void;
+    /** Pitch bend of every voice in semitones: at `time` (automation) or right away, with a short glide either way. */
+    setBend(semitones: number, time?: number): void;
     setCutsNotes(cuts: boolean): void;
     setOscillatorType(type: OscillatorType): void;
     /** With a `time`, the change is scheduled for then. */
@@ -67,19 +78,68 @@ export class ToneSynthEngine implements SynthEngine {
     private cutsNotes: boolean;
     private oscillatorType: OscillatorType;
     private envelope: SynthEnvelope;
+    /** In cents, Tone's `detune`. */
+    private detune: number;
     private synth: Synth | null = null;
     private polySynth: PolySynth | null = null;
     /** The pending disposal of the engine that was switched away from, keyed by which one it is. */
     private readonly retiring = new Map<'synth' | 'polySynth', number>();
     /** Context time the last scheduled note is released at, so a retired engine can ring out its tail. */
     private lastNoteOff = -Infinity;
+    /** Live notes: in cut mode the id that sounds; with overlapping notes the note each id plays. */
+    private liveCurrent: number | null = null;
+    private readonly liveNotes = new Map<number, string | number>();
 
-    constructor({ context, cutsNotes, oscillatorType, envelope }: SynthEngineSettings) {
+    constructor({ context, cutsNotes, oscillatorType, envelope, bend }: SynthEngineSettings) {
         this.context = context;
         this.cutsNotes = cutsNotes;
         this.oscillatorType = oscillatorType;
         this.envelope = { ...envelope };
+        this.detune = bend * 100;
         this.engine();
+    }
+
+    noteOn(id: number, note: string | number, time: number, velocity: number): void {
+        const engine = this.engine();
+        engine.triggerAttack(note, time, velocity);
+        if (this.cutsNotes) {
+            this.liveCurrent = id;
+        } else {
+            this.liveNotes.set(id, note);
+        }
+    }
+
+    noteOff(id: number, time: number): void {
+        this.lastNoteOff = Math.max(this.lastNoteOff, time);
+        if (this.cutsNotes) {
+            if (this.liveCurrent === id) {
+                this.liveCurrent = null;
+                this.synth?.triggerRelease(time);
+            }
+            return;
+        }
+        const note = this.liveNotes.get(id);
+        if (note !== undefined) {
+            this.liveNotes.delete(id);
+            this.polySynth?.triggerRelease(note, time);
+        }
+    }
+
+    setBend(semitones: number, time?: number): void {
+        const cents = semitones * 100;
+        if (time === undefined) {
+            this.detune = cents;
+        }
+        const at = time ?? this.context.currentTime;
+        this.synth?.detune.rampTo(cents, PARAM_RAMP_TIME, at);
+        if (this.polySynth) {
+            // The PolySynth has no detune of its own: every voice it made glides, and new voices start from `options`.
+            const poly = this.polySynth as unknown as { _voices: Synth[]; options: { detune: number } };
+            for (const voice of poly._voices) {
+                voice.detune.rampTo(cents, PARAM_RAMP_TIME, at);
+            }
+            poly.options.detune = cents;
+        }
     }
 
     triggerAttackRelease(note: string | number, duration: string | number, time: number, velocity?: number): number {
@@ -137,7 +197,7 @@ export class ToneSynthEngine implements SynthEngine {
             return existing;
         }
 
-        const options = { context: this.context, oscillator: { type: this.oscillatorType }, envelope: { ...this.envelope } };
+        const options = { context: this.context, oscillator: { type: this.oscillatorType }, envelope: { ...this.envelope }, detune: this.detune };
         const engine = this.cutsNotes ? markRaw(new Synth(options)) : markRaw(new PolySynth(Synth, options));
         if (this.destination) {
             engine.connect(this.destination);

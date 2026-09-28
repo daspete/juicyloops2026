@@ -26,7 +26,8 @@ interface SynthExports {
     abi_version(): number;
     init(sampleRate: number): void;
     out_ptr(): number;
-    note_on(frame: number, frequency: number, velocity: number, durationFrames: number): number;
+    note_on(frame: number, id: number, frequency: number, velocity: number, durationFrames: number): number;
+    note_off(frame: number, id: number): number;
     set_param(frame: number, id: number, value: number): number;
     set_mode(mono: number): void;
     process(startFrame: number, frames: number): number;
@@ -60,7 +61,11 @@ class SynthProcessor extends AudioWorkletProcessor {
         const frame = (time: number) => Math.round(time * sampleRate);
         switch (message.type) {
             case 'note':
-                this.wasm.note_on(frame(message.time), message.frequency, message.velocity, frame(message.duration));
+                // A negative duration holds a live note until its `noteOff`.
+                this.wasm.note_on(frame(message.time), message.id, message.frequency, message.velocity, message.duration < 0 ? -1 : frame(message.duration));
+                break;
+            case 'noteOff':
+                this.wasm.note_off(frame(message.time), message.id);
                 break;
             case 'param':
                 this.wasm.set_param(frame(message.time), message.id, message.value);

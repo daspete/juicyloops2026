@@ -90,7 +90,7 @@ export const planRender = (session: SessionState, scope: RenderScope): RenderPla
     return {
         state: { ...session, containers: [{ ...container, tracks }], currentContainerId: container.id },
         mode: 'loop',
-        steps: loopLength(tracks.map((track) => track.ticks.length)) * repeats,
+        steps: loopLength(tracks.map((track) => track.length)) * repeats,
     };
 };
 

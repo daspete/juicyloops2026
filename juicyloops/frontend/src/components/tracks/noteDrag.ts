@@ -1,15 +1,8 @@
-import { nearestNoteLength, noteLengthSteps, type NoteLength } from '@/juicyloops/notes';
-import type { BaseTick } from '@/juicyloops/ticks/BaseTick';
+import { nearestNoteLengthSteps } from '@/juicyloops/notes';
+import { stepOfStart } from '@/juicyloops/notes/Note';
+import type { NotePattern } from '@/juicyloops/notes/NotePattern';
+import { lastCellOf, notesStartingIn } from '@/juicyloops/notes/stepView';
 import { onBeforeUnmount } from 'vue';
-
-/** A tick that sits on a note, and maybe rings for a length (synth ticks do, sample ticks play their slice out). */
-export type NoteTick = BaseTick & { note: string; duration?: NoteLength };
-
-/** How many steps a tick covers: its length, or one step without one. */
-export const tickSteps = (tick: NoteTick): number => (tick.duration ? noteLengthSteps(tick.duration) : 1);
-
-/** Last cell index a note starting at `index` covers in a pattern of `length` steps. */
-export const noteEnd = (length: number, index: number, steps: number): number => Math.min(length - 1, index + Math.max(1, steps) - 1);
 
 /** The step cell at a point, also when a note bar is drawn over it. */
 export const cellUnder = (clientX: number, clientY: number): HTMLElement | null => {
@@ -23,12 +16,19 @@ export const cellUnder = (clientX: number, clientY: number): HTMLElement | null 
 };
 
 /**
- * Dragging the ends of a note to change where it starts and how long it rings.
- * Used by the synth's step grid and by the piano roll; the drag follows the row it started on.
+ * Dragging the ends of a note to change where it starts and how long it rings, in the step grid's lengths
+ * (`NOTE_LENGTHS`: ¼, ½, 1, 2, 4, 8 steps). Used by the synth's step grid and by the piano roll; the drag follows the
+ * row it started on. Every change goes through the pattern's note methods.
  */
-export const useNoteResize = (ticks: () => NoteTick[]) => {
-    type Resize = { edge: 'start' | 'end'; head: number; anchorY: number };
+export const useNoteResize = (pattern: () => NotePattern) => {
+    type Resize = { edge: 'start' | 'end'; id: string; anchorY: number };
     let resize: Resize | null = null;
+
+    const setLength = (track: NotePattern, id: string, length: number) => {
+        if (track.getNote(id)?.length !== length) {
+            track.updateNote(id, { length });
+        }
+    };
 
     const onMove = (event: PointerEvent) => {
         if (!resize) {
@@ -40,38 +40,38 @@ export const useNoteResize = (ticks: () => NoteTick[]) => {
             return;
         }
 
-        const all = ticks();
+        const track = pattern();
+        const note = track.getNote(resize.id);
+        if (!note) {
+            return;
+        }
         const step = Number(cell.dataset.step);
-        const tick = all[resize.head]!;
+        const head = stepOfStart(note.start);
 
         if (resize.edge === 'end') {
-            if (step <= resize.head) {
+            if (step <= head) {
                 // Inside the note's own cell: the horizontal position picks a fraction of a step.
                 const rect = cell.getBoundingClientRect();
                 const ratio = (event.clientX - rect.left) / rect.width;
-                tick.duration = ratio < 0.375 ? '64n' : ratio < 0.75 ? '32n' : '16n';
+                setLength(track, note.id, ratio < 0.375 ? 0.25 : ratio < 0.75 ? 0.5 : 1);
             } else {
-                tick.duration = nearestNoteLength(step - resize.head + 1);
+                setLength(track, note.id, nearestNoteLengthSteps(step - head + 1));
             }
             return;
         }
 
-        const end = noteEnd(all.length, resize.head, tickSteps(tick));
+        const end = lastCellOf(note, track.length);
         const start = Math.min(step, end);
-        const length = nearestNoteLength(Math.max(1, end - start + 1));
+        const length = nearestNoteLengthSteps(Math.max(1, end - start + 1));
 
-        if (start === resize.head) {
-            tick.duration = length;
+        if (start === head) {
+            setLength(track, note.id, length);
             return;
         }
 
-        // The start moved: the note now lives on another step.
-        const target = all[start]!;
-        target.note = tick.note;
-        target.isActive = true;
-        target.duration = length;
-        tick.isActive = false;
-        resize.head = start;
+        // The start moved: the note now lives on another step, and takes that step over.
+        track.removeNotes(notesStartingIn(track.notes, start).map((other) => other.id));
+        track.updateNote(note.id, { start: start + (note.start - head), length });
     };
 
     const stopResize = () => {
@@ -80,11 +80,12 @@ export const useNoteResize = (ticks: () => NoteTick[]) => {
         window.removeEventListener('pointerup', stopResize);
     };
 
-    const startResize = (event: PointerEvent, edge: 'start' | 'end', head: number) => {
+    /** Starts dragging an end of the note with this id. */
+    const startResize = (event: PointerEvent, edge: 'start' | 'end', id: string) => {
         if (event.button !== 0) {
             return;
         }
-        resize = { edge, head, anchorY: event.clientY };
+        resize = { edge, id, anchorY: event.clientY };
         window.addEventListener('pointermove', onMove);
         window.addEventListener('pointerup', stopResize);
     };

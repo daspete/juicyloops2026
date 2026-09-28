@@ -7,6 +7,11 @@ const props = defineProps<{
     track: SampleTrack;
 }>();
 
+const LENGTH_MODES = [
+    { gate: false, icon: 'mdi:ray-start-arrow', label: 'One-shot', hint: 'Every note plays its slice out' },
+    { gate: true, icon: 'mdi:ray-start-end', label: 'Gate', hint: 'A note stops its slice when the note ends' },
+] as const;
+
 const formatPitch = (value: number) => (value > 0 ? `+${Math.round(value)}` : String(Math.round(value)));
 const formatSpeed = (value: number) => `${value.toFixed(2)}×`;
 </script>
@@ -42,6 +47,25 @@ const formatSpeed = (value: number) => `${value.toFixed(2)}×`;
                     :size="60"
                 />
             </div>
+        </div>
+    </div>
+
+    <div class="setting">
+        <div class="setting-label">Note length</div>
+        <div class="setting-row">
+            <button
+                v-for="mode in LENGTH_MODES"
+                :key="mode.label"
+                type="button"
+                class="iconbtn"
+                :data-active="props.track.gate === mode.gate"
+                :aria-pressed="props.track.gate === mode.gate"
+                v-tooltip.bottom="mode.hint"
+                @click="props.track.setGate(mode.gate)"
+            >
+                <Icon :icon="mode.icon" class="w-5 h-5" />
+                <span>{{ mode.label }}</span>
+            </button>
         </div>
     </div>
 

@@ -476,6 +476,103 @@
     box-shadow: inset 0 0 0 1px var(--jl-line);
 }
 
+/* Record, next to play: a red dot; red and blinking while recording, amber with the beat while counting in. */
+.recorder {
+    display: flex;
+    align-items: center;
+    gap: 0.05rem;
+}
+
+.recordbtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 2.3rem;
+    height: 2.3rem;
+    border-radius: 0.7rem;
+    background: var(--jl-bg);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+    color: #e03c3c;
+    cursor: pointer;
+    transition:
+        transform 0.12s ease,
+        background-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.recordbtn:hover {
+    transform: scale(1.04);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, #e03c3c 55%, var(--jl-line));
+}
+
+.recordbtn:active {
+    transform: scale(0.97);
+}
+
+.recordbtn-dot {
+    width: 0.8rem;
+    height: 0.8rem;
+    border-radius: 999px;
+    background: currentColor;
+}
+
+.recordbtn[data-state='recording'] {
+    background: #e03c3c;
+    color: white;
+    box-shadow: 0 6px 18px -6px color-mix(in oklab, #e03c3c 80%, transparent);
+}
+
+.recordbtn[data-state='recording'] .recordbtn-dot {
+    animation: recblink 1s ease-in-out infinite;
+}
+
+.recordbtn[data-state='countin'] {
+    background: color-mix(in oklab, #f0a020 22%, var(--jl-bg));
+    box-shadow: inset 0 0 0 1px #f0a020;
+    color: #f0a020;
+}
+
+.recordbtn-count {
+    font-family: var(--font-mono);
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.recorder-more {
+    width: 1.1rem;
+    padding: 0;
+}
+
+.recpop-offset {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+}
+
+.recpop-offset .midipop-device-name {
+    margin-right: auto;
+}
+
+.recpop-offset .midipop-device-note {
+    margin-left: 0;
+}
+
+.recpop-offset-input {
+    width: 3.6rem;
+    height: 1.6rem;
+    padding: 0 0.3rem;
+    border-radius: 0.4rem;
+    background: var(--jl-bg);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+    border: 0;
+    color: var(--jl-text);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    text-align: right;
+}
+
 /* ---------- session file ---------- */
 
 .filebar {
@@ -1131,7 +1228,7 @@
     color: var(--jl-text);
 }
 
-/* ---------- note handles (grid and piano roll) ---------- */
+/* ---------- note handles (step grid) ---------- */
 
 .note-handle {
     position: absolute;
@@ -1153,7 +1250,6 @@
     right: 2px;
 }
 
-.pianorow:hover .note-handle,
 .steps:hover .note-handle {
     opacity: 1;
 }
@@ -1164,127 +1260,449 @@
 
 /* ---------- piano roll ---------- */
 
-.pianoroll {
-    /* Reach back under the channel head so the key names sit in the head column and the step columns stay aligned with the grid above. */
-    margin-left: calc(-1 * var(--jl-head-space));
+/*
+ * The piano roll window. One scrolling sheet: the ruler sticks to the top, the keys to the left, the velocity lane to
+ * the bottom. Notes are bars placed by CSS variables (--s start and --l length in steps, --r row, --v velocity), so
+ * zooming or resizing changes only --roll-step and never re-renders a note.
+ */
+.proll {
+    --roll-bar-line: color-mix(in oklab, var(--jl-text) 30%, transparent);
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.4rem;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem 0.6rem;
+    outline: none;
+
+    & .lane-foot {
+        flex-wrap: wrap;
+        gap: 0.5rem 0.75rem;
+    }
 }
 
-.pianorow {
+.proll-bar {
     display: flex;
-    align-items: stretch;
-    height: 1.5rem;
-    padding-bottom: 3px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.3rem;
 }
 
-/* The key column stays put while the timeline scrolls. */
-.pianokeys {
-    position: sticky;
-    left: var(--jl-row-pad);
-    z-index: 2;
-    flex: 0 0 var(--jl-head-space);
+.proll-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    color: var(--jl-muted);
+
+    & .select {
+        flex: none;
+        width: 6.75rem;
+    }
+}
+
+.proll-quantize {
+    position: relative;
+}
+
+.proll-count {
+    margin-left: auto;
+    font-size: 0.74rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+.proll-modes {
+    display: inline-flex;
+    gap: 0.35rem;
+}
+
+/* The quantize popover, under its button. */
+.proll-pop {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    width: 17rem;
     display: flex;
-    justify-content: flex-end;
-    padding-right: var(--jl-track-gap);
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 0.75rem;
+    border-radius: 0.75rem;
+    border: 1px solid var(--jl-line-strong);
+    background: var(--jl-raised);
+    color: var(--jl-text);
+    box-shadow: var(--jl-shadow);
+}
+
+.proll-pop-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+}
+
+.proll-pop-label {
+    flex: 0 0 4.2rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+}
+
+.proll-pop-value {
+    flex: 0 0 2.9rem;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+}
+
+.proll-range {
+    flex: 1 1 auto;
+    min-width: 0;
+    accent-color: var(--jl-accent);
+}
+
+.proll-pop-check {
+    cursor: pointer;
+
+    & input {
+        accent-color: var(--jl-accent);
+    }
+}
+
+.proll-pop-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.proll-area {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--jl-line);
+    border-radius: 0.5rem;
     background: var(--jl-panel);
-    box-shadow: calc(-1 * var(--jl-row-pad)) 0 0 0 var(--jl-panel);
 }
 
-.pianokey {
-    width: var(--jl-key-width);
+.proll-sheet {
+    display: grid;
+    grid-template-columns: var(--roll-keys) calc(var(--roll-len) * var(--roll-step));
+    grid-template-rows: 1.5rem calc(var(--roll-rows) * var(--roll-row)) var(--roll-lane);
+    width: max-content;
+}
+
+.proll-corner {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 6;
+    background: var(--jl-panel);
+    border-right: 1px solid var(--jl-line-strong);
+    border-bottom: 1px solid var(--jl-line-strong);
+}
+
+.proll-corner--lane {
+    top: auto;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 0;
+    border-top: 1px solid var(--jl-line-strong);
+    font-size: 0.64rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+/* Bar numbers (bold) and beat numbers above the notes. */
+.proll-ruler {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    overflow: hidden;
+    background: var(--jl-panel);
+    border-bottom: 1px solid var(--jl-line-strong);
+}
+
+.proll-mark {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--b) * 4 * var(--roll-step));
+    display: flex;
+    align-items: center;
+    padding-left: 4px;
+    border-left: 1px solid var(--jl-line);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    color: var(--jl-muted);
+}
+
+.proll-mark--bar {
+    border-left-color: var(--roll-bar-line);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--jl-text);
+}
+
+.proll-marker {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 3px;
+    margin-left: -1px;
+    border-radius: 2px;
+    background: var(--jl-accent);
+    will-change: transform;
+}
+
+.proll-keys {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background: var(--jl-panel);
+    border-right: 1px solid var(--jl-line-strong);
+}
+
+.proll-key {
+    height: var(--roll-row);
     display: flex;
     align-items: center;
     justify-content: flex-end;
-    padding-right: 0.5rem;
-    border-radius: 0.3rem;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    font-weight: 700;
+    padding-right: 0.4rem;
+    overflow: hidden;
+    border-bottom: 1px solid var(--jl-line);
     background: var(--jl-key-white);
     color: var(--jl-key-white-ink);
-    border: 1px solid var(--jl-line);
+    font-family: var(--font-mono);
+    font-size: 0.64rem;
+    font-weight: 700;
+    white-space: nowrap;
 }
 
-.pianorow--black .pianokey {
+.proll-key--black {
     background: var(--jl-key-black);
     color: var(--jl-key-black-ink);
-    border-color: transparent;
 }
 
-.pianorow--c .pianokey {
+.proll-key--marked {
     color: var(--jl-accent);
+    border-bottom-color: var(--jl-line-strong);
 }
 
-.pianorow .steps {
-    flex: none;
-}
-
-.pianolane {
+/* The notes area: row lines, black-key stripes and the grid under the notes. */
+.proll-body {
     position: relative;
-    height: 100%;
+    overflow: hidden;
+    cursor: crosshair;
+    touch-action: pan-x pan-y;
+    background-image: repeating-linear-gradient(180deg, transparent 0 calc(var(--roll-row) - 1px), var(--jl-line) calc(var(--roll-row) - 1px) var(--roll-row));
 }
 
-.pianolane > .steps {
-    height: 100%;
+.proll-body--select {
+    cursor: default;
+    touch-action: none;
 }
 
-.pianotick {
-    position: relative;
-    border-radius: 0.3rem;
-    background: var(--jl-cell);
-    cursor: pointer;
-    transition: background-color 0.08s ease;
-}
-
-.pianorow--black .pianotick {
-    background: color-mix(in oklab, var(--jl-cell) 70%, var(--jl-bg));
-}
-
-.pianorow:hover .pianotick {
-    background: var(--jl-cell-hover);
-}
-
-.pianorow .pianotick--current {
-    background: color-mix(in oklab, var(--jl-cell-hover) 70%, var(--jl-text) 8%);
-}
-
-/* A note is one bar over the cells it covers, however long it is. */
-.pianonote {
+.proll-rows {
     position: absolute;
-    top: 0;
-    bottom: 3px;
-    z-index: 1;
-    border-radius: 0.3rem;
+    inset: 0;
+    pointer-events: none;
+}
+
+.proll-row {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--r) * var(--roll-row));
+    height: var(--roll-row);
+    pointer-events: none;
+}
+
+.proll-row--black {
+    background: color-mix(in oklab, var(--jl-cell) 55%, transparent);
+}
+
+/* An octave line under every C (and under the root of a sample). */
+.proll-row--marked {
+    box-shadow: inset 0 -1px 0 var(--jl-line-strong);
+}
+
+/* Grid lines: the snap unit (triplets too), then beats, then bars, each stronger. */
+.proll-lines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+        repeating-linear-gradient(90deg, var(--roll-bar-line) 0 1px, transparent 1px calc(16 * var(--roll-step))),
+        repeating-linear-gradient(90deg, var(--jl-line-strong) 0 1px, transparent 1px calc(4 * var(--roll-step))),
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(var(--roll-unit) * var(--roll-step)));
+}
+
+.proll-note {
+    position: absolute;
+    left: calc(var(--s) * var(--roll-step));
+    top: calc(var(--r) * var(--roll-row) + 1px);
+    width: max(4px, calc(var(--l) * var(--roll-step) - 1px));
+    height: calc(var(--roll-row) - 3px);
+    overflow: hidden;
+    border-radius: 4px;
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 55%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent 60%),
         var(--jl-accent);
-    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 45%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 55%, #000 30%);
+    color: var(--jl-accent-ink);
     cursor: grab;
     touch-action: none;
-    transition: filter 0.1s ease;
 }
 
-.pianonote:hover {
-    filter: brightness(1.1);
+/* Quieter notes are paler: a veil of the background, thicker the lower the velocity. */
+.proll-note::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--jl-panel);
+    opacity: calc((1 - var(--v)) * 0.55);
+    pointer-events: none;
 }
 
-.pianonote:active {
+.proll-note:active {
     cursor: grabbing;
 }
 
-.pianonote--current {
-    outline: 2px solid rgba(255, 255, 255, 0.9);
-    outline-offset: -2px;
+.proll-note--selected {
+    outline: 2px solid var(--jl-text);
+    outline-offset: -1px;
 }
 
-.pianonote .note-handle {
-    top: 2px;
-    bottom: 2px;
+.proll-note-label {
+    position: relative;
+    display: block;
+    padding-left: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: calc(var(--roll-row) - 3px);
+    white-space: nowrap;
+    pointer-events: none;
 }
 
-/* The piano roll in its own window: the key column is just the keys, and the beats share the window's width. */
+/* The ends of a note: drag them to change where it starts or how long it lasts. */
+.proll-edge {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    z-index: 1;
+    width: min(7px, 30%);
+    cursor: ew-resize;
+}
+
+.proll-edge--start {
+    left: 0;
+}
+
+.proll-edge--end {
+    right: 0;
+}
+
+/* Only with a real hover: a tap leaves :hover stuck on touch screens. */
+@media (hover: hover) {
+    .proll-note:hover .proll-edge {
+        background: rgba(20, 16, 12, 0.22);
+    }
+}
+
+.proll-band {
+    position: absolute;
+    z-index: 3;
+    border: 1px solid var(--jl-accent);
+    border-radius: 2px;
+    background: color-mix(in oklab, var(--jl-accent) 14%, transparent);
+    pointer-events: none;
+}
+
+.proll-beam {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 2;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--jl-text);
+    opacity: 0.75;
+    box-shadow: 0 0 8px color-mix(in oklab, var(--jl-accent) 70%, transparent);
+    pointer-events: none;
+    will-change: transform;
+}
+
+/* One stem per note: its velocity. Sweep across to draw, grab a selected stem to move the whole selection. */
+.proll-lane {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    overflow: hidden;
+    border-top: 1px solid var(--jl-line-strong);
+    background-color: var(--jl-panel);
+    background-image:
+        repeating-linear-gradient(90deg, var(--roll-bar-line) 0 1px, transparent 1px calc(16 * var(--roll-step))),
+        repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--roll-step)));
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.proll-stem {
+    position: absolute;
+    bottom: 4px;
+    left: calc(var(--s) * var(--roll-step));
+    width: 3px;
+    height: calc(var(--v) * (var(--roll-lane) - 10px));
+    border-radius: 2px;
+    background: var(--jl-accent);
+    pointer-events: none;
+}
+
+.proll-stem::after {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: -2px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: inherit;
+}
+
+.proll-stem--selected {
+    background: var(--jl-text);
+}
+
+.proll-stem--dim {
+    opacity: 0.25;
+}
+
+/* Fingers get wider note ends. */
+@media (pointer: coarse) {
+    .proll-edge {
+        width: min(12px, 35%);
+    }
+}
+
+@media (max-width: 47.9rem) {
+    .proll {
+        padding: 0.4rem 0.4rem 0.5rem;
+    }
+
+    .proll-count {
+        margin-left: 0;
+    }
+}
+
 /* ---------- export dialog ---------- */
 
 .export {
@@ -1404,101 +1822,6 @@
     display: flex;
     justify-content: flex-end;
     gap: 0.5rem;
-}
-
-/* The piano roll inside its floating window: the rows take whatever height the window has. */
-.pianoroll--dialog {
-    container-type: inline-size;
-    flex: 1 1 auto;
-    min-height: 0;
-    margin-left: 0;
-    padding: 0.5rem 0.75rem 0.6rem;
-    --jl-lane: calc(100cqw - var(--jl-key-width) - 0.75rem);
-    --jl-beat-w: calc((var(--jl-lane) - (var(--jl-roll-beats, 8) - 1) * var(--jl-beat-gap)) / var(--jl-roll-beats, 8));
-    --jl-cell-w: calc((var(--jl-beat-w) - 3 * var(--jl-cell-gap)) / 4);
-
-    & .pianoroll-scroller {
-        flex: 1 1 auto;
-        min-height: 0;
-        height: auto;
-    }
-
-    & .pianorow {
-        height: var(--jl-roll-row, 28px);
-        padding-bottom: 3px;
-    }
-
-    & .pianokeys {
-        position: static;
-        flex: 0 0 var(--jl-key-width);
-        padding-right: 0;
-        margin-right: 0.75rem;
-        box-shadow: none;
-        background: transparent;
-    }
-
-    & .pianokey {
-        width: 100%;
-        font-size: 0.72rem;
-    }
-
-    /* Octaves: a line under every C, so the eye can count. */
-    & .pianorow--c {
-        box-shadow: inset 0 -1px 0 var(--jl-line-strong);
-    }
-
-    & .pianotick {
-        border-radius: 0.35rem;
-    }
-
-    & .pianotick--downbeat {
-        background: var(--jl-cell-downbeat);
-    }
-
-    & .pianorow--black .pianotick--downbeat {
-        background: color-mix(in oklab, var(--jl-cell-downbeat) 70%, var(--jl-bg));
-    }
-
-    & .lane-foot {
-        padding-left: 0;
-        flex-wrap: wrap;
-    }
-}
-
-/* The bar and beat numbers above the roll, in the columns of the cells below. */
-.pianoroll-ruler {
-    display: flex;
-    align-items: stretch;
-    height: 1.4rem;
-    margin-bottom: 0.15rem;
-    border-bottom: 1px solid var(--jl-line-strong);
-
-    & .pianokeys {
-        flex: 0 0 var(--jl-key-width);
-        margin-right: 0.75rem;
-    }
-
-    & .ruler-cell {
-        font-size: 0.72rem;
-    }
-}
-
-/* On a phone the roll keeps finger-sized cells and scrolls sideways; the keys stay pinned on the left. */
-@media (max-width: 640px) {
-    .pianoroll--dialog {
-        --jl-lane: max(calc(100cqw - var(--jl-key-width) - 0.75rem), calc(var(--jl-roll-beats, 8) * (4 * 2rem + 3 * var(--jl-cell-gap)) + (var(--jl-roll-beats, 8) - 1) * var(--jl-beat-gap)));
-
-        & .pianokeys {
-            position: sticky;
-            left: 0;
-            z-index: 2;
-            background: var(--jl-panel);
-        }
-    }
-
-    .pianoroll-ruler {
-        display: none;
-    }
 }
 
 /* ---------- timeline (track editor) ---------- */
@@ -1778,10 +2101,6 @@
     gap: 0.75rem;
 }
 
-.pianoroll .lane-foot {
-    padding-left: var(--jl-head-space);
-}
-
 .lane-hint {
     font-size: 0.74rem;
     color: var(--jl-muted);
@@ -2008,15 +2327,6 @@
 
     .ruler-spacer {
         display: none;
-    }
-
-    .pianoroll {
-        margin-left: 0;
-    }
-
-    .pianokeys {
-        flex-basis: var(--jl-key-width);
-        padding-right: 0;
     }
 
     .automation {
@@ -4074,6 +4384,8 @@
 .preview-step[data-on='true'] {
     height: calc(45% + 55% * var(--level));
     background: var(--preview-on);
+    /* A note that starts between steps sits where it starts. */
+    translate: calc(var(--offset, 0) * 100%) 0;
 }
 
 /* ---------- welcome ---------- */
@@ -4551,4 +4863,188 @@
         animation: none !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* ---------- MIDI: the top-bar light, learn mode, the popover, arm buttons ---------- */
+
+.midibar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.midichip-light {
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--jl-line-strong);
+    transition:
+        background-color 0.08s ease,
+        box-shadow 0.08s ease;
+}
+
+.midichip[data-state='on'] .midichip-light {
+    background: color-mix(in oklab, var(--jl-brand) 70%, var(--jl-line-strong));
+}
+
+.midichip[data-state='denied'] .midichip-light {
+    background: #e03c3c;
+}
+
+.midichip[data-flash='true'] .midichip-light {
+    background: var(--jl-brand);
+    box-shadow: 0 0 8px var(--jl-brand);
+}
+
+.midipop {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+    width: min(22rem, calc(100vw - 2rem));
+}
+
+.midipop-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+}
+
+.midipop-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.midipop-note {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--jl-muted);
+}
+
+.midipop-device {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.8rem;
+    cursor: pointer;
+}
+
+.midipop-device[data-connected='false'] {
+    opacity: 0.55;
+}
+
+.midipop-device-name {
+    font-weight: 600;
+    color: var(--jl-text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.midipop-device-note {
+    margin-left: auto;
+    font-size: 0.7rem;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+.midipop-maps {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.midipop-map {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+}
+
+.midipop-map[data-missing='true'] .midipop-target {
+    opacity: 0.5;
+    text-decoration: line-through;
+}
+
+.midipop-cc {
+    min-width: 3.4rem;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--jl-brand);
+}
+
+.midipop-target {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.midipop-target span,
+.midipop-target small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.midipop-target small {
+    font-size: 0.68rem;
+    color: var(--jl-muted);
+}
+
+/* Learn mode: every knob that can be mapped wears a dashed ring; the picked one pulses. */
+.knob--learnable .knob-dial {
+    border-radius: 999px;
+    outline: 2px dashed color-mix(in oklab, var(--jl-brand) 70%, transparent);
+    outline-offset: 2px;
+    cursor: pointer;
+}
+
+.knob--learning .knob-dial {
+    outline-style: solid;
+    outline-color: var(--jl-brand);
+    animation: knob-learn 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes knob-learn {
+    from {
+        box-shadow: 0 0 0 0 color-mix(in oklab, var(--jl-brand) 40%, transparent);
+    }
+    to {
+        box-shadow: 0 0 0 6px color-mix(in oklab, var(--jl-brand) 0%, transparent);
+    }
+}
+
+.knob-cc {
+    position: absolute;
+    top: -0.35rem;
+    right: -0.5rem;
+    padding: 0.05rem 0.25rem;
+    border-radius: 0.3rem;
+    background: var(--jl-brand);
+    color: var(--jl-accent-ink, #fff);
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+    pointer-events: none;
+}
+
+/* The arm button: red like a DAW's record-arm; dimmer when the track only plays MIDI because it is selected. */
+.armbtn[data-active='true'] {
+    background: #e03c3c;
+    color: #fff;
+    box-shadow: 0 0 10px rgba(224, 60, 60, 0.55);
+}
+
+.armbtn[data-implicit='true']:not([data-active='true']) {
+    color: #e03c3c;
+    background: rgba(224, 60, 60, 0.14);
 }

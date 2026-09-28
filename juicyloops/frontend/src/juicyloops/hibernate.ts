@@ -1,7 +1,6 @@
 import { toRaw } from 'vue';
-import { noteLengthSteps, semitonesBetween } from './notes';
+import { SAMPLE_ROOT_NOTE, semitonesBetween } from './notes';
 import { SONG_STEPS_PER_BAR, type Song } from './song';
-import { SAMPLE_ROOT_NOTE } from './ticks/SampleTick';
 import type { BaseTrack } from './tracks/BaseTrack';
 import { SampleTrack } from './tracks/SampleTrack';
 import { SynthTrack } from './tracks/SynthTrack';
@@ -83,27 +82,21 @@ export const markDue = (song: Song, segments: readonly number[], count: number, 
 };
 
 /**
- * How long (seconds) one track's own sound can go on after the step that started it, before its effects: a synth
- * note's length plus its release, a sample voice's full length. Estimated from the stored values, on the long side.
+ * How long (seconds) one track's own sound can go on after the step that started it, before its effects: the longest
+ * synth note plus its release (a note may start up to a step late inside its step), a sample voice's full length
+ * (in gate mode it may stop earlier). Estimated from the stored values, on the long side.
  */
 export const voiceTail = (track: BaseTrack, stepSeconds: number): number => {
     if (track instanceof SynthTrack) {
-        let longest = 0;
-        for (const tick of track.ticks) {
-            if (tick.isActive) {
-                longest = Math.max(longest, noteLengthSteps(tick.duration));
-            }
-        }
+        const longest = track.notes.length ? track.longestNote + 1 : 0;
         return longest * stepSeconds + track.envelope.release;
     }
     if (track instanceof SampleTrack) {
         // A voice plays at most the whole region, at the speed; an unsliced sample plays lower notes slower, so longer.
         let slowest = 1;
         if (!track.isSliced) {
-            for (const tick of track.ticks) {
-                if (tick.isActive) {
-                    slowest = Math.max(slowest, 2 ** (-semitonesBetween(SAMPLE_ROOT_NOTE, tick.note) / 12));
-                }
+            for (const note of track.notes) {
+                slowest = Math.max(slowest, 2 ** (-semitonesBetween(SAMPLE_ROOT_NOTE, note.note) / 12));
             }
         }
         return (track.sampleDuration / Math.max(track.speed, 1e-3)) * slowest;

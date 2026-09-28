@@ -1,22 +1,22 @@
 <script setup lang="ts">
+import { setStepVelocity, stepCells, stepVelocity } from '@/juicyloops/notes/stepView';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { computed } from 'vue';
 import StepValueLane from './StepValueLane.vue';
 
-/** Velocity lane: how loud each step plays, drawn as one bar per step under the grid. */
+/**
+ * Velocity lane: how loud each step plays, drawn as one bar per step under the grid. A step's bar is the velocity of
+ * the notes starting in it; an empty step shows the full velocity a note switched on there gets.
+ */
 const props = defineProps<{
     track: BaseTrack;
 }>();
 
-const values = computed(() => props.track.ticks.map((tick) => tick.volume));
-const active = computed(() => props.track.ticks.map((tick) => tick.isActive));
+const cells = computed(() => stepCells(props.track.notes, props.track.length));
+const values = computed(() => cells.value.map((notes) => (notes.length ? stepVelocity(notes) : 1)));
+const active = computed(() => cells.value.map((notes) => notes.length > 0));
 
-const set = (index: number, value: number) => {
-    const tick = props.track.ticks[index];
-    if (tick) {
-        tick.volume = value;
-    }
-};
+const set = (index: number, value: number) => setStepVelocity(props.track, index, value);
 </script>
 
 <template>

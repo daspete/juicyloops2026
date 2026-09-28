@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { useTrackPlayhead } from '@/composables/useContainerView';
-import { ALL_NOTES_DESCENDING, noteLengthSteps } from '@/juicyloops/notes';
+import { ALL_NOTES_DESCENDING } from '@/juicyloops/notes';
+import { stepOfStart } from '@/juicyloops/notes/Note';
+import { lastCellOf, setStep, stepCells } from '@/juicyloops/notes/stepView';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
 import { computed, ref, useTemplateRef } from 'vue';
 import PianoRoll, { type RollRow } from './PianoRoll.vue';
 import TickGrid, { type StepSpan } from './TickGrid.vue';
 import TrackShell from './TrackShell.vue';
-import { noteEnd, useNoteResize } from './noteDrag';
+import { useNoteResize } from './noteDrag';
 import { TRACK_META } from './trackMeta';
 
 const props = defineProps<{
@@ -30,26 +32,27 @@ const ROWS: readonly RollRow[] = ALL_NOTES_DESCENDING.map((note) => ({
     marked: note.startsWith('C') && !note.includes('#'),
 }));
 
-/** Decoration of the main grid: which cells are covered by longer notes, and where each note ends (for the end handle). */
+/** The notes starting in each step: what the grid lights. */
+const cells = computed(() => stepCells(props.track.notes, props.track.length));
+
+/** Decoration of the main grid: which cells are covered by longer notes, and which note ends in a cell (for the end handle). */
 const gridSpans = computed(() => {
     const spans = new Map<number, StepSpan>();
-    const endHead = new Map<number, number>();
-    props.track.ticks.forEach((tick, index) => {
-        if (!tick.isActive) {
-            return;
+    const endNote = new Map<number, string>();
+    for (const note of props.track.notes) {
+        const head = stepOfStart(note.start);
+        const end = lastCellOf(note, props.track.length);
+        endNote.set(end, note.id);
+        const own = spans.get(head);
+        spans.set(head, { ...own, fill: Math.max(own?.fill ?? 0, Math.min(1, note.length)), openEnd: !!own?.openEnd || end > head });
+        for (let cell = head + 1; cell <= end; cell++) {
+            spans.set(cell, { ...spans.get(cell), tail: true, openEnd: !!spans.get(cell)?.openEnd || cell < end });
         }
-        const steps = noteLengthSteps(tick.duration);
-        const end = noteEnd(props.track.length, index, steps);
-        endHead.set(end, index);
-        spans.set(index, { ...spans.get(index), fill: Math.min(1, steps), openEnd: end > index });
-        for (let cell = index + 1; cell <= end; cell++) {
-            spans.set(cell, { ...spans.get(cell), tail: true, openEnd: cell < end });
-        }
-    });
-    return { spans, endHead };
+    }
+    return { spans, endNote };
 });
 
-const { startResize } = useNoteResize(() => props.track.ticks);
+const { startResize } = useNoteResize(() => props.track);
 
 /* PianoRoll is generic, so its instance type cannot be named; what we call on it is enough. */
 const roll = useTemplateRef<{ scrollToPattern: () => Promise<void> }>('roll');
@@ -80,26 +83,21 @@ const shiftOctave = async (direction: 1 | -1) => {
             </button>
         </template>
 
-        <TickGrid
-            :ticks="props.track.ticks"
-            :playhead="playhead"
-            :spans="gridSpans.spans"
-            @paint="(tick, _index, active) => (tick.isActive = active)"
-        >
-            <template #default="{ tick, index }">
-                <span class="tick-label">{{ tick.note }}</span>
+        <TickGrid :cells="cells" :playhead="playhead" :spans="gridSpans.spans" @paint="(index, active) => setStep(props.track, index, active)">
+            <template #default="{ notes, index }">
+                <span class="tick-label">{{ notes[0]?.note ?? props.track.stepNote }}</span>
                 <span
-                    v-if="tick.isActive"
+                    v-if="notes.length"
                     class="note-handle note-handle--start"
                     title="Drag to move the start"
-                    @pointerdown.stop.prevent="startResize($event, 'start', index)"
+                    @pointerdown.stop.prevent="startResize($event, 'start', notes[0]!.id)"
                     @click.stop
                 ></span>
                 <span
-                    v-if="gridSpans.endHead.has(index)"
+                    v-if="gridSpans.endNote.has(index)"
                     class="note-handle note-handle--end"
                     title="Drag to change the length"
-                    @pointerdown.stop.prevent="startResize($event, 'end', gridSpans.endHead.get(index)!)"
+                    @pointerdown.stop.prevent="startResize($event, 'end', gridSpans.endNote.get(index)!)"
                     @click.stop
                 ></span>
             </template>
@@ -109,14 +107,14 @@ const shiftOctave = async (direction: 1 | -1) => {
     <PianoRoll
         ref="roll"
         v-model:visible="isPianoRollExpanded"
-        :ticks="props.track.ticks"
+        :pattern="props.track"
+        :roll-id="props.track.id"
         :rows="ROWS"
         :playhead="playhead"
         :header="`Notes · Synth ${props.trackIndex + 1}`"
         :accent="accent"
         home="C5"
-        resizable
-        hint="Click a cell to place a note. Drag a note to move it, drag its ends to change its length."
+        hint="Click to add a note, drag it to move, drag its ends to change its length (Alt: no snap). Drag over empty space to select."
     >
         <template #foot>
             <button type="button" class="chip" @click="shiftOctave(-1)">

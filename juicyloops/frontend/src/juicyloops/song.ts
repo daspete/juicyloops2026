@@ -49,6 +49,17 @@ export interface SongLane {
 /** Snaps a step to a grid of `grid` steps (a beat unless told otherwise). */
 export const snapStep = (step: number, grid = SONG_SNAP): number => Math.max(0, Math.round(step / grid) * grid);
 
+/**
+ * The song step for a running transport step (which may be fractional): inside the loop region once it was reached,
+ * else wrapped at the song's end. What the sequencer plays at a step, and where a recorded note lands.
+ */
+export const songStepAt = (absoluteStep: number, songLength: number, loop: { start: number; end: number } | null): number => {
+    if (loop) {
+        return absoluteStep < loop.end ? absoluteStep : loop.start + ((absoluteStep - loop.start) % (loop.end - loop.start));
+    }
+    return songLength ? absoluteStep % songLength : 0;
+};
+
 const createLane = (name: string, id = createId()): SongLane => ({ id, name, isMuted: false, isSolo: false, clips: [] });
 
 /**

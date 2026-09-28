@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { NOTE_LENGTHS, OSCILLATOR_TYPES, type NoteLength, type OscillatorType } from '@/juicyloops/notes';
+import { NOTE_LENGTHS, OSCILLATOR_TYPES, type OscillatorType } from '@/juicyloops/notes';
 import { computed } from 'vue';
 import type { SynthTrack } from '@/juicyloops/tracks/SynthTrack';
 import { Icon } from '@iconify/vue';
@@ -8,10 +8,11 @@ const props = defineProps<{
     track: SynthTrack;
 }>();
 
-/** The length shared by every step, or null when steps differ. */
-const sharedLength = computed<NoteLength | null>(() => {
-    const first = props.track.ticks[0]?.duration ?? null;
-    return props.track.ticks.every((tick) => tick.duration === first) ? first : null;
+/** The length (steps) shared by every note, or null when notes differ. Without notes, the length a new step gets. */
+const sharedLength = computed<number | null>(() => {
+    const notes = props.track.notes;
+    const first = notes[0]?.length ?? props.track.stepLength;
+    return notes.every((note) => note.length === first) ? first : null;
 });
 
 const OSCILLATORS: Record<OscillatorType, { icon: string; label: string }> = {
@@ -50,11 +51,11 @@ const OSCILLATORS: Record<OscillatorType, { icon: string; label: string }> = {
                 :key="length.tone"
                 type="button"
                 class="iconbtn font-mono"
-                :data-active="sharedLength === length.tone"
-                :aria-pressed="sharedLength === length.tone"
+                :data-active="sharedLength === length.steps"
+                :aria-pressed="sharedLength === length.steps"
                 :aria-label="`${length.steps} ${length.steps === 1 ? 'step' : 'steps'} long`"
                 v-tooltip.bottom="`${length.steps} ${length.steps === 1 ? 'step' : 'steps'} long`"
-                @click="props.track.setAllNoteLengths(length.tone)"
+                @click="props.track.setAllNoteLengths(length.steps)"
             >
                 {{ length.label }}
             </button>

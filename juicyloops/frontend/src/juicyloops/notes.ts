@@ -57,6 +57,12 @@ export const transpose = (note: string, semitones: number): string => {
     return index === null ? note : noteAt(index + semitones);
 };
 
+/** The key a sample plays at its own pitch, and the key of its first slice. */
+export const SAMPLE_ROOT_NOTE = 'C5';
+
+/** The pitch a step switched on in the grid gets until another pitch was placed. */
+export const DEFAULT_STEP_NOTE = 'C5';
+
 export const OSCILLATOR_TYPES = ['sine', 'square', 'triangle', 'sawtooth'] as const;
 export type OscillatorType = (typeof OSCILLATOR_TYPES)[number];
 
@@ -93,3 +99,6 @@ export const nearestNoteLength = (steps: number): NoteLength => {
     }
     return best.tone;
 };
+
+/** The steps of the available length closest to `steps` (see `nearestNoteLength`). */
+export const nearestNoteLengthSteps = (steps: number): number => noteLengthSteps(nearestNoteLength(steps));

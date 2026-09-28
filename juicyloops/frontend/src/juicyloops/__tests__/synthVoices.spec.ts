@@ -28,7 +28,21 @@ describe('SynthVoices event conversion', () => {
         const port = stubPort();
         events.attach(port);
         expect(events.note('A4', '16n', 3.25, 0.5)).toBe(0.125);
-        expect(port.sent).toEqual([{ type: 'note', time: 3.25, frequency: expect.closeTo(440, 6), velocity: 0.5, duration: 0.125 }]);
+        expect(port.sent).toEqual([{ type: 'note', time: 3.25, id: 0, frequency: expect.closeTo(440, 6), velocity: 0.5, duration: 0.125 }]);
+    });
+
+    it('posts live notes held until their note-off', () => {
+        const events = new SynthEvents({ frequency: noteFrequency, seconds });
+        const port = stubPort();
+        events.attach(port);
+        events.noteOn(3, 'A4', 1.5, 0.8);
+        events.noteOff(3, 2);
+        events.param('bend', -1.5, 2.5);
+        expect(port.sent).toEqual([
+            { type: 'note', time: 1.5, id: 3, frequency: expect.closeTo(440, 6), velocity: 0.8, duration: -1 },
+            { type: 'noteOff', time: 2, id: 3 },
+            { type: 'param', time: 2.5, id: SynthParam.bend, value: -1.5 },
+        ]);
     });
 
     it('posts parameters by engine id, timed or right away, and the mode', () => {
@@ -150,7 +164,7 @@ describe('synth processor', () => {
     it('plays A4 at 440 Hz, starting on the frame of its time', () => {
         const { send, render } = create();
         send({ type: 'param', time: 0, id: SynthParam.sustain, value: 1 });
-        send({ type: 'note', time: 0.5, frequency: 440, velocity: 1, duration: 0.5 });
+        send({ type: 'note', id: 0, time: 0.5, frequency: 440, velocity: 1, duration: 0.5 });
         const { out } = render(0, 1.5);
         const start = 0.5 * RATE;
         expect(peak(out.subarray(0, start + 1))).toBe(0);
@@ -166,7 +180,7 @@ describe('synth processor', () => {
     it('applies timed envelope changes on their frame', () => {
         const { send, render } = create();
         send({ type: 'param', time: 0, id: SynthParam.sustain, value: 1 });
-        send({ type: 'note', time: 0, frequency: 440, velocity: 1, duration: 2 });
+        send({ type: 'note', id: 0, time: 0, frequency: 440, velocity: 1, duration: 2 });
         send({ type: 'param', time: 0.5, id: SynthParam.sustain, value: 0.25 });
         const { out } = render(0, 1);
         expect(peak(out.subarray(0.3 * RATE, 0.5 * RATE))).toBeCloseTo(1, 2);
@@ -178,12 +192,28 @@ describe('synth processor', () => {
             const { send, render } = create();
             send({ type: 'mode', mono });
             send({ type: 'param', time: 0, id: SynthParam.sustain, value: 1 });
-            send({ type: 'note', time: 0, frequency: 440, velocity: 1, duration: 2 });
-            send({ type: 'note', time: 0.25, frequency: 660, velocity: 1, duration: 2 });
+            send({ type: 'note', id: 0, time: 0, frequency: 440, velocity: 1, duration: 2 });
+            send({ type: 'note', id: 0, time: 0.25, frequency: 660, velocity: 1, duration: 2 });
             return peak(render(0, 1).out.subarray(0.5 * RATE));
         };
         expect(level(true)).toBeCloseTo(1, 2);
         expect(level(false)).toBeGreaterThan(1.5);
+    });
+
+    it('holds a live note until its note-off, and bends it', () => {
+        const { send, render } = create();
+        send({ type: 'param', time: 0, id: SynthParam.sustain, value: 1 });
+        send({ type: 'param', time: 0, id: SynthParam.release, value: 0.01 });
+        send({ type: 'note', id: 4, time: 0, frequency: 440, velocity: 1, duration: -1 });
+        const held = render(0, 3).out;
+        expect(peak(held.subarray(2.5 * RATE))).toBeCloseTo(1, 2);
+        expect(pitch(held.subarray(RATE, 2 * RATE))).toBeCloseTo(440, 1);
+        send({ type: 'param', time: 3, id: SynthParam.bend, value: 2 });
+        const bent = render(3, 0.5).out;
+        expect(pitch(bent.subarray(0.1 * RATE))).toBeCloseTo(440 * 2 ** (2 / 12), 0);
+        send({ type: 'noteOff', id: 4, time: 3.5 });
+        const released = render(3.5, 0.5).out;
+        expect(peak(released.subarray(0.2 * RATE))).toBe(0);
     });
 
     it('lets the browser collect it after dispose', () => {

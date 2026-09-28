@@ -6,6 +6,8 @@ import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useHistory } from '@/composables/useHistory';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
+import { useMidi } from '@/composables/useMidi';
+import { useRecorder } from '@/composables/useRecorder';
 import { useExport, type ExportResult } from '@/composables/useExport';
 import { useSession, type SessionResult } from '@/composables/useSession';
 import { useTheme } from '@/composables/useTheme';
@@ -17,6 +19,8 @@ import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 import LiveText from './ui/LiveText.vue';
+import MidiPanel from './midi/MidiPanel.vue';
+import RecordControls from './midi/RecordControls.vue';
 import MixPanel from './mix/MixPanel.vue';
 import { TRACK_META } from './tracks/trackMeta';
 
@@ -37,6 +41,8 @@ const route = useRoute();
 const router = useRouter();
 const toast = useToast();
 const confirm = useConfirm();
+const midi = useMidi();
+const recorder = useRecorder();
 
 /* What you see is what you hear: the song view plays the arrangement, the track view loops every track. */
 const isSongView = computed(() => route.name === 'app.song');
@@ -81,6 +87,8 @@ const start = async (chosen: WorkspaceMode) => {
     setMode(chosen);
     await engine.initialize();
     isInitialized.value = true;
+    // MIDI comes back by itself when it was allowed on an earlier visit.
+    void midi.restore();
 };
 
 /** The play position readout. A getter for `LiveText`, so the moving position re-renders the readout alone, not this whole layout. */
@@ -230,7 +238,7 @@ const isTypingTarget = (target: EventTarget | null) => {
 };
 
 /**
- * Space plays and stops, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
+ * Space plays and stops, R records (again: stops recording, playback goes on), Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
  * Ctrl+O opens and Ctrl+E exports audio, like in every DAW. The file shortcuts work from inside a text field too.
  */
 const onKeyDown = (event: KeyboardEvent) => {
@@ -262,6 +270,13 @@ const onKeyDown = (event: KeyboardEvent) => {
     if (event.code === 'Space' && isInitialized.value) {
         event.preventDefault();
         togglePlay();
+        return;
+    }
+    if (key === 'r' && !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value) {
+        event.preventDefault();
+        if (recorder.toggle() === 'no-track') {
+            toast.add({ severity: 'warn', summary: 'Nothing to record into', detail: 'Add a track, then arm it (or select it) to record.', life: 3500 });
+        }
     }
 };
 
@@ -270,7 +285,9 @@ const onKeyDown = (event: KeyboardEvent) => {
  * moment later for changes that land asynchronously (a decoded sample, a duplicated track). Changes that arrive
  * with no gesture at all (a finished recording) are caught by the watcher on the model, once the pointer is up.
  */
-const HISTORY_EVENTS = ['pointerup', 'keyup', 'change', 'drop', 'dragend'] as const;
+const HISTORY_EVENTS = ['pointerup', 'change', 'drop', 'dragend'] as const;
+/** Keys that only modify a gesture: letting go of one (Alt in the middle of a drag) ends nothing. */
+const MODIFIER_KEYS = new Set(['Alt', 'AltGraph', 'Control', 'Shift', 'Meta', 'OS', 'CapsLock', 'Fn']);
 const LATE_COMMIT_MS = 500;
 let lateCommit: ReturnType<typeof setTimeout> | null = null;
 let isPointerDown = false;
@@ -285,6 +302,16 @@ const scheduleCommit = () => {
 
 const onPointerDown = () => (isPointerDown = true);
 const onPointerUp = () => (isPointerDown = false);
+
+/**
+ * A key coming up ends a keyboard gesture, but not a modifier on its own, and nothing while a pointer gesture is still
+ * going (a drag commits when the pointer comes up), so a drag stays one undo step.
+ */
+const onKeyUp = (event: KeyboardEvent) => {
+    if (!isPointerDown && !MODIFIER_KEYS.has(event.key)) {
+        scheduleCommit();
+    }
+};
 
 watch(
     [containers, song],
@@ -303,6 +330,7 @@ onMounted(() => {
     window.addEventListener('dragover', onDragOver);
     window.addEventListener('drop', onDrop, true);
     window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('keyup', onKeyUp, true);
     HISTORY_EVENTS.forEach((type) => window.addEventListener(type, scheduleCommit, true));
 });
 onBeforeUnmount(() => {
@@ -312,6 +340,7 @@ onBeforeUnmount(() => {
     window.removeEventListener('dragover', onDragOver);
     window.removeEventListener('drop', onDrop, true);
     window.removeEventListener('beforeunload', onBeforeUnload);
+    window.removeEventListener('keyup', onKeyUp, true);
     HISTORY_EVENTS.forEach((type) => window.removeEventListener(type, scheduleCommit, true));
 });
 </script>
@@ -401,6 +430,7 @@ onBeforeUnmount(() => {
                 >
                     <Icon :icon="isPlaying ? 'material-symbols:stop-rounded' : 'material-symbols:play-arrow-rounded'" class="w-7 h-7" />
                 </button>
+                <RecordControls />
 
                 <div class="readout" :data-playing="isPlaying" aria-live="off" v-tooltip.bottom="{ value: 'Bar . beat . step', showDelay: 800 }">
                     <span class="readout-dot"></span>
@@ -446,6 +476,8 @@ onBeforeUnmount(() => {
             </div>
 
             <div class="transportbar-right">
+                <MidiPanel v-if="!isPhone" />
+                <span v-if="!isPhone" class="vrule"></span>
                 <div class="modeswitch" role="radiogroup" aria-label="Mode">
                     <button
                         v-for="item in MODES"
@@ -546,6 +578,7 @@ onBeforeUnmount(() => {
         <footer v-else class="statusbar">
             <span class="statusbar-hint">{{ statusHint }}</span>
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
+            <span class="statusbar-key"><kbd>R</kbd> record</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>S</kbd> save</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>E</kbd> export</span>
