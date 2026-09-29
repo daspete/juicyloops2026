@@ -5,6 +5,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import { Icon } from '@iconify/vue';
 import { MAX_BPM, MIN_BPM, useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useHistory } from '@/composables/useHistory';
+import { useHelp } from '@/composables/useHelp';
 import { useHoldRepeat } from '@/composables/useHoldRepeat';
 import { useMidi } from '@/composables/useMidi';
 import { useRecorder } from '@/composables/useRecorder';
@@ -17,6 +18,8 @@ import { positionLabel } from './tracks/steps';
 import SampleBrowser from './browser/SampleBrowser.vue';
 import BottomDock from './dock/BottomDock.vue';
 import InspectorPanel from './inspector/InspectorPanel.vue';
+import HelpDialog from './help/HelpDialog.vue';
+import WelcomeTour from './help/WelcomeTour.vue';
 import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
@@ -44,6 +47,7 @@ const toast = useToast();
 const confirm = useConfirm();
 const midi = useMidi();
 const recorder = useRecorder();
+const { openHelp, toggleHelp, startTourOnFirstVisit } = useHelp();
 
 /* On a phone a panel takes the whole stage, so the browser, the Inspector and the dock take turns. */
 watch(isBrowserOpen, (open) => {
@@ -106,6 +110,8 @@ const start = async (chosen: WorkspaceMode) => {
     setMode(chosen);
     await engine.initialize();
     isInitialized.value = true;
+    // The very first visit gets the tour, right after this first click.
+    startTourOnFirstVisit();
     // MIDI comes back by itself when it was allowed on an earlier visit.
     void midi.restore();
 };
@@ -258,7 +264,7 @@ const isTypingTarget = (target: EventTarget | null) => {
 
 /**
  * Space plays and stops, R records (again: stops recording, playback goes on), B opens the sample browser, D the
- * devices, M the mixer, I the Inspector, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
+ * devices, M the mixer, I the Inspector, ? the help, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
  * Ctrl+O opens and Ctrl+E exports audio, like in every DAW. The file shortcuts work from inside a text field too.
  */
 const onKeyDown = (event: KeyboardEvent) => {
@@ -275,7 +281,13 @@ const onKeyDown = (event: KeyboardEvent) => {
         }
         return;
     }
-    if (isTypingTarget(event.target)) {
+    // Keys a part of the studio already used (the song editor's tools, the piano roll, the sample list) are not ours.
+    if (isTypingTarget(event.target) || event.defaultPrevented) {
+        return;
+    }
+    if (event.key === '?' && !modifier && !event.altKey && isInitialized.value) {
+        event.preventDefault();
+        toggleHelp();
         return;
     }
     if (modifier && (event.key === 'z' || event.key === 'Z' || event.key === 'y')) {
@@ -560,6 +572,9 @@ onBeforeUnmount(() => {
                     <span class="chip-label">Inspector</span>
                 </button>
                 <span v-if="!isPhone" class="vrule"></span>
+                <button type="button" class="iconbtn helpbtn" aria-label="Help and shortcuts" v-tooltip.bottom="'Help: every shortcut, and the tour (?)'" @click="openHelp">
+                    <Icon icon="mdi:help-circle-outline" class="w-5 h-5" />
+                </button>
                 <button
                     type="button"
                     class="iconbtn"
@@ -622,6 +637,7 @@ onBeforeUnmount(() => {
 
         <footer v-else class="statusbar">
             <span class="statusbar-hint">{{ statusHint }}</span>
+            <button type="button" class="statusbar-key statusbar-help" @click="openHelp"><kbd>?</kbd> all shortcuts</button>
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
             <span class="statusbar-key"><kbd>R</kbd> record</span>
             <span class="statusbar-key"><kbd>B</kbd> samples</span>
@@ -661,6 +677,8 @@ onBeforeUnmount(() => {
     </div>
 
     <ExportDialog @done="onExported" />
+    <HelpDialog />
+    <WelcomeTour />
 
     <Drawer v-model:visible="isDiscussionsOpen" header="Discussions" position="right" class="max-w-full w-120">
         <GiscusLoader />

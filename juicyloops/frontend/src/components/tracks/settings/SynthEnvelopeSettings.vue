@@ -45,11 +45,11 @@ const curve = computed(() => {
     <div class="setting">
         <div class="setting-label">Shape</div>
         <div class="setting-row setting-row--tall flex-wrap">
-            <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" :width="WIDTH" :height="HEIGHT" class="shrink-0 setting-canvas" aria-hidden="true">
+            <svg :viewBox="`0 0 ${WIDTH} ${HEIGHT}`" class="setting-canvas envelope-canvas" preserveAspectRatio="none" aria-hidden="true">
                 <polygon :points="curve.area" fill="var(--jl-accent)" opacity="0.18" />
                 <polyline :points="curve.line" fill="none" stroke="var(--jl-accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
             </svg>
-            <div class="flex gap-4">
+            <div class="envelope-knobs">
                 <JuicyKnob
                     v-for="stage in ENVELOPE_PARAMS"
                     :key="stage.key"
@@ -64,7 +64,7 @@ const curve = computed(() => {
                     :label="stage.label"
                     :hint="stage.hint"
                     :learn="owner ? { target: owner, param: stage.key } : null"
-                    :size="60"
+                    :size="52"
                 />
             </div>
         </div>

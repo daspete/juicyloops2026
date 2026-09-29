@@ -1131,6 +1131,8 @@ const onKeyDown = (event: KeyboardEvent) => {
         return;
     }
     if (!modifier && !event.altKey && TOOL_KEYS[key]) {
+        // Handled: the studio's own letters (B browser, D devices) stay out of it while the arranger has them.
+        event.preventDefault();
         tool.value = TOOL_KEYS[key]!;
         return;
     }
@@ -1180,7 +1182,8 @@ const onKeyDown = (event: KeyboardEvent) => {
 const closeMenu = () => (menu.value = null);
 
 onMounted(() => {
-    window.addEventListener('keydown', onKeyDown);
+    // Capture, so the arranger sees its keys before the studio's global shortcuts do.
+    window.addEventListener('keydown', onKeyDown, true);
     resizeObserver = new ResizeObserver(([entry]) => (viewportWidth.value = entry?.contentRect.width ?? 0));
     watch(
         scroller,
@@ -1197,7 +1200,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-    window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keydown', onKeyDown, true);
     resizeObserver?.disconnect();
     cancelDrag();
 });

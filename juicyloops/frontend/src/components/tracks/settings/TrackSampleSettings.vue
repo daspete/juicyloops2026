@@ -20,7 +20,7 @@ const formatSpeed = (value: number) => `${value.toFixed(2)}×`;
     <div class="setting">
         <div class="setting-label">Pitch and speed</div>
         <div class="setting-row setting-row--tall">
-            <div class="flex gap-4">
+            <div class="flex flex-wrap gap-4">
                 <JuicyKnob
                     :model-value="props.track.pitch"
                     @update:model-value="props.track.setPitch($event)"
