@@ -62,8 +62,11 @@ const setMode = (value: WorkspaceMode): void => {
     mode.value = value;
 };
 
-/** The sample browser on the far left: folders of samples to audition and add as tracks. Stays open across visits. */
-const isBrowserOpen = persisted(BROWSER_KEY, (raw) => raw === 'open', (open) => (open ? 'open' : 'closed'));
+/**
+ * The sample browser on the far left: folders of samples to audition and add as tracks. Open on a first visit (not on a
+ * phone, where it would cover the stage); after that it stays however it was left.
+ */
+const isBrowserOpen = persisted(BROWSER_KEY, (raw) => (raw === null ? !isPhone.value : raw === 'open'), (open) => (open ? 'open' : 'closed'));
 
 /* ---- the bottom dock ---- */
 
