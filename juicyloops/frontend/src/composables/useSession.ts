@@ -4,6 +4,7 @@ import { packSession, SESSION_FILE_EXTENSION, SESSION_FILE_MIME, SessionFileErro
 import { downloadBlob } from './download';
 import { useHistory } from './useHistory';
 import { useJuicyLoops } from './useJuicyLoops';
+import { usePresets } from './usePresets';
 
 /**
  * Saving and opening the session as a file. The file holds everything: containers, tracks, patterns, effects,
@@ -63,7 +64,9 @@ const setHandle = (next: FileSystemFileHandle | null): void => {
     hasFile.value = next !== null;
 };
 
-const capture = (): SavedSession => ({ name: name.value, bpm: bpm.value, session: engine.capture() });
+const { exportPresets, mergePresets } = usePresets();
+
+const capture = (): SavedSession => ({ name: name.value, bpm: bpm.value, session: engine.capture(), presets: exportPresets() });
 
 /** What went wrong, in the words a person needs. */
 const describe = (error: unknown, fallback: string): string => {
@@ -115,6 +118,9 @@ const save = async (options: { as?: boolean } = {}): Promise<SessionResult> => {
 /** Takes a loaded session over: playback stops, the state is applied, the samples decode, history starts afresh. */
 const apply = async (saved: SavedSession): Promise<void> => {
     stop();
+    if (saved.presets) {
+        mergePresets(saved.presets);
+    }
     await engine.load(saved.session);
     setBpm(saved.bpm);
     selectContainer(saved.session.currentContainerId);

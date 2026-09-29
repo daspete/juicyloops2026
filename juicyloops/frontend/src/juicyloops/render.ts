@@ -1,7 +1,7 @@
 import { Compressor, getContext, Offline, ToneAudioBuffer, ToneBufferSource } from 'tone';
 import { STEP_COUNT } from './constants';
 import { isEffectNeeded, type EffectKey } from './effects/definitions';
-import { upgradeEffectParams, type EffectsSnapshot } from './effects/effects';
+import { isLegacySnapshot, slotsFromLegacy, type EffectsSnapshot, type LegacyEffectsSnapshot } from './effects/effects';
 import { Sequencer, type PlaybackMode, type SessionState } from './sequencer';
 import { Song } from './song';
 import type { TrackState } from './tracks/BaseTrack';
@@ -158,10 +158,10 @@ export const compressorLatency = (sampleRate: number): Promise<number> => {
 };
 
 /** How many look-ahead nodes (a compressor and a limiter are both native compressors) one stored rack builds. */
-const dynamicsInRack = (rack: EffectsSnapshot): number => {
-    const params = upgradeEffectParams(rack.params);
+const dynamicsInRack = (rack: EffectsSnapshot | LegacyEffectsSnapshot): number => {
+    const slots = isLegacySnapshot(rack) ? slotsFromLegacy(rack) : rack.slots;
     const stages: EffectKey[] = ['compressor', 'limiter'];
-    return stages.filter((effect) => isEffectNeeded(effect, params[effect] ?? {})).length;
+    return slots.filter((slot) => !slot.bypassed && stages.includes(slot.effect) && isEffectNeeded(slot.effect, slot.params)).length;
 };
 
 /**

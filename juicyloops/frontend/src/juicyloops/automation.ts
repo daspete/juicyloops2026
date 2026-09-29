@@ -355,7 +355,11 @@ export class TrackAutomation {
 /* ---- breakpoint lanes (song view) ---- */
 
 /** What a song lane drives. */
-export type AutomationTarget = { kind: 'master' } | { kind: 'container'; containerId: string } | { kind: 'track'; containerId: string; trackId: string };
+export type AutomationTarget =
+    | { kind: 'master' }
+    | { kind: 'return'; index: number }
+    | { kind: 'container'; containerId: string }
+    | { kind: 'track'; containerId: string; trackId: string };
 
 /** A parameter of the master, a container or a track, drawn over the song's timeline. */
 export interface SongAutomationLane extends AutomationCurve {
@@ -364,9 +368,24 @@ export interface SongAutomationLane extends AutomationCurve {
     param: string;
 }
 
+/** A stable string for a target, for keys and lookups. */
+export const targetKey = (target: AutomationTarget): string => {
+    switch (target.kind) {
+        case 'master':
+            return 'master';
+        case 'return':
+            return `return:${target.index}`;
+        case 'container':
+            return `container:${target.containerId}`;
+        default:
+            return `track:${target.containerId}:${target.trackId}`;
+    }
+};
+
 export const createSongLane = (target: AutomationTarget, param: string, id = createId()): SongAutomationLane => ({ id, target, param, points: [] });
 
 export const sameTarget = (a: AutomationTarget, b: AutomationTarget): boolean =>
     a.kind === b.kind &&
-    (a.kind === 'master' || a.containerId === (b as { containerId: string }).containerId) &&
+    (a.kind === 'master' ||
+        (a.kind === 'return' ? a.index === (b as { index: number }).index : a.containerId === (b as { containerId: string }).containerId)) &&
     (a.kind !== 'track' || a.trackId === (b as { trackId: string }).trackId);

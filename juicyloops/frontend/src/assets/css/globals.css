@@ -113,7 +113,7 @@
     border-radius: 0.4rem;
 }
 
-:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn, .tool, .mutebtn, .detail-tab, .modeswitch-item, .select, .auto-point):focus-visible {
+:is(.iconbtn, .chip, .tick, .playbtn, .addcard, .recbtn, .tool, .mutebtn, .mstrip-switch, .bdock-tab, .device-power, .modeswitch-item, .select, .auto-point):focus-visible {
     outline: 2px solid var(--jl-accent);
     outline-offset: 2px;
 }
@@ -1066,29 +1066,6 @@
 /* ---------- bar lanes (velocity, automation) ---------- */
 
 /* One bar per step under the grid. Steps without a note stay grey in the velocity lane; automation colours every bar. */
-.barlane-cell {
-    position: relative;
-    height: 3.5rem;
-    border-radius: 0.4rem;
-    background: var(--jl-cell);
-    overflow: hidden;
-    cursor: ns-resize;
-}
-
-.barlane-fill {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--jl-bar);
-    border-radius: 2px 2px 0 0;
-    transition: height 0.06s ease;
-}
-
-.barlane-cell--active .barlane-fill {
-    background: linear-gradient(to top, var(--jl-lane-color, var(--jl-accent)), color-mix(in oklab, var(--jl-lane-color, var(--jl-accent)) 55%, white));
-}
-
 /* ---------- automation lanes (track view) ---------- */
 
 /*
@@ -1749,36 +1726,6 @@
         repeating-linear-gradient(90deg, var(--jl-line) 0 1px, transparent 1px calc(4 * var(--roll-step)));
     cursor: ns-resize;
     touch-action: none;
-}
-
-.proll-stem {
-    position: absolute;
-    bottom: 4px;
-    left: calc(var(--s) * var(--roll-step));
-    width: 3px;
-    height: calc(var(--v) * (var(--roll-lane) - 10px));
-    border-radius: 2px;
-    background: var(--jl-accent);
-    pointer-events: none;
-}
-
-.proll-stem::after {
-    content: '';
-    position: absolute;
-    top: -3px;
-    left: -2px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: inherit;
-}
-
-.proll-stem--selected {
-    background: var(--jl-text);
-}
-
-.proll-stem--dim {
-    opacity: 0.25;
 }
 
 /* Fingers get wider note ends. */
@@ -3000,78 +2947,7 @@
     }
 }
 
-/* ---------- track panel (Tweak) ---------- */
-
-/* Which track the panel is about: its badge and name, lit in its own colour. */
-.detail-scope {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    height: 1.9rem;
-    padding: 0 0.75rem 0 0.25rem;
-    border-radius: 0.55rem;
-    background: color-mix(in oklab, var(--jl-accent) 10%, var(--jl-raised));
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 40%, var(--jl-line));
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: var(--jl-text);
-    white-space: nowrap;
-    min-width: 0;
-}
-
-.detail-scope[data-empty='true'] {
-    background: var(--jl-bg);
-    box-shadow: inset 0 0 0 1px var(--jl-line);
-    color: var(--jl-muted);
-}
-
-.detail-scope-name {
-    font-family: var(--font-display);
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* The pages of the panel, a row of tabs under its bar. */
-.detail-tabs {
-    display: flex;
-    flex-shrink: 0;
-    padding: 0 0.5rem;
-    border-bottom: 1px solid var(--jl-line);
-}
-
-.detail-tab {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.4rem;
-    flex: 1 1 0;
-    height: 2.4rem;
-    padding: 0 0.5rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--jl-muted);
-    white-space: nowrap;
-    cursor: pointer;
-    box-shadow: inset 0 -2px 0 transparent;
-    transition:
-        color 0.12s ease,
-        box-shadow 0.12s ease;
-}
-
-.detail-tab:hover {
-    color: var(--jl-text);
-}
-
-.detail-tab[data-active='true'] {
-    color: var(--jl-accent);
-    box-shadow: inset 0 -2px 0 var(--jl-accent);
-}
-
-.detail-note {
-    font-size: 0.76rem;
-    line-height: 1.4;
-    color: var(--jl-muted);
-}
+/* ---------- empty states of the side panels ---------- */
 
 .detail-empty {
     display: flex;
@@ -3082,72 +2958,6 @@
     text-align: center;
     color: var(--jl-muted);
     font-size: 0.85rem;
-}
-
-/* ---------- mixer (container channel, master) ---------- */
-
-.mixer-flow {
-    display: flex;
-    justify-content: center;
-    color: var(--jl-line-strong);
-}
-
-/* One channel strip: a card in the channel's colour, level and pan up top, the effect rack stacked below. */
-.strip {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 0.9rem 1rem 1rem;
-    border-radius: 0.9rem;
-    background:
-        linear-gradient(180deg, color-mix(in oklab, var(--jl-accent) 12%, transparent), transparent 6rem),
-        var(--jl-raised);
-    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--jl-accent) 35%, var(--jl-line));
-}
-
-.strip-head {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
-}
-
-.strip-title {
-    display: flex;
-    flex-direction: column;
-    gap: 0.1rem;
-    min-width: 0;
-}
-
-.strip-name {
-    font-family: var(--font-display);
-    font-weight: 700;
-    font-size: 1.05rem;
-    letter-spacing: -0.01em;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.strip-note {
-    font-size: 0.76rem;
-    line-height: 1.4;
-    color: var(--jl-muted);
-}
-
-.strip-level {
-    display: flex;
-    justify-content: center;
-    gap: 1.5rem;
-    padding: 0.6rem 0.75rem;
-    border-radius: 0.7rem;
-    background: var(--jl-bg);
-    box-shadow: inset 0 0 0 1px var(--jl-line);
-}
-
-.strip-rack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
 }
 
 /* ---------- settings ---------- */
@@ -3173,99 +2983,6 @@
     border-radius: 0.5rem;
     background: var(--jl-bg);
     box-shadow: inset 0 0 0 1px var(--jl-line);
-}
-
-/* ---------- effect rack ---------- */
-
-.rack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-/* The chain, in signal order from the input to the output. */
-.chain {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.35rem;
-}
-
-.chain-end {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin: 0 0.25rem;
-    font-size: 0.72rem;
-    color: var(--jl-muted);
-}
-
-.chain-arrow {
-    width: 0.85rem;
-    height: 0.85rem;
-    margin: 0 -0.2rem;
-    color: var(--jl-line-strong);
-}
-
-/* Compact for the mixer strips: the chain wraps into a few tight rows, the numbers keep the order readable. */
-.rack--compact .chain {
-    gap: 0.25rem;
-}
-
-.rack--compact .chain-end {
-    margin: 0 0.1rem;
-    font-size: 0.66rem;
-}
-
-.rack--compact .chain-arrow {
-    display: none;
-}
-
-.rack--compact .chip {
-    height: 1.6rem;
-    padding: 0 0.5rem;
-    gap: 0.3rem;
-    font-size: 0.74rem;
-}
-
-.rack--compact .device-knobs {
-    gap: 0.6rem 1rem;
-    padding: 0.6rem 0.75rem;
-}
-
-/* One effect with its knobs: a device in the chain. */
-.device {
-    border-radius: 0.7rem;
-    background: var(--jl-raised);
-    box-shadow: inset 0 0 0 1px var(--jl-line);
-    overflow: hidden;
-}
-
-.device-head {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    height: 2.4rem;
-    padding: 0 0.75rem;
-    border-bottom: 1px solid var(--jl-line);
-}
-
-.device-name {
-    font-family: var(--font-display);
-    font-weight: 700;
-}
-
-.device-pos {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    color: var(--jl-muted);
-}
-
-.device-knobs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem 1.75rem;
-    padding: 0.75rem 1rem;
 }
 
 /* ---------- knob ---------- */

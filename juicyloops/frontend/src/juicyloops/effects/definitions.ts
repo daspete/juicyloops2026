@@ -160,3 +160,200 @@ export const isEffectNeeded = (effect: EffectKey, params: Readonly<Record<string
     }
     return !definition.isNeutral?.(params);
 };
+
+/* ---- the device rack: how effects are offered, added and shown ---- */
+
+export type EffectCategory = 'dynamics' | 'eq' | 'space' | 'modulation' | 'drive';
+
+export const EFFECT_CATEGORIES: readonly { key: EffectCategory; label: string; icon: string }[] = [
+    { key: 'dynamics', label: 'Dynamics', icon: 'mdi:chart-bell-curve-cumulative' },
+    { key: 'eq', label: 'EQ & Filter', icon: 'mdi:tune-vertical-variant' },
+    { key: 'space', label: 'Space', icon: 'mdi:weather-windy' },
+    { key: 'modulation', label: 'Modulation', icon: 'mdi:sine-wave' },
+    { key: 'drive', label: 'Drive & Lo-fi', icon: 'mdi:fire' },
+];
+
+/** Where an effect sits in the add menu, its icon, what it does in one line, and the knobs of its macro face. */
+export interface EffectInfo {
+    category: EffectCategory;
+    icon: string;
+    blurb: string;
+    /** The two or three params the macro face shows, with names a beginner understands. */
+    macros: readonly { key: string; label: string }[];
+    /** Values a slot starts with when it is added from the rack, over the initial ones, so it is heard right away. */
+    added?: Readonly<Record<string, number>>;
+}
+
+export const EFFECT_INFO: Record<EffectKey, EffectInfo> = {
+    compressor: {
+        category: 'dynamics',
+        icon: 'mdi:arrow-collapse-vertical',
+        blurb: 'Evens out loud and quiet parts',
+        macros: [
+            { key: 'threshold', label: 'Amount' },
+            { key: 'ratio', label: 'Squash' },
+        ],
+        added: { ratio: 4, threshold: -24 },
+    },
+    limiter: { category: 'dynamics', icon: 'mdi:wall', blurb: 'A ceiling nothing gets past', macros: [{ key: 'threshold', label: 'Ceiling' }], added: { on: 1 } },
+    equalizer: {
+        category: 'eq',
+        icon: 'mdi:equalizer',
+        blurb: 'More or less bass, mids and treble',
+        macros: [
+            { key: 'low', label: 'Bass' },
+            { key: 'mid', label: 'Mids' },
+            { key: 'high', label: 'Treble' },
+        ],
+    },
+    autoFilter: {
+        category: 'eq',
+        icon: 'mdi:sine-wave',
+        blurb: 'A filter that sweeps by itself',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'frequency', label: 'Speed' },
+        ],
+        added: { wet: 1 },
+    },
+    reverb: {
+        category: 'space',
+        icon: 'mdi:weather-windy',
+        blurb: 'Puts the sound in a room',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'decay', label: 'Size' },
+        ],
+        added: { wet: 0.3 },
+    },
+    delay: {
+        category: 'space',
+        icon: 'mdi:repeat',
+        blurb: 'Echoes that repeat and fade',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'delayTime', label: 'Time' },
+        ],
+        added: { wet: 0.3 },
+    },
+    chorus: {
+        category: 'modulation',
+        icon: 'mdi:account-multiple-outline',
+        blurb: 'Thickens, like several players at once',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'depth', label: 'Width' },
+        ],
+        added: { wet: 0.5 },
+    },
+    phaser: {
+        category: 'modulation',
+        icon: 'mdi:rotate-3d-variant',
+        blurb: 'A swirling, jet-like sweep',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'frequency', label: 'Speed' },
+        ],
+        added: { wet: 0.5 },
+    },
+    tremolo: {
+        category: 'modulation',
+        icon: 'mdi:pulse',
+        blurb: 'Pulses the volume up and down',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'frequency', label: 'Speed' },
+        ],
+        added: { wet: 1 },
+    },
+    vibrato: {
+        category: 'modulation',
+        icon: 'mdi:wave',
+        blurb: 'Wobbles the pitch',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'depth', label: 'Depth' },
+        ],
+        added: { wet: 1 },
+    },
+    distortion: {
+        category: 'drive',
+        icon: 'mdi:fire',
+        blurb: 'Grit and crunch',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'distortion', label: 'Drive' },
+        ],
+        added: { wet: 0.5 },
+    },
+    bitCrusher: {
+        category: 'drive',
+        icon: 'mdi:grid',
+        blurb: 'Retro lo-fi digital crunch',
+        macros: [
+            { key: 'wet', label: 'Amount' },
+            { key: 'bits', label: 'Bits' },
+        ],
+        added: { wet: 0.5 },
+    },
+};
+
+/** The values a slot added from the rack starts with: the initial ones, with enough on to be heard. */
+export const addedParams = (effect: EffectKey, role: EffectRackRole = 'track'): Record<string, number> => ({
+    ...initialParams(effect, role),
+    ...EFFECT_INFO[effect].added,
+});
+
+/** A factory preset of one effect: partial values over `addedParams`. */
+export interface EffectPreset {
+    name: string;
+    params: Readonly<Record<string, number>>;
+}
+
+export const EFFECT_PRESETS: Partial<Record<EffectKey, readonly EffectPreset[]>> = {
+    reverb: [
+        { name: 'Small room', params: { wet: 0.2, decay: 0.6, preDelay: 0.005 } },
+        { name: 'Hall', params: { wet: 0.35, decay: 3, preDelay: 0.03 } },
+        { name: 'Cathedral', params: { wet: 0.5, decay: 8, preDelay: 0.06 } },
+    ],
+    delay: [
+        { name: 'Slapback', params: { wet: 0.25, delayTime: 0.09 } },
+        { name: 'Eighth echo', params: { wet: 0.3, delayTime: 0.25 } },
+        { name: 'Long tail', params: { wet: 0.4, delayTime: 0.5 } },
+    ],
+    compressor: [
+        { name: 'Gentle glue', params: { threshold: -18, ratio: 2, attack: 0.03, release: 0.25 } },
+        { name: 'Punchy drums', params: { threshold: -24, ratio: 4, attack: 0.02, release: 0.1 } },
+        { name: 'Squash', params: { threshold: -36, ratio: 12, attack: 0.001, release: 0.05 } },
+    ],
+    equalizer: [
+        { name: 'Bass boost', params: { low: 6, mid: 0, high: 0 } },
+        { name: 'Telephone', params: { low: -12, mid: 6, high: -12 } },
+        { name: 'Air', params: { low: 0, mid: -1, high: 5 } },
+        { name: 'Scoop', params: { low: 4, mid: -6, high: 4 } },
+    ],
+    chorus: [
+        { name: 'Subtle', params: { wet: 0.3, frequency: 0.8, depth: 0.4 } },
+        { name: 'Wide', params: { wet: 0.6, frequency: 1.5, depth: 0.9 } },
+    ],
+    distortion: [
+        { name: 'Warm', params: { wet: 0.4, distortion: 0.2 } },
+        { name: 'Fuzz', params: { wet: 0.8, distortion: 0.9 } },
+    ],
+    bitCrusher: [
+        { name: '8-bit', params: { wet: 1, bits: 8 } },
+        { name: 'Destroyed', params: { wet: 1, bits: 3 } },
+    ],
+    autoFilter: [
+        { name: 'Slow sweep', params: { wet: 1, depth: 1, frequency: 0.25 } },
+        { name: 'Wobble', params: { wet: 1, depth: 1, frequency: 4 } },
+    ],
+    tremolo: [
+        { name: 'Pulse', params: { wet: 1, depth: 0.8, frequency: 4 } },
+        { name: 'Helicopter', params: { wet: 1, depth: 1, frequency: 16 } },
+    ],
+    limiter: [
+        { name: 'Safety', params: { on: 1, threshold: -1 } },
+        { name: 'Loud', params: { on: 1, threshold: -6 } },
+    ],
+};

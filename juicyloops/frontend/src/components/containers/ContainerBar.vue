@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { useConfirm } from 'primevue';
-import { nextTick, ref } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useWorkspace } from '@/composables/useWorkspace';
 import { TRACK_META } from '../tracks/trackMeta';
@@ -12,7 +12,20 @@ import { TRACK_META } from '../tracks/trackMeta';
  * where the container's channel strip (level, pan and an effect rack every track runs through) sits above the master.
  */
 const { containers, currentContainer, selectContainer, addContainer, removeContainer, duplicateContainer, renameContainer, song } = useJuicyLoops();
-const { isMixerOpen, toggleMixer } = useWorkspace();
+const { isDetailOpen, selectedChannel, selectChannel, openDock, closeDock } = useWorkspace();
+
+/** Whether the device rack shows the current container's channel. */
+const isChannelShowing = computed(() => isDetailOpen.value && selectedChannel.value?.kind === 'container' && selectedChannel.value.containerId === currentContainer.value.id);
+
+/** The container channel's level, pan and effects, in the device rack. */
+const toggleChannel = () => {
+    if (isChannelShowing.value) {
+        closeDock();
+        return;
+    }
+    selectChannel({ kind: 'container', containerId: currentContainer.value.id });
+    openDock('devices');
+};
 const confirm = useConfirm();
 
 const editingId = ref<string | null>(null);
@@ -97,7 +110,7 @@ const confirmRemove = (event: MouseEvent) => {
 
         <div class="flex-1"></div>
 
-        <button type="button" class="chip" :data-active="isMixerOpen" :aria-pressed="isMixerOpen" v-tooltip.bottom="'Level, pan and effects for the whole container, in the mixer'" @click="toggleMixer">
+        <button type="button" class="chip" :data-active="isChannelShowing" :aria-pressed="isChannelShowing" v-tooltip.bottom="'Level, pan and effects for the whole container'" @click="toggleChannel">
             <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
             <span>Channel</span>
         </button>

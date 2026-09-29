@@ -402,7 +402,7 @@ export class Song {
                 }
             }
         }
-        this.pruneAutomation((target) => target.kind !== 'master' && target.containerId === containerId);
+        this.pruneAutomation((target) => (target.kind === 'container' || target.kind === 'track') && target.containerId === containerId);
     }
 
     /* ---- automation ---- */

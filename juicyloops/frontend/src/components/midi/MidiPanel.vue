@@ -2,6 +2,7 @@
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useMidi } from '@/composables/useMidi';
 import { paramTitle, type AutomationTarget } from '@/juicyloops/automation';
+import { RETURN_NAMES } from '@/juicyloops/sends';
 import type { MidiMapping } from '@/juicyloops/midi/mappings';
 import { Icon } from '@iconify/vue';
 import { Popover, ToggleSwitch } from 'primevue';
@@ -73,6 +74,9 @@ onBeforeUnmount(() => {
 const ownerName = (target: AutomationTarget): string | null => {
     if (target.kind === 'master') {
         return 'Master';
+    }
+    if (target.kind === 'return') {
+        return `Return ${RETURN_NAMES[target.index] ?? target.index + 1}`;
     }
     const container = containers.value.find((candidate) => candidate.id === target.containerId);
     if (!container) {

@@ -172,19 +172,19 @@ describe('Hibernation', () => {
 describe('Effects.suspend', () => {
     it('keeps every value, builds no node while suspended and builds the needed ones again on resume', () => {
         const rack = new Effects({ role: 'bus' });
-        rack.setParam('compressor', 'ratio', 4);
-        expect(rack.isActive('compressor')).toBe(true);
+        const id = rack.add('compressor');
+        expect(rack.isActive(id)).toBe(true);
 
         rack.suspend();
-        expect(rack.isActive('compressor')).toBe(false);
-        rack.setParam('compressor', 'ratio', 6);
-        rack.setParameter('fx.compressor.threshold', -30, 1);
-        expect(rack.isActive('compressor')).toBe(false);
-        expect(rack.getParam('compressor', 'ratio')).toBe(6);
-        expect(rack.isNeeded('compressor')).toBe(true);
+        expect(rack.isActive(id)).toBe(false);
+        rack.setParam(id, 'ratio', 6);
+        rack.setParameter(`fx.${id}.threshold`, -30, 1);
+        expect(rack.isActive(id)).toBe(false);
+        expect(rack.getParam(id, 'ratio')).toBe(6);
+        expect(rack.isNeeded(id)).toBe(true);
 
         rack.resume();
-        expect(rack.isActive('compressor')).toBe(true);
+        expect(rack.isActive(id)).toBe(true);
         rack.dispose();
     });
 
@@ -192,12 +192,12 @@ describe('Effects.suspend', () => {
         const rack = new Effects();
         rack.suspend();
         expect(rack.tail()).toBe(0);
-        rack.setParam('reverb', 'wet', 0.3);
-        rack.setParams('reverb', { decay: 4, preDelay: 0.1 });
+        const reverb = rack.add('reverb', 0, { wet: 0.3, decay: 4, preDelay: 0.1 });
         expect(rack.tail()).toBeCloseTo(4.1);
-        rack.setParam('delay', 'wet', 0.2);
-        rack.setParam('delay', 'delayTime', 0.5);
+        rack.add('delay', 1, { wet: 0.2, delayTime: 0.5 });
         // Tone's default feedback of 0.125 dies away to -60 dB in four repeats.
         expect(rack.tail()).toBeCloseTo(4.1 + 0.5 * 4);
+        rack.setBypassed(reverb, true);
+        expect(rack.tail()).toBeCloseTo(0.5 * 4);
     });
 });

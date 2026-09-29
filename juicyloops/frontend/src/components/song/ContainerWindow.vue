@@ -26,7 +26,10 @@ const props = defineProps<{
 
 const { renameContainer } = useJuicyLoops();
 const { focus, close } = useContainerWindows();
-const { isMixerOpen, toggleMixer } = useWorkspace();
+const { isDetailOpen, selectedChannel, selectChannel, openDock, closeDock } = useWorkspace();
+
+/** Whether the device rack shows this window's container channel. */
+const isChannelShowing = computed(() => isDetailOpen.value && selectedChannel.value?.kind === 'container' && selectedChannel.value.containerId === props.container.id);
 const router = useRouter();
 
 const accent = computed(() => `hsl(${props.hue} 80% 62%)`);
@@ -54,10 +57,15 @@ const commitRename = () => {
 
 /* ---- title bar buttons ---- */
 
-/** The mixer's container channel shows the current container, which this window's is as soon as it is clicked. */
+/** The container channel's level, pan and effects, in the device rack. */
 const toggleChannel = () => {
     focus(props.container.id);
-    toggleMixer();
+    if (isChannelShowing.value) {
+        closeDock();
+        return;
+    }
+    selectChannel({ kind: 'container', containerId: props.container.id });
+    openDock('devices');
 };
 
 const openInTrackView = () => {
@@ -104,9 +112,9 @@ const trackCount = computed(() => `${props.container.tracks.length} ${props.cont
             <button
                 type="button"
                 class="iconbtn iconbtn--tiny"
-                :data-active="isMixerOpen"
+                :data-active="isChannelShowing"
                 aria-label="Container channel"
-                v-tooltip.bottom="'Level, pan and effects for the whole container, in the mixer'"
+                v-tooltip.bottom="'Level, pan and effects for the whole container'"
                 @click="toggleChannel"
             >
                 <Icon icon="mdi:tune-vertical" class="w-3.5 h-3.5" />

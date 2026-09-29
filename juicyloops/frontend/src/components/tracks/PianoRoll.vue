@@ -10,10 +10,12 @@ import type { NotePattern } from '@/juicyloops/notes/NotePattern';
 import RollLiveKeys from './roll/RollLiveKeys.vue';
 import RollNoteLayer from './roll/RollNoteLayer.vue';
 import RollQuantize from './roll/RollQuantize.vue';
-import RollStemLayer from './roll/RollStemLayer.vue';
 import { clampRowShift, clampShift, copyToClipboard, editUnit, loadSnap, readClipboard, saveSnap, spanOf, type NoteOrigin } from './roll/rollEdit';
 import { useRollBeam } from './roll/useRollBeam';
 import { BEAT_SIZE, beatNumber, STEPS_PER_BAR } from './steps';
+import VelocityLane from './velocity/VelocityLane.vue';
+import VelocityTools from './velocity/VelocityTools.vue';
+import { useVelocityHeight } from './velocity/useVelocityTool';
 
 /** One row of the roll: the note a note placed on it gets, and what its key says. */
 export interface RollRow {
@@ -99,8 +101,9 @@ const KEYS_WIDTH = 64;
 const MIN_STEP_WIDTH = isCoarse ? 28 : 12;
 const MAX_ZOOM = 16;
 
-/** Height of the velocity lane, px. */
-const laneHeight = computed(() => (isCoarse ? 56 : 64));
+/** Height of the velocity lane, px: resizable by its top edge, remembered across rolls and visits. */
+const laneHeight = useVelocityHeight('roll', isCoarse ? 64 : 72);
+const velocityLane = useTemplateRef<InstanceType<typeof VelocityLane>>('velocityLane');
 
 /** Size of the scrolling area, measured: one pattern fills its width at zoom 1, and a few rows share its height. */
 const areaWidth = ref(0);
@@ -197,7 +200,6 @@ const originsOf = (notes: readonly PatternNote[]): NoteOrigin[] =>
 const root = useTemplateRef<HTMLElement>('root');
 const area = useTemplateRef<HTMLElement>('area');
 const body = useTemplateRef<HTMLElement>('body');
-const lane = useTemplateRef<HTMLElement>('lane');
 const beam = useTemplateRef<HTMLElement>('beam');
 const marker = useTemplateRef<HTMLElement>('marker');
 
@@ -246,10 +248,7 @@ const lastLength = ref<number | null>(null);
 /** Dragging notes: moving them, or one of their ends. `anchor` is the note grabbed; `last` skips repeated edits. */
 type NoteGesture = { kind: 'move' | 'start' | 'end'; pointerId: number; x: number; y: number; anchor: NoteOrigin; origins: NoteOrigin[]; moved: boolean; last: string };
 type BandGesture = { kind: 'band'; pointerId: number; x: number; y: number; base: ReadonlySet<string> };
-/** Velocity lane: `origins` when the whole selection moves together, null while sweeping. */
-type VelocityGesture = { kind: 'velocity'; pointerId: number; lastX: number; y: number; origins: NoteOrigin[] | null };
-
-type Gesture = { kind: 'pending'; pointerId: number; x: number; y: number; touch: boolean; additive: boolean } | BandGesture | NoteGesture | VelocityGesture;
+type Gesture = { kind: 'pending'; pointerId: number; x: number; y: number; touch: boolean; additive: boolean } | BandGesture | NoteGesture;
 
 let gesture: Gesture | null = null;
 
@@ -414,10 +413,6 @@ const onPointerMove = (event: PointerEvent) => {
     if (!g || event.pointerId !== g.pointerId) {
         return;
     }
-    if (g.kind === 'velocity') {
-        paintVelocity(g, event);
-        return;
-    }
     if (g.kind === 'pending') {
         if (Math.hypot(event.clientX - g.x, event.clientY - g.y) < dragThreshold(g.touch)) {
             return;
@@ -451,7 +446,7 @@ const addNoteAt = (clientX: number, clientY: number, free: boolean) => {
         return;
     }
     const start = Math.min(length - MIN_NOTE_LENGTH, Math.max(0, free ? point.step : snap(point.step, grid.value, 'floor')));
-    const note = props.pattern.addNote({ note: row.note, start, length: lastLength.value ?? editUnit(grid.value), velocity: 1 });
+    const note = props.pattern.addNote({ note: row.note, start, length: lastLength.value ?? editUnit(grid.value), velocity: props.pattern.stepVelocity });
     select([note.id]);
 };
 
@@ -494,55 +489,6 @@ const onContextMenu = (event: MouseEvent) => {
     }
     removeNotes(selected.value.has(id) ? [...selected.value] : [id]);
 };
-
-/* ---- the velocity lane ---- */
-
-/** Velocity at a height of the lane: full at the top, silent at the bottom. */
-const velocityAt = (clientY: number): number => {
-    const rect = lane.value!.getBoundingClientRect();
-    return Math.min(1, Math.max(0, 1 - (clientY - rect.top - 4) / (rect.height - 8)));
-};
-
-/** The notes whose stems a sweep from `fromX` to `toX` (client px) passes, among the selection if there is one. */
-const stemsBetween = (fromX: number, toX: number): PatternNote[] => {
-    const rect = lane.value!.getBoundingClientRect();
-    const reach = Math.max(4, Math.min(8, stepWidth.value / 4));
-    const low = (Math.min(fromX, toX) - rect.left - reach) / stepWidth.value;
-    const high = (Math.max(fromX, toX) - rect.left + reach) / stepWidth.value;
-    const pool = hasSelection.value ? selectedNotes.value : props.pattern.notes;
-    return pool.filter((note) => note.start >= low && note.start <= high && rowFor(note) >= 0);
-};
-
-/**
- * Drag in the lane: sweeping draws velocities (every stem passed takes the height of the pointer). Grabbing a stem of
- * a multi-note selection instead raises or lowers the whole selection together.
- */
-const onLaneDown = (event: PointerEvent) => {
-    if (event.button !== 0 || gesture) {
-        return;
-    }
-    event.preventDefault();
-    focusRoll();
-    const hit = stemsBetween(event.clientX, event.clientX);
-    const relative = selectedNotes.value.length > 1 && hit.some((note) => selected.value.has(note.id));
-    gesture = { kind: 'velocity', pointerId: event.pointerId, lastX: event.clientX, y: event.clientY, origins: relative ? originsOf(selectedNotes.value) : null };
-    paintVelocity(gesture, event);
-    listen();
-};
-
-function paintVelocity(g: VelocityGesture, event: PointerEvent) {
-    if (g.origins) {
-        const delta = (g.y - event.clientY) / (lane.value!.getBoundingClientRect().height - 8);
-        props.pattern.updateNotes(g.origins.map((origin) => ({ id: origin.id, velocity: Math.min(1, Math.max(0, origin.velocity + delta)) })));
-        return;
-    }
-    const velocity = velocityAt(event.clientY);
-    const notes = stemsBetween(g.lastX, event.clientX);
-    g.lastX = event.clientX;
-    if (notes.some((note) => note.velocity !== velocity)) {
-        props.pattern.updateNotes(notes.map((note) => ({ id: note.id, velocity })));
-    }
-}
 
 /* ---- edit commands ---- */
 
@@ -844,6 +790,8 @@ defineExpose({ scrollToPattern });
                     <button type="button" class="iconbtn" aria-label="Zoom in" :disabled="zoom >= 16" v-tooltip.bottom="'Zoom in (Ctrl+wheel)'" @click="zoomBy(1.25)">
                         <Icon icon="mdi:magnify-plus-outline" class="w-5 h-5" />
                     </button>
+                    <span class="vrule"></span>
+                    <VelocityTools @menu="velocityLane?.openMenu($event)" />
                     <span v-if="hasSelection" class="proll-count">{{ selectedNotes.length }} selected</span>
                 </div>
 
@@ -895,8 +843,18 @@ defineExpose({ scrollToPattern });
                         </div>
 
                         <div class="proll-corner proll-corner--lane">Vel</div>
-                        <div ref="lane" class="proll-lane" @pointerdown="onLaneDown">
-                            <RollStemLayer :notes="props.pattern.notes" :is-shown="isShown" :selected="selected" />
+                        <div class="proll-lane">
+                            <VelocityLane
+                                ref="velocityLane"
+                                v-model:height="laneHeight"
+                                :pattern="props.pattern"
+                                :step-width="stepWidth"
+                                :is-shown="isShown"
+                                :selected="selected"
+                                resize-edge="top"
+                                :min-height="40"
+                                :max-height="220"
+                            />
                         </div>
                     </div>
                 </div>

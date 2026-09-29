@@ -1,4 +1,4 @@
-import { sameTarget, toValue, type AutomationParam, type AutomationTarget } from '../automation';
+import { sameTarget, targetKey, toValue, type AutomationParam, type AutomationTarget } from '../automation';
 
 /**
  * MIDI learn: which controller (CC) turns which knob. The mappings belong to the session (`SessionState.midiMappings`),
@@ -59,4 +59,4 @@ export const cloneMappings = (mappings: readonly MidiMapping[] | undefined): Mid
 
 /** A stable key for a mapping's parameter, for looking knobs up. */
 export const paramKey = (target: AutomationTarget, param: string): string =>
-    `${target.kind === 'master' ? 'master' : target.kind === 'container' ? `c:${target.containerId}` : `t:${target.containerId}:${target.trackId}`}|${param}`;
+    `${targetKey(target)}|${param}`;

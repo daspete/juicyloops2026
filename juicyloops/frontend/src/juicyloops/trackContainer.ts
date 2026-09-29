@@ -38,9 +38,22 @@ export class TrackContainer implements Sleeper {
         this.id = id;
     }
 
+    /** Where the sends of this container's channel and tracks go: the returns' inputs. */
+    private sendTargets: readonly ToneAudioNode[] = [];
+
     /** Sends the container into a node (the master bus). */
     connectTo(destination: ToneAudioNode): void {
         this.bus.connectTo(destination);
+    }
+
+    /** Points every send of the container (its channel's and its tracks') at the returns. */
+    setSendTargets(targets: readonly ToneAudioNode[]): void {
+        // Raw: the container is reactive, and Tone nodes read through a proxy cannot be connected.
+        this.sendTargets = markRaw(targets.map((node) => toRaw(node)));
+        this.bus.sends?.setTargets(targets);
+        for (const track of toRaw(this.tracks)) {
+            toRaw(track).setSendTargets(targets);
+        }
     }
 
     addTrack<T extends TrackType>(type: T): TrackOf<T> {
@@ -154,6 +167,7 @@ export class TrackContainer implements Sleeper {
     /** Wires a new track into the bus; in a sleeping container it goes to sleep with the others. */
     private adopt(track: BaseTrack): void {
         track.connectTo(this.bus.input);
+        track.setSendTargets(this.sendTargets);
         if (!this.isAwake) {
             track.sleep();
         }

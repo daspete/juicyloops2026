@@ -119,7 +119,8 @@ const confirmRemove = (target?: HTMLElement) => {
                 <div class="track-title">
                     <span class="track-badge"><Icon :icon="meta.icon" class="w-3.5 h-3.5" /></span>
                     <span class="track-name">
-                        {{ meta.label }}<span class="track-index">{{ props.trackIndex + 1 }}</span>
+                        <template v-if="props.track.name.trim()">{{ props.track.name }}</template>
+                        <template v-else>{{ meta.label }}<span class="track-index">{{ props.trackIndex + 1 }}</span></template>
                     </span>
                     <span class="track-length" v-tooltip.bottom="'Steps in this loop. Change it under Tweak → Pattern.'">{{ props.track.length }}</span>
                     <button
@@ -158,6 +159,17 @@ const confirmRemove = (target?: HTMLElement) => {
                         @click="props.track.toggleMute()"
                     >
                         M
+                    </button>
+                    <button
+                        type="button"
+                        class="mutebtn solobtn"
+                        :data-active="props.track.isSolo"
+                        v-tooltip.bottom="props.track.isSolo ? 'Unsolo' : 'Solo: hear only soloed tracks'"
+                        :aria-label="props.track.isSolo ? 'Unsolo' : 'Solo'"
+                        :aria-pressed="props.track.isSolo"
+                        @click="props.track.toggleSolo()"
+                    >
+                        S
                     </button>
                     <Slider
                         :model-value="props.track.volume"
@@ -203,12 +215,12 @@ const confirmRemove = (target?: HTMLElement) => {
                         type="button"
                         class="tool tool--tweak"
                         :data-active="isTweakOpen"
-                        v-tooltip.bottom="'Sound, pattern tools and effects'"
+                        v-tooltip.bottom="'Devices: its instrument and effects (D)'"
                         :aria-pressed="isTweakOpen"
                         @click="toggleTweak"
                     >
                         <Icon icon="mdi:tune-variant" class="w-4 h-4" />
-                        <span>Tweak</span>
+                        <span>Devices</span>
                     </button>
                 </div>
             </div>

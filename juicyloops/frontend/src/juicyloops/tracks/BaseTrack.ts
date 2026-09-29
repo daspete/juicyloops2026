@@ -16,7 +16,8 @@ import {
     type StepAutomationSnapshot,
 } from '../automation';
 import { PARAM_RAMP_TIME, STEP_COUNT } from '../constants';
-import { EFFECT_PARAMS, Effects, type EffectsSnapshot } from '../effects/effects';
+import { Effects, type EffectsSnapshot, type LegacyEffectsSnapshot } from '../effects/effects';
+import { SEND_PARAMS, sendIndexOf, Sends } from '../sends';
 import { publishHeldKeys } from '../midi/heldKeys';
 import { SustainGate } from '../midi/liveNotes';
 import type { LiveTrack } from '../midi/router';
@@ -37,12 +38,18 @@ export interface TrackSnapshot {
     automation: StepAutomationSnapshot[];
     /** Missing in states saved before the setting existed; the track type's default applies then. */
     cutsNotes?: boolean;
+    /** Send levels (dB) to the returns. Missing in states from before the mixer rack. */
+    sends?: number[];
+    /** A name the user gave the track; empty (or missing) shows its type and number. */
+    name?: string;
 }
 
 /** Everything about a track that history keeps: what `serialize` gives, minus decoded audio, plus what the user can change. */
 export interface TrackState extends TrackSnapshot {
     isMuted: boolean;
-    effects: EffectsSnapshot;
+    /** Missing in states from before solo. */
+    isSolo?: boolean;
+    effects: EffectsSnapshot | LegacyEffectsSnapshot;
 }
 
 /** Every parameter of a track type, in menu order and by key. Frozen, so Vue hands it out without proxying it. */
@@ -87,9 +94,23 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
     /** Volume (dB) and pan (-1..1) stage at the end of the chain. */
     protected readonly output = markRaw(new PanVol(0, 0));
 
+    /** A name the user gave the track; empty shows its type and number. */
+    name = '';
+
     volume = 0;
     pan = 0;
     isMuted = false;
+    /** Solo is session-wide: while any channel is soloed, the others are silenced (see `Sequencer.updateSolo`). */
+    isSolo = false;
+
+    /** Set by the session's solo state: another channel is soloed. Plain, not reactive; the sequencer writes it on the raw track. */
+    isSilenced = false;
+
+    /** The sends to the returns, tapped after the fader. */
+    readonly sends = markRaw(new Sends(this.output));
+
+    /** Where `connectTo` sent the track. */
+    private destination: ToneAudioNode | null = null;
 
     /** Whether a new note stops the one still sounding (cut) or plays on top of it (overlap). */
     cutsNotes = false;
@@ -130,7 +151,7 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
     play(step: number, time: number): void {
         const position = this.stepOf(step);
         this.applyAutomation(position, time);
-        if (this.isMuted) {
+        if (this.isMuted || this.isSilenced) {
             return;
         }
         const notes = this.notesStartingAt(position);
@@ -173,7 +194,7 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         if (this.liveGate.press(id, note)) {
             this.stopLiveNote(id, time);
         }
-        if (!this.isMuted) {
+        if (!this.isMuted && !this.isSilenced) {
             this.startLiveNote(id, note, velocity, time);
         }
         this.publishHeldKeys();
@@ -230,8 +251,21 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
 
     /** Sends the track into a node (its container's bus), replacing where it went before. */
     connectTo(destination: ToneAudioNode): void {
-        this.output.disconnect();
+        if (this.destination) {
+            this.output.disconnect(this.destination);
+        }
+        this.destination = destination;
         this.output.connect(destination);
+    }
+
+    /** Where the sends go (the returns' inputs); the container passes them on. */
+    setSendTargets(targets: readonly ToneAudioNode[]): void {
+        this.sends.setTargets(targets);
+    }
+
+    /** The node meters read: after the fader. Connect to it, never disconnect it. */
+    get meterSource(): ToneAudioNode {
+        return this.output;
     }
 
     /**
@@ -276,6 +310,10 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         this.isMuted = !this.isMuted;
     }
 
+    toggleSolo(): void {
+        this.isSolo = !this.isSolo;
+    }
+
     /** Arms or disarms the track for MIDI input. Disarming does not stop notes still held: their note-offs still arrive. */
     setArmed(armed: boolean): void {
         this.isArmed = armed;
@@ -287,9 +325,9 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
 
     /* ---- parameters and automation ---- */
 
-    /** Everything automation can drive on this track. Subclasses add their own in `ownParameters`. Built once per track type. */
+    /** Everything automation can drive on this track: level, pan, sends, the type's own (see `ownParameters`), then every effect slot. */
     get parameters(): readonly AutomationParam[] {
-        return this.parameterTable().list;
+        return [...this.parameterTable().list, ...this.effects.parameters];
     }
 
     /** Parameters specific to a track type (a synth's envelope, ...). Must be the same for every track of a type: the result is cached per type. */
@@ -299,14 +337,14 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
 
     /** A parameter by its key. A map lookup: automation calls it for every lane on every step. */
     parameter(key: string): AutomationParam | undefined {
-        return this.parameterTable().byKey.get(key);
+        return this.parameterTable().byKey.get(key) ?? this.effects.parameter(key);
     }
 
     private parameterTable(): ParameterTable {
         const type = this.constructor;
         let table = PARAMETER_TABLES.get(type);
         if (!table) {
-            table = createParameterTable([...MIX_PARAMS, ...this.ownParameters(), ...EFFECT_PARAMS]);
+            table = createParameterTable([...MIX_PARAMS, ...SEND_PARAMS, ...this.ownParameters()]);
             PARAMETER_TABLES.set(type, table);
         }
         return table;
@@ -319,6 +357,10 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         if (key === 'pan') {
             return this.pan;
         }
+        const send = sendIndexOf(key);
+        if (send >= 0) {
+            return this.sends.levels[send] ?? 0;
+        }
         return this.effects.getParameter(key);
     }
 
@@ -327,6 +369,8 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
             this.setVolume(value, time);
         } else if (key === 'pan') {
             this.setPan(value, time);
+        } else if (sendIndexOf(key) >= 0) {
+            this.sends.setLevel(sendIndexOf(key), value, time);
         } else {
             this.effects.setParameter(key, value, time);
         }
@@ -411,10 +455,13 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         this.automation.copyFrom(source.automation);
         this.setVolume(source.volume);
         this.setPan(source.pan);
+        this.sends.restore(source.sends.levels);
+        this.name = source.name;
         this.setCutsNotes(source.cutsNotes);
     }
 
     dispose(): void {
+        this.sends.dispose();
         this.effects.dispose();
         this.output.dispose();
     }
@@ -431,9 +478,12 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
             volume: this.volume,
             pan: this.pan,
             isMuted: this.isMuted,
+            isSolo: this.isSolo,
             effects: this.effects.capture(),
             automation: this.automation.serialize(),
             cutsNotes: this.cutsNotes,
+            sends: [...this.sends.levels],
+            name: this.name,
         };
     }
 
@@ -448,11 +498,16 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         this.setVolume(state.volume);
         this.setPan(state.pan);
         this.isMuted = state.isMuted;
+        this.isSolo = state.isSolo ?? false;
+        this.name = state.name ?? '';
+        this.sends.restore(state.sends);
         if (state.cutsNotes !== undefined) {
             this.setCutsNotes(state.cutsNotes);
         }
         this.effects.restore(state.effects);
         this.automation.restore(state.automation);
+        // A rack from before slots dropped its idle effects; the ones this track's lanes drive come back.
+        this.effects.ensureLegacySlots(state.automation.map((lane) => lane.param));
     }
 
     async serialize(): Promise<TrackSnapshot> {
@@ -465,6 +520,8 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
             pan: this.pan,
             automation: this.automation.serialize(),
             cutsNotes: this.cutsNotes,
+            sends: [...this.sends.levels],
+            name: this.name,
         };
     }
 }

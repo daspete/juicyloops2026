@@ -15,24 +15,24 @@ import { useViewport } from '@/composables/useViewport';
 import { useWorkspace, type WorkspaceMode } from '@/composables/useWorkspace';
 import { positionLabel } from './tracks/steps';
 import SampleBrowser from './browser/SampleBrowser.vue';
-import DetailPanel from './detail/DetailPanel.vue';
+import BottomDock from './dock/BottomDock.vue';
+import InspectorPanel from './inspector/InspectorPanel.vue';
 import ExportDialog from './ExportDialog.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 import LiveText from './ui/LiveText.vue';
 import MidiPanel from './midi/MidiPanel.vue';
 import RecordControls from './midi/RecordControls.vue';
-import MixPanel from './mix/MixPanel.vue';
 import { TRACK_META } from './tracks/trackMeta';
 
 /**
  * The application shell: transport, view switcher, the mode switch and the frame around the editors.
- * The track editor and the song editor are routes rendered into the main area; the mixer docks to its right,
- * the detail panel below it.
+ * The track editor and the song editor are routes rendered into the main area. Around it: the sample browser on the
+ * left, the Inspector on the right, and the bottom dock with the device rack and the mixer.
  */
 const { engine, bpm, setBpm, tapTempo, currentTick, currentStep, isPlaying, togglePlay, setMode: setPlaybackMode, containers, song } = useJuicyLoops();
 const { theme, toggleTheme } = useTheme();
-const { mode, isPro, setMode, isMixerOpen, toggleMixer, isDetailOpen, toggleDetail, isBrowserOpen, toggleBrowser } = useWorkspace();
+const { mode, isPro, setMode, isMixerOpen, isDetailOpen, toggleDock, isBrowserOpen, toggleBrowser, isInspectorOpen, toggleInspector, isDockOpen } = useWorkspace();
 const { canUndo, canRedo, commit, undo, redo } = useHistory();
 /* On a phone the view switch and the panel toggles move to a bar at the bottom, where a thumb can reach them. */
 const { isPhone } = useViewport();
@@ -45,15 +45,21 @@ const confirm = useConfirm();
 const midi = useMidi();
 const recorder = useRecorder();
 
-/* On a phone a panel takes the whole stage, so the two left-hand panels take turns. */
+/* On a phone a panel takes the whole stage, so the browser, the Inspector and the dock take turns. */
 watch(isBrowserOpen, (open) => {
     if (open && isPhone.value) {
-        isDetailOpen.value = false;
+        isInspectorOpen.value = false;
     }
 });
-watch(isDetailOpen, (open) => {
+watch(isInspectorOpen, (open) => {
     if (open && isPhone.value) {
         isBrowserOpen.value = false;
+    }
+});
+watch(isDockOpen, (open) => {
+    if (open && isPhone.value) {
+        isBrowserOpen.value = false;
+        isInspectorOpen.value = false;
     }
 });
 
@@ -88,8 +94,8 @@ const statusHint = computed(() => {
         return 'Double-click a container or clip to edit its tracks · Right-click deletes · Shift+drag clones · Ctrl+drag selects · Ctrl+wheel zooms';
     }
     return isPro.value
-        ? 'Tap a pad to add a step · Drag across pads to paint · Automate on a track head opens its lanes'
-        : 'Tap a pad to add a step · Drag across pads to paint · Switch to Pro for containers, the song and the mixer';
+        ? 'Tap a pad to add a step · Drag across pads to paint · Devices shape the selected channel, the mixer balances them all'
+        : 'Tap a pad to add a step · Drag across pads to paint · Devices shape the sound · Switch to Pro for containers, the song and sends';
 });
 
 const isInitialized = ref(false);
@@ -251,7 +257,8 @@ const isTypingTarget = (target: EventTarget | null) => {
 };
 
 /**
- * Space plays and stops, R records (again: stops recording, playback goes on), B opens the sample browser, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
+ * Space plays and stops, R records (again: stops recording, playback goes on), B opens the sample browser, D the
+ * devices, M the mixer, I the Inspector, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y) undo and redo, Ctrl+S saves (Ctrl+Shift+S asks where),
  * Ctrl+O opens and Ctrl+E exports audio, like in every DAW. The file shortcuts work from inside a text field too.
  */
 const onKeyDown = (event: KeyboardEvent) => {
@@ -285,9 +292,20 @@ const onKeyDown = (event: KeyboardEvent) => {
         togglePlay();
         return;
     }
-    if (key === 'b' && !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value) {
+    const plain = !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value;
+    if (key === 'b' && plain) {
         event.preventDefault();
         toggleBrowser();
+        return;
+    }
+    if ((key === 'd' || key === 'm') && plain) {
+        event.preventDefault();
+        toggleDock(key === 'd' ? 'devices' : 'mixer');
+        return;
+    }
+    if (key === 'i' && plain) {
+        event.preventDefault();
+        toggleInspector();
         return;
     }
     if (key === 'r' && !modifier && !event.altKey && !event.shiftKey && !event.repeat && isInitialized.value) {
@@ -532,27 +550,14 @@ onBeforeUnmount(() => {
                     v-if="!isPhone"
                     type="button"
                     class="chip"
-                    :data-active="isDetailOpen"
-                    :aria-pressed="isDetailOpen"
-                    aria-label="Tweak"
-                    v-tooltip.bottom="'Track panel: sound, pattern tools and effects of the selected track'"
-                    @click="toggleDetail"
+                    :data-active="isInspectorOpen"
+                    :aria-pressed="isInspectorOpen"
+                    aria-label="Inspector"
+                    v-tooltip.bottom="'Inspector: name, pattern, routing and more of the selected channel (I)'"
+                    @click="toggleInspector"
                 >
-                    <Icon icon="mdi:tune-variant" class="w-4 h-4" />
-                    <span class="chip-label">Tweak</span>
-                </button>
-                <button
-                    v-if="isPro && !isPhone"
-                    type="button"
-                    class="chip"
-                    :data-active="isMixerOpen"
-                    :aria-pressed="isMixerOpen"
-                    aria-label="Mixer"
-                    v-tooltip.bottom="'Mixer: the container channel and the master, with their effects'"
-                    @click="toggleMixer"
-                >
-                    <Icon icon="mdi:tune-vertical" class="w-4 h-4" />
-                    <span class="chip-label">Mixer</span>
+                    <Icon icon="mdi:information-outline" class="w-4 h-4" />
+                    <span class="chip-label">Inspector</span>
                 </button>
                 <span v-if="!isPhone" class="vrule"></span>
                 <button
@@ -572,15 +577,18 @@ onBeforeUnmount(() => {
 
         <div class="stage">
             <SampleBrowser v-if="isBrowserOpen" />
-            <DetailPanel v-if="isDetailOpen" />
-            <main class="workspace">
-                <Suspense>
-                    <RouterView v-slot="{ Component }">
-                        <component :is="Component" />
-                    </RouterView>
-                </Suspense>
-            </main>
-            <MixPanel v-if="isPro && isMixerOpen" />
+            <div class="stage-center">
+                <main class="workspace">
+                    <Suspense>
+                        <RouterView v-slot="{ Component }">
+                            <component :is="Component" />
+                        </RouterView>
+                    </Suspense>
+                </main>
+                <BottomDock v-if="!isPhone" />
+            </div>
+            <InspectorPanel v-if="isInspectorOpen" />
+            <BottomDock v-if="isPhone && isDockOpen" />
         </div>
 
         <nav v-if="isPhone" class="bottombar" aria-label="Editor">
@@ -594,19 +602,17 @@ onBeforeUnmount(() => {
                 <Icon icon="mdi:folder-music-outline" class="w-5 h-5" />
                 <span>Samples</span>
             </button>
-            <button
-                type="button"
-                class="bottombar-item"
-                :data-active="isDetailOpen"
-                :aria-pressed="isDetailOpen"
-                @click="toggleDetail"
-            >
+            <button type="button" class="bottombar-item" :data-active="isDetailOpen" :aria-pressed="isDetailOpen" @click="toggleDock('devices')">
                 <Icon icon="mdi:tune-variant" class="w-5 h-5" />
-                <span>Tweak</span>
+                <span>Devices</span>
             </button>
-            <button v-if="isPro" type="button" class="bottombar-item" :data-active="isMixerOpen" :aria-pressed="isMixerOpen" @click="toggleMixer">
+            <button type="button" class="bottombar-item" :data-active="isMixerOpen" :aria-pressed="isMixerOpen" @click="toggleDock('mixer')">
                 <Icon icon="mdi:tune-vertical" class="w-5 h-5" />
                 <span>Mixer</span>
+            </button>
+            <button type="button" class="bottombar-item" :data-active="isInspectorOpen" :aria-pressed="isInspectorOpen" @click="toggleInspector">
+                <Icon icon="mdi:information-outline" class="w-5 h-5" />
+                <span>Inspector</span>
             </button>
             <button type="button" class="bottombar-item" @click="isDiscussionsOpen = true">
                 <Icon icon="ph:chats" class="w-5 h-5" />
@@ -619,6 +625,9 @@ onBeforeUnmount(() => {
             <span class="statusbar-key"><kbd>Space</kbd> play / stop</span>
             <span class="statusbar-key"><kbd>R</kbd> record</span>
             <span class="statusbar-key"><kbd>B</kbd> samples</span>
+            <span class="statusbar-key"><kbd>D</kbd> devices</span>
+            <span class="statusbar-key"><kbd>M</kbd> mixer</span>
+            <span class="statusbar-key"><kbd>I</kbd> inspector</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>S</kbd> save</span>
             <span class="statusbar-key"><kbd>Ctrl</kbd>+<kbd>E</kbd> export</span>

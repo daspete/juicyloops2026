@@ -205,3 +205,19 @@ Each step ends with type-check, lint, unit tests, and a browser check in light, 
 | Presets | Factory presets per device + user presets (browser storage). |
 | Velocity | Full set: stems at the real note start, Draw / Line / Curve, relative drag, selection-aware, menu (humanize, randomize, scale, ramp, accent, set all, reset), resizable, shared with the piano roll. |
 | Style / phone | Current juicy look; mixer and rack fully usable on phones (bottom sheet, swipe). |
+
+## Implementation (2026-09-29)
+
+| Part | Where |
+|---|---|
+| Effect slots, migration, per-slot automation keys | `juicyloops/effects/effects.ts` (`Effects.add/remove/moveTo/duplicate/setBypassed`, `slotsFromLegacy`, `ensureLegacySlots`), rack metadata and factory presets in `effects/definitions.ts` (`EFFECT_INFO`, `EFFECT_PRESETS`, `addedParams`) |
+| Sends and returns | `juicyloops/sends.ts` (`Sends`, `send.0/1` params), returns A (reverb) and B (delay) in `Sequencer.returns`, asleep until something feeds them (`updateReturns`) |
+| Mute / solo | `MixBus` gate (mute + `setSilenced`), `BaseTrack.isSolo/isSilenced`, `Sequencer.updateSolo` (session-wide, returns solo-safe), run from a `watchEffect` in `useJuicyLoops` |
+| Layout state | `composables/useWorkspace.ts` (bottom dock tabs/height/maximise/face/narrow/folded, Inspector, channel selection) |
+| Channel models | `composables/useChannels.ts` (one shape for track, container, return, master) |
+| Meters | `composables/useMeter.ts` (one shared rAF loop, meters only while a strip is mounted) |
+| UI | `components/dock/BottomDock.vue`, `devices/DeviceRack.vue`, `devices/InstrumentDevice.vue`, `effects/EffectDevice.vue`, `effects/EffectVisual.vue`, `mixer/MixerRack.vue`, `mixer/ChannelStrip.vue`, `mixer/ChannelFader.vue`, `inspector/InspectorPanel.vue`; styles in `assets/css/studio-rack.css` |
+| Presets | `composables/usePresets.ts` (factory + user, localStorage, carried in session files, format version 3) |
+| Velocity lane | `components/tracks/velocity/*`, `juicyloops/notes/velocityTools.ts`, `assets/css/velocity.css` |
+
+Not done / deliberately left out: dragging a device onto another channel's rack (the dock shows one tab at a time; Copy/Paste in the device menu does it instead), marquee selection inside the step-grid velocity lane, typed amounts in the velocity menu.

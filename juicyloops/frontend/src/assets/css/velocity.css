@@ -1,0 +1,312 @@
+/*
+ * The velocity lane (components/tracks/velocity): one stem per note under the step grid and in the piano roll.
+ * Flat native CSS: this file goes through Tailwind/Lightning CSS, never Sass.
+ */
+
+.velo {
+    position: relative;
+    outline: none;
+    touch-action: none;
+    user-select: none;
+    cursor: crosshair;
+}
+
+.velo:focus-visible {
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--jl-focus) 55%, transparent);
+    border-radius: 0.45rem;
+}
+
+/* Under the step grid: as wide as the pads, the pad columns drawn faintly behind the stems. */
+.velo--steps {
+    width: max-content;
+    min-height: 2.5rem;
+}
+
+.velo-cells {
+    height: 100%;
+    pointer-events: none;
+}
+
+.velo-cell {
+    height: 100%;
+    border-radius: 0.4rem;
+    background: color-mix(in oklab, var(--jl-cell) 55%, transparent);
+}
+
+.velo-cell--downbeat {
+    background: color-mix(in oklab, var(--jl-cell-downbeat) 85%, transparent);
+}
+
+/* In the piano roll: fills the lane cell of the roll's grid. */
+.velo--roll {
+    position: absolute;
+    inset: 0;
+}
+
+/* The area the stems stand in: 0 % at its bottom, 100 % at its top, with room above for the heads. */
+.velo-field {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 9px;
+    bottom: 4px;
+    pointer-events: none;
+}
+
+.velo-guide {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 0;
+    border-top: 1px dashed var(--jl-line);
+}
+
+.velo-guide:first-child {
+    border-top-style: solid;
+}
+
+.velo-stem {
+    position: absolute;
+    bottom: 0;
+    left: var(--x);
+    width: 3px;
+    margin-left: -1.5px;
+    height: calc(var(--v) * 100%);
+    border-radius: 2px;
+    background: linear-gradient(to top, color-mix(in oklab, var(--jl-accent) 45%, transparent), var(--jl-accent));
+}
+
+.velo-stem::after {
+    content: '';
+    position: absolute;
+    top: -4px;
+    left: 50%;
+    width: 9px;
+    height: 9px;
+    margin-left: -4.5px;
+    border-radius: 50%;
+    background: var(--jl-accent);
+    box-shadow: 0 0 0 2px var(--jl-panel);
+    transition: transform 0.08s ease;
+}
+
+.velo-stem--selected {
+    background: linear-gradient(to top, color-mix(in oklab, var(--jl-text) 40%, transparent), var(--jl-text));
+}
+
+.velo-stem--selected::after {
+    background: var(--jl-text);
+}
+
+.velo-stem--dim {
+    opacity: 0.25;
+}
+
+.velo-stem--focused::after {
+    transform: scale(1.35);
+    box-shadow:
+        0 0 0 2px var(--jl-panel),
+        0 0 0 3.5px var(--jl-focus);
+}
+
+/* An empty step: the velocity the next step switched on here gets. */
+.velo-stem--ghost {
+    background: repeating-linear-gradient(to top, var(--jl-bar) 0 3px, transparent 3px 6px);
+    opacity: 0.55;
+}
+
+.velo-stem--ghost::after {
+    background: var(--jl-panel);
+    box-shadow: inset 0 0 0 1.5px var(--jl-bar);
+}
+
+/* The scale beside the lane, in the head column's empty space under the track head. */
+.velo-scale {
+    position: absolute;
+    top: 9px;
+    bottom: 4px;
+    right: calc(100% + 0.45rem);
+    width: 2rem;
+    pointer-events: none;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    color: var(--jl-muted);
+}
+
+.velo-scale span {
+    position: absolute;
+    right: 0;
+    transform: translateY(-50%);
+}
+
+/* The line and curve tools' ramp, and the curve's bend handle. */
+.velo-ramp {
+    position: absolute;
+    left: 0;
+    top: 0;
+    overflow: visible;
+    pointer-events: none;
+}
+
+.velo-ramp polyline {
+    fill: none;
+    stroke: var(--jl-text);
+    stroke-width: 1.5;
+    stroke-dasharray: 5 4;
+    opacity: 0.8;
+}
+
+.velo-ramp-handle {
+    fill: var(--jl-panel);
+    stroke: var(--jl-accent);
+    stroke-width: 2;
+    filter: drop-shadow(0 0 4px color-mix(in oklab, var(--jl-accent) 60%, transparent));
+}
+
+/* The value under the pointer while dragging, and over a stem head. */
+.velo-readout {
+    position: absolute;
+    z-index: 3;
+    transform: translate(-50%, calc(-100% - 10px));
+    padding: 0.15rem 0.45rem;
+    border-radius: 0.4rem;
+    background: var(--jl-raised);
+    border: 1px solid var(--jl-line-strong);
+    box-shadow: var(--jl-shadow);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--jl-text);
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+.velo-readout[data-below='true'] {
+    transform: translate(-50%, 12px);
+}
+
+/* The resize grip along one edge. */
+.velo-grip {
+    position: absolute;
+    left: 0;
+    right: 0;
+    z-index: 2;
+    height: 7px;
+    cursor: ns-resize;
+    touch-action: none;
+}
+
+.velo-grip::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 2.5rem;
+    height: 3px;
+    margin: -1.5px 0 0 -1.25rem;
+    border-radius: 2px;
+    background: var(--jl-line-strong);
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+
+.velo:hover .velo-grip::after,
+.velo-grip:hover::after,
+.velo--dragging .velo-grip::after {
+    opacity: 1;
+}
+
+.velo-grip--bottom {
+    bottom: -4px;
+}
+
+.velo-grip--top {
+    top: 0;
+}
+
+/* The tool switch, shared by every lane. */
+.velo-tools {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.velo-toolswitch {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    border-radius: 0.5rem;
+    background: var(--jl-cell);
+}
+
+.velo-toolbtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    border-radius: 0.38rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--jl-muted);
+    cursor: pointer;
+}
+
+.velo-toolbtn:hover {
+    color: var(--jl-text);
+}
+
+.velo-toolbtn[data-active='true'] {
+    background: var(--jl-raised);
+    color: var(--jl-accent);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.velo-toolbtn:focus-visible {
+    outline: 2px solid var(--jl-focus);
+    outline-offset: 1px;
+}
+
+.velo-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+/* The roll's own lane cell: the component draws the stems, the cell keeps the beat lines. */
+.proll-lane .velo {
+    cursor: crosshair;
+}
+
+@media (pointer: coarse) {
+    .velo-stem::after {
+        width: 13px;
+        height: 13px;
+        margin-left: -6.5px;
+        top: -6px;
+    }
+
+    .velo-grip {
+        height: 14px;
+    }
+
+    .velo-grip--bottom {
+        bottom: -8px;
+    }
+}
+
+/* Phones: the tool names go, the icons stay. */
+@media (max-width: 47.9rem) {
+    .velo-toolbtn-label {
+        display: none;
+    }
+
+    .velo-toolbtn {
+        padding: 0 0.4rem;
+    }
+
+    .velo-scale {
+        display: none;
+    }
+}

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
-import type { AutomationParam, AutomationTarget, SongAutomationLane } from '@/juicyloops/automation';
+import { targetKey, type AutomationParam, type AutomationTarget, type SongAutomationLane } from '@/juicyloops/automation';
+import { RETURN_NAMES } from '@/juicyloops/sends';
 import { SONG_SNAP } from '@/juicyloops/song';
 import AutomationCurve from '../ui/AutomationCurve.vue';
 import AutomationLaneHead from '../ui/AutomationLaneHead.vue';
@@ -30,12 +31,11 @@ interface TargetOption {
     target: AutomationTarget;
 }
 
-const targetKey = (target: AutomationTarget): string =>
-    target.kind === 'master' ? 'master' : target.kind === 'container' ? `container:${target.containerId}` : `track:${target.containerId}:${target.trackId}`;
 
 /** Everything a lane can drive: the master, every container, every track of every container. */
 const targetOptions = computed<TargetOption[]>(() => [
     { key: 'master', label: 'Master', target: { kind: 'master' } },
+    ...RETURN_NAMES.map((name, index) => ({ key: `return:${index}`, label: `Return ${name}`, target: { kind: 'return', index } as AutomationTarget })),
     ...containers.value.flatMap((container) => [
         { key: `container:${container.id}`, label: container.name, target: { kind: 'container', containerId: container.id } as AutomationTarget },
         ...container.tracks.map((track, index) => ({

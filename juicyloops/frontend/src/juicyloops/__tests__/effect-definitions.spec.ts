@@ -1,6 +1,21 @@
-import { describe, expect, it } from 'vitest';
-import { EFFECT_DEFINITIONS, EFFECT_KEYS, initialParams, isEffectNeeded, type EffectDefinition, type EffectKey } from '../effects/definitions';
-import { EFFECT_PARAMS, upgradeEffectParams } from '../effects/effects';
+import { describe, expect, it, vi } from 'vitest';
+
+/* jsdom has no Web Audio: the master's limiter and an added compressor are stand-ins that take values. */
+vi.mock('tone', async (importOriginal) => {
+    const tone = await importOriginal<typeof import('tone')>();
+    class FakeDynamics {
+        readonly context = { currentTime: 0 };
+        readonly threshold = { value: 0 };
+        readonly ratio = { value: 0 };
+        readonly attack = { value: 0 };
+        readonly release = { value: 0 };
+        disconnect() {}
+        dispose() {}
+    }
+    return { ...tone, Compressor: FakeDynamics, Limiter: FakeDynamics };
+});
+import { addedParams, EFFECT_DEFINITIONS, EFFECT_INFO, EFFECT_KEYS, EFFECT_PRESETS, initialParams, isEffectNeeded, type EffectDefinition, type EffectKey } from '../effects/definitions';
+import { Effects, upgradeEffectParams } from '../effects/effects';
 
 describe('effect definitions', () => {
     it('describes every effect with at least one sane parameter', () => {
@@ -79,9 +94,26 @@ describe('effect definitions', () => {
     });
 
     it('keeps the limiter switch out of automation', () => {
-        expect(EFFECT_PARAMS.some((param) => param.key === 'fx.limiter.on')).toBe(false);
-        expect(EFFECT_PARAMS.some((param) => param.key === 'fx.limiter.threshold')).toBe(true);
-        expect(EFFECT_PARAMS.some((param) => param.key === 'fx.compressor.ratio')).toBe(true);
+        const rack = new Effects({ role: 'master' });
+        rack.add('compressor');
+        const keys = rack.parameters.map((param) => param.key);
+        expect(keys).not.toContain('fx.limiter.on');
+        expect(keys).toContain('fx.limiter.threshold');
+        expect(keys).toContain('fx.compressor.ratio');
+    });
+
+    it('describes every effect for the rack: a macro face of known params, added values that are heard', () => {
+        for (const key of EFFECT_KEYS) {
+            const info = EFFECT_INFO[key];
+            const params = EFFECT_DEFINITIONS[key].params.map((param) => param.key as string);
+            expect(info.macros.length).toBeGreaterThan(0);
+            expect(info.macros.every((macro) => params.includes(macro.key))).toBe(true);
+            // A flat EQ is the one effect that starts silent when added: its bands start at 0 dB.
+            expect(isEffectNeeded(key, addedParams(key))).toBe(key !== 'equalizer');
+            for (const preset of EFFECT_PRESETS[key] ?? []) {
+                expect(Object.keys(preset.params).every((param) => params.includes(param))).toBe(true);
+            }
+        }
     });
 
     it('switches the limiter of an old snapshot on and keeps everything else as stored', () => {

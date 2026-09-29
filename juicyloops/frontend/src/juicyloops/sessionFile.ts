@@ -19,20 +19,24 @@ import type { SampleTrackState } from './tracks/SampleTrack';
  * share one sample (a duplicated track) share one asset.
  *
  * Versions: 1 stored a row of ticks per track (one note per step); 2 stores notes with free starts and lengths
- * plus the pattern length. Version 1 files are converted when they are read (see `notes/migrate.ts`).
+ * plus the pattern length; 3 stores effect racks as slots, the returns, sends, solo and the user's device presets.
+ * Version 1 files are converted when they are read (see `notes/migrate.ts`); version 2 racks when they are restored
+ * (see `effects/effects.ts`).
  */
 
 export const SESSION_FILE_EXTENSION = '.juicyloops';
 export const SESSION_FILE_MIME = 'application/x-juicyloops';
 
 const MAGIC = 'JUICYLPS';
-const FORMAT_VERSION = 2;
+const FORMAT_VERSION = 3;
 
 /** What is saved and loaded: the session as history keeps it, plus what the UI owns. */
 export interface SavedSession {
     name: string;
     bpm: number;
     session: SessionState;
+    /** The user's device presets (see `usePresets`), so they travel with the file. Plain data; missing before version 3. */
+    presets?: unknown;
 }
 
 interface AssetEntry {
@@ -54,6 +58,7 @@ interface Header {
     bpm: number;
     session: Omit<SessionState, 'containers'> & { containers: (Omit<ContainerState, 'tracks'> & { tracks: (StoredTrackState | StoredLegacyTrackState)[] })[] };
     assets: AssetEntry[];
+    presets?: unknown;
 }
 
 const hasSampleBlob = (track: TrackState): track is SampleTrackState => 'sampleBlob' in track;
@@ -94,6 +99,7 @@ export const packSession = (saved: SavedSession): Blob => {
         bpm: saved.bpm,
         session: { ...saved.session, containers },
         assets,
+        ...(saved.presets ? { presets: saved.presets } : {}),
     };
 
     const headerBytes = new TextEncoder().encode(JSON.stringify(header));
@@ -166,6 +172,7 @@ export const unpackSession = (data: ArrayBuffer): SavedSession => {
         name: typeof header.name === 'string' ? header.name : '',
         bpm: header.bpm,
         session: { ...header.session, containers },
+        ...(header.presets ? { presets: header.presets } : {}),
     };
 };
 

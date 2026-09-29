@@ -23,12 +23,12 @@ export const isStepLit = (notes: readonly PatternNote[], step: number): boolean 
 
 /**
  * Lights or clears a cell. Clearing removes the notes that start in it; lighting an empty cell adds a note at the
- * pattern's `stepNote` and `stepLength`, at full velocity. A cell already in the state asked for is left alone.
+ * pattern's `stepNote`, `stepLength` and `stepVelocity`. A cell already in the state asked for is left alone.
  */
 export const setStep = (pattern: NotePattern, step: number, on: boolean): void => {
     const notes = notesStartingIn(pattern.notes, step);
     if (on && !notes.length) {
-        pattern.addNote({ note: pattern.stepNote, start: step, length: pattern.stepLength, velocity: 1 });
+        pattern.addNote({ note: pattern.stepNote, start: step, length: pattern.stepLength, velocity: pattern.stepVelocity });
     } else if (!on && notes.length) {
         pattern.removeNotes(notes.map((note) => note.id));
     }

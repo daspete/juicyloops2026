@@ -181,12 +181,13 @@ export async function buildFixture({ name, spec }) {
             track.setPan(((t % 5) - 2) * 0.2);
             for (const { effect, wet, every, offset = 0 } of spec.trackEffects) {
                 if ((trackNumber - offset) % every === 0) {
-                    track.effects.setParam(effect, 'wet', wet);
+                    // A slot added with an effect's key as its id, so the `fx.<effect>.wet` lanes below find it.
+                    track.effects.add(effect, undefined, { wet });
                 }
             }
         }
         for (const [effect, wet] of Object.entries(spec.busEffects)) {
-            container.bus.effects.setParam(effect, 'wet', wet);
+            container.bus.effects.add(effect, undefined, { wet });
         }
         containers.push(container);
     }

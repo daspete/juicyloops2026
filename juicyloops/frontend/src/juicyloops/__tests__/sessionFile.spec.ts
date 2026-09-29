@@ -137,11 +137,11 @@ describe('session file', () => {
         expect(sessionNameOf('plain')).toBe('plain');
     });
 
-    it('writes version 2', async () => {
+    it('writes version 3', async () => {
         const packed = new Uint8Array(await packSession({ name: 'x', bpm: 100, session: session([synth('s1')]) }).arrayBuffer());
         const length = new DataView(packed.buffer).getUint32(8, true);
         const header = JSON.parse(new TextDecoder().decode(packed.subarray(12, 12 + length)));
-        expect(header.version).toBe(2);
+        expect(header.version).toBe(3);
     });
 });
 
@@ -252,7 +252,7 @@ describe('session file version 1', () => {
         expect(new Uint8Array(await sampler.sampleBlob!.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
     });
 
-    it('round-trips: a converted file saves as version 2 and loads the same', async () => {
+    it('round-trips: a converted file saves as the current version and loads the same', async () => {
         const loaded = unpackSession(v1File(V1_HEADER, [new Uint8Array([1, 2, 3])]));
         const again = await roundTrip(loaded);
         expect(again.session.containers[0]!.tracks.map((track) => track.notes)).toEqual(loaded.session.containers[0]!.tracks.map((track) => track.notes));

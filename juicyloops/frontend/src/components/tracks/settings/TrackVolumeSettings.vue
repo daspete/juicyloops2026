@@ -1,27 +1,29 @@
 <script setup lang="ts">
-import { setStepVelocity, stepCells, stepVelocity } from '@/juicyloops/notes/stepView';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
-import { computed } from 'vue';
-import StepValueLane from './StepValueLane.vue';
+import { ref } from 'vue';
+import { TRACK_META } from '../trackMeta';
+import VelocityLane from '../velocity/VelocityLane.vue';
+import VelocityTools from '../velocity/VelocityTools.vue';
+import { useVelocityHeight } from '../velocity/useVelocityTool';
 
 /**
- * Velocity lane: how loud each step plays, drawn as one bar per step under the grid. A step's bar is the velocity of
- * the notes starting in it; an empty step shows the full velocity a note switched on there gets.
+ * Velocity lane under the step grid: one stem per note, centred under its pad (an off-grid note sits between pads,
+ * a chord's stems stand side by side). Empty steps show a ghost stem, the velocity a new step gets.
  */
 const props = defineProps<{
     track: BaseTrack;
 }>();
 
-const cells = computed(() => stepCells(props.track.notes, props.track.length));
-const values = computed(() => cells.value.map((notes) => (notes.length ? stepVelocity(notes) : 1)));
-const active = computed(() => cells.value.map((notes) => notes.length > 0));
-
-const set = (index: number, value: number) => setStepVelocity(props.track, index, value);
+const height = useVelocityHeight('steps', 96);
+const lane = ref<InstanceType<typeof VelocityLane> | null>(null);
 </script>
 
 <template>
     <div class="lane-stack">
-        <StepValueLane :values="values" :active="active" @set="set" />
-        <div class="lane-hint">Velocity: drag across the bars to set how loud each step plays.</div>
+        <VelocityLane ref="lane" v-model:height="height" :pattern="props.track" :min-height="48" :max-height="260" :title="`${TRACK_META[props.track.type].label} velocity`" />
+        <div class="velo-foot">
+            <VelocityTools @menu="lane?.openMenu($event)" />
+            <span class="lane-hint">Drag a stem's head to change it (Shift: fine) · sweep to draw · right-click for humanize, ramps and accents</span>
+        </div>
     </div>
 </template>

@@ -6,7 +6,7 @@ import type { Song } from '@/juicyloops/song';
 import type { TrackContainer } from '@/juicyloops/trackContainer';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import type { TrackOf, TrackType } from '@/juicyloops/tracks/registry';
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, ref, watch, watchEffect, type Ref } from 'vue';
 
 export const MIN_BPM = 10;
 export const MAX_BPM = 900;
@@ -51,6 +51,9 @@ engine.onStep((step) => {
         currentStep.value = step;
     }
 });
+
+/* Solo is session-wide: whenever a mute or solo switch changes anywhere, every channel's silence is worked out again. */
+watchEffect(() => engine.sequencer.updateSolo());
 
 const clampBpm = (value: number): number => Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(value)));
 

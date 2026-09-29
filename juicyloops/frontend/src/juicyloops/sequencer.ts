@@ -5,6 +5,8 @@ import { STEP_SUBDIVISION } from './constants';
 import { Hibernation, markDue, upcomingSegments, WAKE_WINDOW_STEPS } from './hibernate';
 import { cloneMappings, type MidiMapping } from './midi/mappings';
 import { MixBus, type BusSnapshot } from './mixBus';
+import { RETURN_COUNT, sendIndexOf } from './sends';
+import { parseEffectParamKey } from './effects/effects';
 import { Song, songStepAt, type SongState } from './song';
 import { TrackContainer, type ContainerState } from './trackContainer';
 
@@ -16,7 +18,40 @@ export interface SessionState {
     master: BusSnapshot;
     /** MIDI learn: which controller turns which knob. Missing in states from before MIDI. */
     midiMappings?: MidiMapping[];
+    /** The return buses A and B. Missing in states from before the mixer rack: they come back with their defaults. */
+    returns?: BusSnapshot[];
 }
+
+/** A fresh return: A holds a hall reverb, B an eighth-note echo, both fully wet (a return carries only the effect). */
+const createReturn = (index: number): MixBus => {
+    const bus = markRaw(new MixBus('return'));
+    // Asleep from the start: no reverb is built until something sends to it (see `updateReturns`).
+    bus.sleep();
+    configureReturn(bus, index);
+    return bus;
+};
+
+const configureReturn = (bus: MixBus, index: number): void => {
+    bus.effects.clear();
+    if (index === 0) {
+        bus.effects.add('reverb', 0, { wet: 1, decay: 2.5, preDelay: 0.02 });
+    } else {
+        bus.effects.add('delay', 0, { wet: 1, delayTime: 0.25 });
+    }
+};
+
+/** The state a return has in a session from before returns existed. */
+const defaultReturnState = (index: number): BusSnapshot => {
+    const bus = new MixBus('return');
+    bus.sleep();
+    configureReturn(bus, index);
+    const state = bus.capture();
+    bus.dispose();
+    return state;
+};
+
+/** Seconds a return keeps sounding after its last send went quiet, before it sleeps (plus its effect tail). */
+const RETURN_LINGER = 1;
 
 /**
  * `loop` plays the current container over and over (the track editor).
@@ -53,6 +88,16 @@ export class Sequencer {
 
     /** The master channel: every container feeds it, it feeds the speakers. */
     readonly master = markRaw(new MixBus('master'));
+
+    /** The return buses A and B: the sends of every channel feed them, they feed the master. */
+    readonly returns: readonly MixBus[] = Array.from({ length: RETURN_COUNT }, (_, index) => createReturn(index));
+
+    /** Return inputs, what every send points at. */
+    private readonly sendTargets = this.returns.map((bus) => bus.input);
+
+    /** When each return was last fed (performance.now), for putting idle returns to sleep. */
+    private readonly returnFedAt: number[] = this.returns.map(() => 0);
+    private readonly returnAsleep: boolean[] = this.returns.map(() => true);
 
     /**
      * The transport and draw loop of the context the sequencer was created in. Kept as references, so a sequencer
@@ -92,7 +137,11 @@ export class Sequencer {
 
     constructor() {
         this.master.toDestination();
+        for (const bus of this.returns) {
+            bus.connectTo(this.master.input);
+        }
         this.currentContainer = this.addContainer();
+        this.updateReturns();
     }
 
     /** Schedules the step callback on the transport. Safe to call more than once. */
@@ -144,6 +193,7 @@ export class Sequencer {
     addContainer(name = `Container ${this.containers.length + 1}`): TrackContainer {
         const container = new TrackContainer(name);
         container.connectTo(this.master.input);
+        container.setSendTargets(this.sendTargets);
         this.containers.push(container);
         return container;
     }
@@ -194,6 +244,7 @@ export class Sequencer {
             ...tracks.map((track) => track.whenReady()),
             ...tracks.map((track) => track.effects.whenReady()),
             ...containers.map((container) => container.bus.effects.whenReady()),
+            ...this.returns.map((bus) => bus.effects.whenReady()),
             this.master.effects.whenReady(),
         ]);
     }
@@ -208,6 +259,9 @@ export class Sequencer {
             toRaw(container).dispose();
         }
         this.containers.length = 0;
+        for (const bus of this.returns) {
+            bus.dispose();
+        }
         this.master.dispose();
     }
 
@@ -232,6 +286,7 @@ export class Sequencer {
             song: this.song.capture(),
             master: this.master.capture(),
             midiMappings: cloneMappings(this.midiMappings),
+            returns: this.returns.map((bus) => bus.capture()),
         };
     }
 
@@ -245,6 +300,7 @@ export class Sequencer {
             const container = existing ?? (reactive(new TrackContainer(containerState.name, containerState.id)) as TrackContainer);
             if (!existing) {
                 container.connectTo(this.master.input);
+                container.setSendTargets(this.sendTargets);
             }
             container.restore(containerState);
             return container;
@@ -257,11 +313,97 @@ export class Sequencer {
         this.containers.splice(0, this.containers.length, ...next);
         this.song.restore(state.song);
         this.master.restore(state.master);
+        this.returns.forEach((bus, index) => bus.restore(state.returns?.[index] ?? defaultReturnState(index)));
         this.setMidiMappings(state.midiMappings ?? []);
+        this.recoverLegacySlots();
         this.setCurrentContainer(state.currentContainerId);
         if (!this.containers.some((container) => container.id === this.currentContainer.id)) {
             this.setCurrentContainer(this.containers[0]!.id);
         }
+        this.updateSolo();
+        this.updateReturns();
+    }
+
+    /**
+     * Racks converted from before effect slots dropped their idle effects; the ones a song lane or a MIDI mapping still
+     * drives come back (a track's own lanes are handled by the track).
+     */
+    private recoverLegacySlots(): void {
+        const drives = [...this.song.automation, ...this.midiMappings];
+        for (const { target, param } of drives) {
+            if (parseEffectParamKey(param)) {
+                const owner = this.resolveTarget(target);
+                (owner as { effects?: { ensureLegacySlots(keys: string[]): void } } | undefined)?.effects?.ensureLegacySlots([param]);
+            }
+        }
+    }
+
+    /* ---- mute, solo and returns ---- */
+
+    /**
+     * Applies the session's solo state. Solo is session-wide: while any track or container channel is soloed, every
+     * track that is not soloed (and whose container is not) stays silent, and so does every container channel with
+     * nothing soloed inside. Returns are solo-safe: they only answer to each other's solo, so a soloed track keeps its
+     * reverb. Reads mute and solo through the reactive containers, so a `watchEffect` can call it.
+     */
+    updateSolo(): void {
+        const containers = this.containers;
+        let anySolo = false;
+        for (const container of containers) {
+            anySolo ||= container.bus.isSolo || container.tracks.some((track) => track.isSolo);
+        }
+        for (const container of containers) {
+            const busSolo = container.bus.isSolo;
+            const inside = container.tracks.some((track) => track.isSolo);
+            container.bus.setSilenced(anySolo && !busSolo && !inside);
+            for (const track of container.tracks) {
+                toRaw(track).isSilenced = anySolo && !track.isSolo && !busSolo;
+            }
+        }
+        const returnSolo = this.returns.some((bus) => bus.isSolo);
+        for (const bus of this.returns) {
+            bus.setSilenced(returnSolo && !bus.isSolo);
+        }
+    }
+
+    /** Whether anything sends to a return: a send turned up, or a lane or mapping that can turn one up. */
+    private isReturnFed(index: number): boolean {
+        const key = `send.${index}`;
+        for (const container of toRaw(this.containers)) {
+            const raw = toRaw(container);
+            if (raw.bus.sends?.feeds(index)) {
+                return true;
+            }
+            for (const track of raw.tracks) {
+                const rawTrack = toRaw(track);
+                if (rawTrack.sends.feeds(index) || rawTrack.automation.lanes.some((lane) => lane.param === key)) {
+                    return true;
+                }
+            }
+        }
+        const song = toRaw(this.song);
+        return song.automation.some((lane) => lane.param === key) || this.midiMappings.some((mapping) => sendIndexOf(mapping.param) === index);
+    }
+
+    /**
+     * Wakes a return as soon as something sends to it and puts it to sleep once nothing has for a while (its effect
+     * tail and a second), so a session that uses no sends pays nothing for the returns' reverb and delay. An offline
+     * render keeps them awake.
+     */
+    updateReturns(): void {
+        const now = performance.now();
+        this.returns.forEach((bus, index) => {
+            if (this.isReturnFed(index) || !this.hibernation) {
+                this.returnFedAt[index] = now;
+                if (this.returnAsleep[index]) {
+                    this.returnAsleep[index] = false;
+                    bus.wake();
+                }
+            } else if (!this.returnAsleep[index] && now - this.returnFedAt[index]! > (bus.effects.tail() + RETURN_LINGER) * 1000) {
+                this.returnAsleep[index] = true;
+                bus.sleep();
+            }
+        });
     }
 
     /** Removes a container unless it is the last one. The current container falls back to a neighbour. */
@@ -285,6 +427,9 @@ export class Sequencer {
     resolveTarget(target: AutomationTarget): (Automatable & { settle(key: string): void }) | undefined {
         if (target.kind === 'master') {
             return this.master;
+        }
+        if (target.kind === 'return') {
+            return this.returns[target.index];
         }
         const container = this.rawContainer(target.containerId);
         return target.kind === 'container' ? container?.bus : container?.rawTrack(target.trackId);
@@ -311,6 +456,7 @@ export class Sequencer {
 
         const copy = new TrackContainer(`${source.name} copy`);
         copy.connectTo(this.master.input);
+        copy.setSendTargets(this.sendTargets);
         await copy.copyFrom(source);
         this.containers.splice(this.containers.indexOf(source) + 1, 0, copy);
         return copy;
@@ -427,6 +573,11 @@ export class Sequencer {
 
         if (this.stepHook) {
             this.stepHook(step, time);
+        }
+
+        // Once a bar: returns wake for new sends and sleep when nothing has fed them for a while.
+        if (this.hibernation && absoluteStep % 16 === 0) {
+            this.updateReturns();
         }
 
         if (this.mode === 'loop') {

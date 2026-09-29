@@ -30,6 +30,9 @@ export class NotePattern {
     /** The length (steps) a step switched on in the grid gets. `setAllNoteLengths` sets it too. Not saved. */
     stepLength = 1;
 
+    /** The velocity a step switched on in the grid gets: the ghost stems of the velocity lane set it. Not saved. */
+    stepVelocity = 1;
+
     /** Per step of the pattern, the notes starting in it (the step callback's index). Built from raw notes, never proxied. */
     private buckets: PatternNote[][] = markRaw([]);
     private bucketRevision = -1;
@@ -243,11 +246,16 @@ export class NotePattern {
         return this.notes.map(copyNote);
     }
 
+    /** Sets the velocity a step switched on in the grid (or a note placed in the roll) gets, 0..1. */
+    setStepVelocity(velocity: number): void {
+        this.stepVelocity = Math.min(1, Math.max(0, velocity));
+    }
+
     /* ---- pattern tools ---- */
 
     /**
      * Switches steps on and off: a step that stays on keeps the notes starting in it, an empty one that is switched
-     * on gets a note at `stepNote` and `stepLength`; every other note goes.
+     * on gets a note at `stepNote`, `stepLength` and `stepVelocity`; every other note goes.
      */
     private fillSteps(isOn: (step: number) => boolean): void {
         const byStep = new Map<number, PatternNote[]>();
@@ -264,7 +272,7 @@ export class NotePattern {
             if (notes) {
                 next.push(...notes);
             } else {
-                next.push({ note: this.stepNote, start: step, length: this.stepLength, velocity: 1 });
+                next.push({ note: this.stepNote, start: step, length: this.stepLength, velocity: this.stepVelocity });
             }
         }
         this.setNotes(next);

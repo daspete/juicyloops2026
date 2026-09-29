@@ -3,14 +3,14 @@ import { dynamicsInPath, loopLength, planRender, RenderError, renderDuration, se
 import type { SessionState } from '../sequencer';
 import { Song } from '../song';
 import type { TrackState } from '../tracks/BaseTrack';
-import { DEFAULT_EFFECT_ORDER, type EffectsSnapshot } from '../effects/effects';
+import { DEFAULT_EFFECT_ORDER, type LegacyEffectsSnapshot } from '../effects/effects';
 import { EFFECT_KEYS, initialParams, type EffectRackRole } from '../effects/definitions';
 
 /* The tracks and buses own audio nodes, so the render itself is checked in the browser; the plan is pure data. */
 
-const effects = (role: EffectRackRole = 'track'): EffectsSnapshot => ({
+const effects = (role: EffectRackRole = 'track'): LegacyEffectsSnapshot => ({
     order: [...DEFAULT_EFFECT_ORDER],
-    params: Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect, role)])) as EffectsSnapshot['params'],
+    params: Object.fromEntries(EFFECT_KEYS.map((effect) => [effect, initialParams(effect, role)])) as LegacyEffectsSnapshot['params'],
 });
 
 const track = (id: string, type: TrackState['type'], length: number, isMuted = false): TrackState => ({
@@ -103,8 +103,8 @@ describe('renderDuration', () => {
 });
 
 describe('dynamicsInPath', () => {
-    const compressing = (snapshot: EffectsSnapshot): EffectsSnapshot => ({ ...snapshot, params: { ...snapshot.params, compressor: { ...snapshot.params.compressor, ratio: 4 } } });
-    const limiting = (snapshot: EffectsSnapshot): EffectsSnapshot => ({ ...snapshot, params: { ...snapshot.params, limiter: { ...snapshot.params.limiter, on: 1 } } });
+    const compressing = (snapshot: LegacyEffectsSnapshot): LegacyEffectsSnapshot => ({ ...snapshot, params: { ...snapshot.params, compressor: { ...snapshot.params.compressor, ratio: 4 } } });
+    const limiting = (snapshot: LegacyEffectsSnapshot): LegacyEffectsSnapshot => ({ ...snapshot, params: { ...snapshot.params, limiter: { ...snapshot.params.limiter, on: 1 } } });
 
     it('is just the master limiter for a fresh session', () => {
         expect(dynamicsInPath(session())).toBe(1);
@@ -112,26 +112,26 @@ describe('dynamicsInPath', () => {
 
     it('is none when the master limiter is off too', () => {
         const state = session();
-        state.master.effects.params.limiter.on = 0;
+        (state.master.effects as LegacyEffectsSnapshot).params.limiter.on = 0;
         expect(dynamicsInPath(state)).toBe(0);
     });
 
     it('takes the path with the most compressors and limiters', () => {
         const state = session();
-        state.containers[0]!.tracks[0]!.effects = compressing(state.containers[0]!.tracks[0]!.effects);
-        state.containers[1]!.bus.effects = limiting(compressing(state.containers[1]!.bus.effects));
-        state.containers[1]!.tracks[0]!.effects = compressing(state.containers[1]!.tracks[0]!.effects);
+        state.containers[0]!.tracks[0]!.effects = compressing(state.containers[0]!.tracks[0]!.effects as LegacyEffectsSnapshot);
+        state.containers[1]!.bus.effects = limiting(compressing(state.containers[1]!.bus.effects as LegacyEffectsSnapshot));
+        state.containers[1]!.tracks[0]!.effects = compressing(state.containers[1]!.tracks[0]!.effects as LegacyEffectsSnapshot);
         // Container b: track compressor + bus compressor and limiter + master limiter.
         expect(dynamicsInPath(state)).toBe(4);
     });
 
     it('does not count a muted track, but still the bus of a container that has only muted tracks', () => {
         const state = session();
-        state.containers[0]!.tracks[1]!.effects = limiting(compressing(state.containers[0]!.tracks[1]!.effects));
+        state.containers[0]!.tracks[1]!.effects = limiting(compressing(state.containers[0]!.tracks[1]!.effects as LegacyEffectsSnapshot));
         expect(dynamicsInPath(state)).toBe(1);
 
         state.containers[1]!.tracks[0]!.isMuted = true;
-        state.containers[1]!.bus.effects = compressing(state.containers[1]!.bus.effects);
+        state.containers[1]!.bus.effects = compressing(state.containers[1]!.bus.effects as LegacyEffectsSnapshot);
         expect(dynamicsInPath(state)).toBe(2);
     });
 
