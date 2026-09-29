@@ -30,12 +30,17 @@ const emit = defineEmits<{
 const menu = ref<HTMLElement | null>(null);
 const position = ref({ left: props.x, top: props.y });
 
+/**
+ * Runs a picked item's action once the click that picked it has finished. An action that opens a confirmation popup
+ * would otherwise see that very click reach the document a moment later and close the popup as a click outside it.
+ */
 const pick = (item: SongMenuItem) => {
-    if (item.disabled || !item.action) {
+    const action = item.action;
+    if (item.disabled || !action) {
         return;
     }
     emit('close');
-    item.action();
+    setTimeout(action, 0);
 };
 
 const onOutside = (event: PointerEvent) => {

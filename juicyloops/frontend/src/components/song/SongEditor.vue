@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { useConfirm, useToast } from 'primevue';
+import { confirmAnchored } from '@/composables/confirmAnchored';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, watchPostEffect } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useContainerWindows } from '@/composables/useContainerWindows';
@@ -391,17 +392,20 @@ const removeLane = (lane: SongLane, target: HTMLElement | null) => {
         song.value.removeLane(lane.id);
         return;
     }
-    confirm.require({
-        target: target ?? undefined,
-        group: target ? undefined : 'confirmdialog',
-        header: target ? undefined : 'Remove lane',
+    const options = {
         message: `Remove "${lane.name}" with its ${lane.clips.length} ${lane.clips.length === 1 ? 'clip' : 'clips'}?`,
         acceptLabel: 'Remove',
         rejectLabel: 'Keep',
         acceptProps: { severity: 'danger', size: 'small' },
         rejectProps: { text: true, size: 'small' },
         accept: () => song.value.removeLane(lane.id),
-    });
+    };
+    // From the lane menu: next to the lane's menu button; without one, a dialog in the middle.
+    if (target) {
+        confirmAnchored(confirm, { ...options, target });
+    } else {
+        confirm.require({ ...options, group: 'confirmdialog', header: 'Remove lane' });
+    }
 };
 
 /* ---- menus ---- */

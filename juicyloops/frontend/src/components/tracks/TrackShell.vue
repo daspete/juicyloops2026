@@ -7,6 +7,7 @@ import { useWorkspace } from '@/composables/useWorkspace';
 import type { BaseTrack } from '@/juicyloops/tracks/BaseTrack';
 import { Icon } from '@iconify/vue';
 import { Slider, useConfirm } from 'primevue';
+import { confirmAnchored } from '@/composables/confirmAnchored';
 import { computed, ref } from 'vue';
 import SongMenu, { type SongMenuItem } from '../song/SongMenu.vue';
 import TrackAutomationLanes from './settings/TrackAutomationLanes.vue';
@@ -99,8 +100,13 @@ const menuItems = computed<SongMenuItem[]>(() => {
     ];
 });
 
-const confirmRemove = (target?: HTMLElement) => {
-    confirm.require({
+const confirmRemove = (head?: HTMLElement) => {
+    // The popup points at the ⋯ button, whichever way the menu was opened.
+    const target = head?.querySelector<HTMLElement>('.track-more') ?? head;
+    if (!target) {
+        return;
+    }
+    confirmAnchored(confirm, {
         target,
         message: `Remove this ${meta.value.label} track?`,
         acceptLabel: 'Remove',
