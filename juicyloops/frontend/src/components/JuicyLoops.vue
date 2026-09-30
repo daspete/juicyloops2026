@@ -21,6 +21,8 @@ import InspectorPanel from './inspector/InspectorPanel.vue';
 import HelpDialog from './help/HelpDialog.vue';
 import WelcomeTour from './help/WelcomeTour.vue';
 import ExportDialog from './ExportDialog.vue';
+import PluginBrowser from './plugins/PluginBrowser.vue';
+import PluginWindows from './plugins/PluginWindows.vue';
 import GiscusLoader from './GiscusLoader.vue';
 import JuicyLogo from './JuicyLogo.vue';
 import LiveText from './ui/LiveText.vue';
@@ -677,6 +679,8 @@ onBeforeUnmount(() => {
     </div>
 
     <ExportDialog @done="onExported" />
+    <PluginBrowser />
+    <PluginWindows />
     <HelpDialog />
     <WelcomeTour />
 

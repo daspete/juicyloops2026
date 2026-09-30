@@ -5,6 +5,7 @@ import {
     connectSeries,
     Distortion,
     FeedbackDelay,
+    getContext,
     Limiter,
     Phaser,
     Reverb,
@@ -14,10 +15,15 @@ import {
 } from 'tone';
 import { shallowRef } from 'vue';
 import { atTime, createParameterTable, type AutomationParam, type ParameterTable } from '../automation';
+import { createId } from '../ids';
+import { copyPluginRef, isPluginRef, type PluginRef } from '../plugins/pluginRef';
+import { setPluginStatus } from '../plugins/pluginStatus';
+import { WamEffect } from '../plugins/WamEffect';
 import { Crusher } from './crusher';
 import { Equalizer } from './equalizer';
 import {
     addedParams,
+    BUILT_IN_EFFECT_KEYS,
     EFFECT_DEFINITIONS,
     EFFECT_KEYS,
     initialParams,
@@ -35,6 +41,8 @@ export interface EffectSlotSnapshot {
     effect: EffectKey;
     bypassed: boolean;
     params: Record<string, number>;
+    /** A plugin slot's plugin, with its state. */
+    plugin?: PluginRef;
 }
 
 /** The stored state of a rack: its slots, in signal order. */
@@ -75,7 +83,7 @@ export const upgradeEffectParams = (params: Partial<LegacyEffectsSnapshot['param
  */
 export const slotsFromLegacy = (snapshot: LegacyEffectsSnapshot, role: EffectRackRole = 'track'): EffectSlotSnapshot[] => {
     const params = upgradeEffectParams(snapshot.params);
-    const order = [...snapshot.order.filter((key) => EFFECT_KEYS.includes(key)), ...EFFECT_KEYS.filter((key) => !snapshot.order.includes(key))];
+    const order = [...snapshot.order.filter((key) => BUILT_IN_EFFECT_KEYS.includes(key)), ...BUILT_IN_EFFECT_KEYS.filter((key) => !snapshot.order.includes(key))];
     return order
         .map((effect) => ({ effect, params: { ...initialParams(effect, role), ...params[effect] } }))
         .filter(({ effect, params }) => isEffectNeeded(effect, params))
@@ -97,7 +105,7 @@ const AUTOMATION_RAMP = 0.02;
  * How to build each effect. Parameters are applied right after construction, so the factories only
  * need to produce a node; LFO driven effects are started here because they are silent otherwise.
  */
-const FACTORIES: Record<EffectKey, () => ToneAudioNode> = {
+const FACTORIES: Record<Exclude<EffectKey, 'plugin'>, () => ToneAudioNode> = {
     chorus: () => new Chorus().start(),
     phaser: () => new Phaser(),
     distortion: () => new Distortion(),
@@ -136,6 +144,9 @@ export const DEFAULT_EFFECT_ORDER: readonly EffectKey[] = [
 
 const PARAM_PREFIX = 'fx.';
 
+/** Seconds a plugin slot is assumed to ring on (see `Effects.tail`). */
+const PLUGIN_TAIL = 3;
+
 /** The automation address of a slot's parameter: `fx.<slot id>.<param>`. */
 export const effectParamKey = (slotId: string, param: string): string => `${PARAM_PREFIX}${slotId}.${param}`;
 
@@ -169,7 +180,15 @@ interface Slot {
     readonly effect: EffectKey;
     bypassed: boolean;
     readonly params: Record<string, number>;
+    /** A plugin slot's plugin; its `state` is what the plugin last reported (`refreshPluginStates`). */
+    plugin?: PluginRef;
+    /** A plugin slot's key in `pluginStatus`; not stored. */
+    owner?: string;
 }
+
+/** Whether two plugin refs are the same plugin in the same state. */
+const samePlugin = (a: PluginRef | undefined, b: PluginRef | undefined): boolean =>
+    a?.url === b?.url && JSON.stringify(a?.state ?? null) === JSON.stringify(b?.state ?? null);
 
 /**
  * An effect chain. Every track has one, so does every container bus, every return and the master.
@@ -242,8 +261,8 @@ export class Effects {
         if (!slot) {
             return '';
         }
-        const same = this.slots.filter((other) => other.effect === slot.effect);
-        const label = EFFECT_DEFINITIONS[slot.effect].label;
+        const label = slot.plugin?.name ?? EFFECT_DEFINITIONS[slot.effect].label;
+        const same = this.slots.filter((other) => other.effect === slot.effect && (other.plugin?.name ?? '') === (slot.plugin?.name ?? ''));
         return same.length > 1 ? `${label} ${same.indexOf(slot) + 1}` : label;
     }
 
@@ -285,16 +304,63 @@ export class Effects {
         return slot.id;
     }
 
-    /** A copy of a slot, right after it. Returns the new slot id. */
-    duplicate(id: string): string | null {
-        const index = this.slots.findIndex((slot) => slot.id === id);
-        const slot = this.slots[index];
+    /** Adds a plugin at `index` (the end by default). Returns the slot id. */
+    addPlugin(plugin: PluginRef, index = this.slots.length): string {
+        const slot: Slot = { id: this.freeId('plugin'), effect: 'plugin', bypassed: false, params: {}, plugin: copyPluginRef(plugin), owner: createId() };
+        this.slots.splice(Math.max(0, Math.min(this.slots.length, index)), 0, slot);
+        this.changed();
+        if (!this.isSuspended && this.slotIsNeeded(slot)) {
+            this.createNode(slot);
+        }
+        return slot.id;
+    }
+
+    /** Adds a copy of another rack's slot (or this rack's) at `index`: effect, values, bypass and plugin. Returns the new slot id. */
+    copySlot(from: Effects, id: string, index = this.slots.length): string | null {
+        const slot = from.slot(id);
         if (!slot) {
             return null;
         }
-        const copy = this.add(slot.effect, index + 1, slot.params);
+        const copy = slot.plugin ? this.addPlugin(slot.plugin, index) : this.add(slot.effect, index, slot.params);
         this.setBypassed(copy, slot.bypassed);
         return copy;
+    }
+
+    /** A copy of a slot, right after it. Returns the new slot id. */
+    duplicate(id: string): string | null {
+        const index = this.slots.findIndex((slot) => slot.id === id);
+        return index === -1 ? null : this.copySlot(this, id, index + 1);
+    }
+
+    /** A plugin slot's plugin as last stored. */
+    pluginOf(id: string): PluginRef | undefined {
+        return this.slot(id)?.plugin;
+    }
+
+    /** A plugin slot's key in `pluginStatus`. */
+    pluginOwner(id: string): string | undefined {
+        return this.slot(id)?.owner;
+    }
+
+    /** A plugin slot's live node (its GUI), while it exists. */
+    pluginNode(id: string): WamEffect | undefined {
+        const node = this.nodes.get(id);
+        return node instanceof WamEffect ? node : undefined;
+    }
+
+    /** Asks every loaded plugin for its state and keeps it, so history, saves and renders have the plugins as they sound now. */
+    async refreshPluginStates(): Promise<void> {
+        await Promise.all(
+            this.slots.map(async (slot) => {
+                const node = this.nodes.get(slot.id);
+                if (slot.plugin && node instanceof WamEffect) {
+                    const state = await node.getState();
+                    if (state !== null && slot.plugin) {
+                        slot.plugin = { ...slot.plugin, state };
+                    }
+                }
+            }),
+        );
     }
 
     remove(id: string): void {
@@ -302,8 +368,11 @@ export class Effects {
         if (index === -1) {
             return;
         }
-        this.slots.splice(index, 1);
+        const [slot] = this.slots.splice(index, 1);
         this.destroyNode(id);
+        if (slot?.owner) {
+            setPluginStatus(slot.owner, null);
+        }
         this.changed();
     }
 
@@ -454,7 +523,7 @@ export class Effects {
         for (const key of keys) {
             const address = parseEffectParamKey(key);
             const effect = address?.slotId as EffectKey | undefined;
-            if (!effect || !EFFECT_KEYS.includes(effect) || this.slot(effect)) {
+            if (!effect || !BUILT_IN_EFFECT_KEYS.includes(effect) || this.slot(effect)) {
                 continue;
             }
             // In its old place: after the last slot that came before it in the legacy order.
@@ -473,7 +542,15 @@ export class Effects {
     }
 
     capture(): EffectsSnapshot {
-        return { slots: this.slots.map((slot) => ({ id: slot.id, effect: slot.effect, bypassed: slot.bypassed, params: { ...slot.params } })) };
+        return {
+            slots: this.slots.map((slot) => ({
+                id: slot.id,
+                effect: slot.effect,
+                bypassed: slot.bypassed,
+                params: { ...slot.params },
+                ...(slot.plugin ? { plugin: copyPluginRef(slot.plugin) } : {}),
+            })),
+        };
     }
 
     /** Takes a stored rack back; a rack stored before slots is converted (see `slotsFromLegacy`). */
@@ -483,7 +560,7 @@ export class Effects {
             slots = slotsFromLegacy(snapshot, this.role);
             this.legacy = { order: [...snapshot.order], params: upgradeEffectParams(snapshot.params) };
         } else {
-            slots = snapshot.slots.filter((slot) => EFFECT_KEYS.includes(slot.effect));
+            slots = snapshot.slots.filter((slot) => EFFECT_KEYS.includes(slot.effect) && (slot.effect !== 'plugin' || isPluginRef(slot.plugin)));
             this.legacy = null;
         }
         this.restoreSlots(slots);
@@ -545,7 +622,10 @@ export class Effects {
             if (!node && !this.slotIsNeeded(slot)) {
                 continue;
             }
-            if (slot.effect === 'reverb') {
+            if (slot.effect === 'plugin') {
+                // A plugin does not say how long it rings; enough for a big reverb or a long delay.
+                seconds += PLUGIN_TAIL;
+            } else if (slot.effect === 'reverb') {
                 seconds += (slot.params.decay ?? 0) + (slot.params.preDelay ?? 0);
             } else if (slot.effect === 'delay') {
                 const delay = node as FeedbackDelay | undefined;
@@ -566,6 +646,11 @@ export class Effects {
             node.dispose();
         }
         this.nodes.clear();
+        for (const slot of this.slots) {
+            if (slot.owner) {
+                setPluginStatus(slot.owner, null);
+            }
+        }
     }
 
     /* ---- internals ---- */
@@ -608,14 +693,19 @@ export class Effects {
         // Slots that stay keep their nodes (a reverb need not render again); the rest go.
         const next: Slot[] = slots.map((stored) => {
             const existing = this.slot(stored.id);
-            if (existing && existing.effect === stored.effect) {
+            // A plugin slot stays only with the same plugin in the same state: anything else loads it again.
+            if (existing && existing.effect === stored.effect && (stored.effect !== 'plugin' || samePlugin(existing.plugin, stored.plugin))) {
                 return existing;
             }
-            return { id: stored.id, effect: stored.effect, bypassed: stored.bypassed, params: { ...initialParams(stored.effect, this.role) } };
+            const plugin = stored.plugin ? { plugin: copyPluginRef(stored.plugin), owner: createId() } : {};
+            return { id: stored.id, effect: stored.effect, bypassed: stored.bypassed, params: { ...initialParams(stored.effect, this.role) }, ...plugin };
         });
         for (const slot of this.slots) {
             if (!next.includes(slot)) {
                 this.destroyNode(slot.id);
+                if (slot.owner) {
+                    setPluginStatus(slot.owner, null);
+                }
             }
         }
         this.slots = next;
@@ -693,6 +783,9 @@ export class Effects {
 
     /** A new node for a slot with its stored values on it; not wired yet. */
     private buildNode(slot: Slot): ToneAudioNode {
+        if (slot.effect === 'plugin') {
+            return new WamEffect({ context: getContext(), owner: slot.owner ?? '', plugin: slot.plugin ?? { url: '', name: 'Plugin' } });
+        }
         const node = FACTORIES[slot.effect]();
         for (const [param, value] of Object.entries(slot.params)) {
             this.applyParam(node, slot.effect, param, value, false);

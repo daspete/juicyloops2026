@@ -95,6 +95,7 @@ const exportAudio = async (settings: ExportSettings): Promise<ExportResult> => {
     isExporting.value = true;
     try {
         stop();
+        await engine.refreshPluginStates();
         const state = engine.capture();
         const seconds = renderDuration(planRender(state, settings.scope), { bpm: bpm.value, tail: settings.tail });
         if (seconds > MAX_RENDER_SECONDS) {

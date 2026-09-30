@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { noteFrequency } from '../dsp/SynthVoices';
 import { SYNTH_ABI, SYNTH_PROCESSOR, SynthEvents, SynthParam, WAVEFORMS, type SynthMessage } from '../dsp/synthProtocol';
+import { defaultPatch, ENGINE_KIND, PatchId } from '../synths/params';
+import { patchEntries } from '../tracks/synthEngine';
 
 /** A port that records what it is sent. */
 const stubPort = () => {
@@ -94,7 +96,7 @@ describe('synth processor', () => {
     const wasm = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../dsp/wasm/synth-worklet.wasm'));
 
     type Processor = { process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean };
-    let Processor: new (options: { processorOptions: { module: WebAssembly.Module; abi: number } }) => Processor & { port: { onmessage: ((event: { data: SynthMessage }) => void) | null } };
+    let Processor: new (options: { processorOptions: { module: WebAssembly.Module; abi: number; kind?: number } }) => Processor & { port: { onmessage: ((event: { data: SynthMessage }) => void) | null } };
     let registeredAs = '';
 
     beforeAll(async () => {
@@ -117,22 +119,26 @@ describe('synth processor', () => {
         vi.unstubAllGlobals();
     });
 
-    const create = () => {
-        const processor = new Processor({ processorOptions: { module: new WebAssembly.Module(wasm), abi: SYNTH_ABI } });
+    const create = (kind = 0) => {
+        const processor = new Processor({ processorOptions: { module: new WebAssembly.Module(wasm), abi: SYNTH_ABI, kind } });
         const send = (message: SynthMessage) => processor.port.onmessage!({ data: message });
-        /** Renders `seconds` from `from` (context time) in 128-frame blocks, as the audio thread does. */
-        const render = (from: number, seconds: number) => {
-            const out = new Float32Array(Math.round(seconds * RATE));
+        /** Renders `seconds` from `from` (context time) in 128-frame blocks, as the audio thread does: one channel, or two. */
+        const renderChannels = (from: number, seconds: number, channels: number) => {
+            const outs = Array.from({ length: channels }, () => new Float32Array(Math.round(seconds * RATE)));
             let alive = true;
-            for (let offset = 0; offset < out.length; offset += 128) {
+            for (let offset = 0; offset < outs[0]!.length; offset += 128) {
                 vi.stubGlobal('currentFrame', Math.round(from * RATE) + offset);
-                const block = new Float32Array(128).fill(NaN);
-                alive = processor.process([], [[block]]);
-                out.set(block.subarray(0, Math.min(128, out.length - offset)), offset);
+                const blocks = outs.map(() => new Float32Array(128).fill(NaN));
+                alive = processor.process([], [blocks]);
+                blocks.forEach((block, i) => outs[i]!.set(block.subarray(0, Math.min(128, outs[i]!.length - offset)), offset));
             }
-            return { out, alive };
+            return { outs, alive };
         };
-        return { processor, send, render };
+        const render = (from: number, seconds: number) => {
+            const { outs, alive } = renderChannels(from, seconds, 1);
+            return { out: outs[0]!, alive };
+        };
+        return { processor, send, render, renderChannels };
     };
 
     const pitch = (signal: Float32Array) => {
@@ -214,6 +220,39 @@ describe('synth processor', () => {
         send({ type: 'noteOff', id: 4, time: 3.5 });
         const released = render(3.5, 0.5).out;
         expect(peak(released.subarray(0.2 * RATE))).toBe(0);
+    });
+
+    /** A patch engine with its default patch, playing 220 Hz from 0.1 s for half a second; both sides rendered. */
+    const playDefault = (model: 'analog' | 'wavetable' | 'fm') => {
+        const { send, renderChannels } = create(ENGINE_KIND[model]);
+        for (const [id, value] of patchEntries(model, defaultPatch(model))) {
+            send({ type: 'param', time: 0, id, value });
+        }
+        send({ type: 'note', id: 0, time: 0.1, frequency: 220, velocity: 1, duration: 0.5 });
+        return renderChannels(0, 1, 2).outs as [Float32Array, Float32Array];
+    };
+
+    it.each(['analog', 'wavetable', 'fm'] as const)('runs the %s engine in stereo, addressed by patch id', (model) => {
+        const [left, right] = playDefault(model);
+        expect(peak(left.subarray(0, 0.1 * RATE))).toBe(0);
+        expect(peak(left.subarray(0.15 * RATE, 0.5 * RATE))).toBeGreaterThan(0.1);
+        expect(peak(right.subarray(0.15 * RATE, 0.5 * RATE))).toBeGreaterThan(0.1);
+        expect(left.every(Number.isFinite)).toBe(true);
+    });
+
+    it.each(['analog', 'wavetable'] as const)('plays the %s engine at the note’s pitch', (model) => {
+        const [left] = playDefault(model);
+        expect(pitch(left.subarray(0.2 * RATE, 0.5 * RATE))).toBeCloseTo(220, 0);
+    });
+
+    it('spreads analog unison across both sides', () => {
+        const { send, renderChannels } = create(ENGINE_KIND.analog);
+        send({ type: 'param', time: 0, id: PatchId.unison, value: 5 });
+        send({ type: 'param', time: 0, id: PatchId.unisonSpread, value: 1 });
+        send({ type: 'note', id: 0, time: 0, frequency: 220, velocity: 1, duration: 1 });
+        const [left, right] = renderChannels(0, 0.5, 2).outs as [Float32Array, Float32Array];
+        const difference = left.reduce((sum, value, i) => sum + Math.abs(value - right[i]!), 0) / left.length;
+        expect(difference).toBeGreaterThan(0.05);
     });
 
     it('lets the browser collect it after dispose', () => {

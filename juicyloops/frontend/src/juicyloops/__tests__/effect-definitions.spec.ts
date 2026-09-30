@@ -14,7 +14,7 @@ vi.mock('tone', async (importOriginal) => {
     }
     return { ...tone, Compressor: FakeDynamics, Limiter: FakeDynamics };
 });
-import { addedParams, EFFECT_DEFINITIONS, EFFECT_INFO, EFFECT_KEYS, EFFECT_PRESETS, initialParams, isEffectNeeded, type EffectDefinition, type EffectKey } from '../effects/definitions';
+import { addedParams, BUILT_IN_EFFECT_KEYS as EFFECT_KEYS, EFFECT_DEFINITIONS, EFFECT_INFO, EFFECT_PRESETS, initialParams, isEffectNeeded, type EffectDefinition, type EffectKey } from '../effects/definitions';
 import { Effects, upgradeEffectParams } from '../effects/effects';
 
 describe('effect definitions', () => {
@@ -126,5 +126,14 @@ describe('effect definitions', () => {
         // A snapshot that has the switch keeps it, either way.
         expect(upgradeEffectParams({ limiter: { threshold: -1, on: 0 } }).limiter).toEqual({ threshold: -1, on: 0 });
         expect(upgradeEffectParams({ limiter: { threshold: -1, on: 1 } }).limiter).toEqual({ threshold: -1, on: 1 });
+    });
+});
+
+describe('the plugin slot', () => {
+    it('has no params of its own, is always heard and stays out of the add menu’s categories', () => {
+        expect(EFFECT_DEFINITIONS.plugin.params).toEqual([]);
+        expect(isEffectNeeded('plugin', {})).toBe(true);
+        expect(EFFECT_INFO.plugin.category).toBe('plugins');
+        expect(EFFECT_KEYS).not.toContain('plugin');
     });
 });

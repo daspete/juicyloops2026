@@ -1,5 +1,5 @@
 /**
- * The synth worklet: one per synth track, all of the track's voices summed inside `synth-worklet.wasm` (Rust,
+ * The synth worklet: one per synth track, all of the track's voices summed (in stereo) inside `synth-worklet.wasm` (Rust,
  * `juicyloops/dsp/crates/synth-worklet`). Loaded by `SynthVoices.ts` with `addAudioWorkletModule`; Vite bundles it
  * as a worker script (`?worker&url`).
  *
@@ -24,7 +24,7 @@ declare function registerProcessor(name: string, processor: new (options: { proc
 interface SynthExports {
     memory: WebAssembly.Memory;
     abi_version(): number;
-    init(sampleRate: number): void;
+    init(sampleRate: number, kind: number): void;
     out_ptr(): number;
     note_on(frame: number, id: number, frequency: number, velocity: number, durationFrames: number): number;
     note_off(frame: number, id: number): number;
@@ -33,12 +33,13 @@ interface SynthExports {
     process(startFrame: number, frames: number): number;
 }
 
-/** Frames the engine renders per call at most (`MAX_BLOCK`). */
+/** Frames the engine renders per call at most (`MAX_BLOCK`). The out buffer holds that many for each side. */
 const BLOCK = 128;
 
 class SynthProcessor extends AudioWorkletProcessor {
     private readonly wasm: SynthExports;
-    private readonly out: Float32Array;
+    private readonly left: Float32Array;
+    private readonly right: Float32Array;
     /** Whether the engine may make sound: false once it reported silence, until the next message. */
     private isBusy = false;
     private isDisposed = false;
@@ -50,10 +51,11 @@ class SynthProcessor extends AudioWorkletProcessor {
         if (abi !== processorOptions.abi) {
             throw new Error(`synth-worklet.wasm speaks ABI ${abi}, expected ${processorOptions.abi}`);
         }
-        wasm.init(sampleRate);
+        wasm.init(sampleRate, processorOptions.kind ?? 0);
         this.wasm = wasm;
-        // The engine allocates only in `init`, so memory never grows and this view stays valid.
-        this.out = new Float32Array(wasm.memory.buffer, wasm.out_ptr(), BLOCK);
+        // The engine allocates only in `init`, so memory never grows and these views stay valid.
+        this.left = new Float32Array(wasm.memory.buffer, wasm.out_ptr(), BLOCK);
+        this.right = new Float32Array(wasm.memory.buffer, wasm.out_ptr() + BLOCK * 4, BLOCK);
         this.port.onmessage = (event: MessageEvent<SynthMessage>) => this.receive(event.data);
     }
 
@@ -93,15 +95,18 @@ class SynthProcessor extends AudioWorkletProcessor {
         if (!channel) {
             return true;
         }
+        const right = outputs[0]?.[1];
         if (!this.isBusy) {
             channel.fill(0);
+            right?.fill(0);
             return true;
         }
         let busy = 0;
         for (let offset = 0; offset < channel.length; offset += BLOCK) {
             const frames = Math.min(BLOCK, channel.length - offset);
             busy = this.wasm.process(currentFrame + offset, frames);
-            channel.set(this.out.subarray(0, frames), offset);
+            channel.set(this.left.subarray(0, frames), offset);
+            right?.set(this.right.subarray(0, frames), offset);
         }
         this.isBusy = busy > 0;
         return true;

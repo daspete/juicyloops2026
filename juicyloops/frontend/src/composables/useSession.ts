@@ -96,11 +96,13 @@ const save = async (options: { as?: boolean } = {}): Promise<SessionResult> => {
                 setHandle(await showSaveFilePicker({ suggestedName: sessionFileName(name.value), types: FILE_TYPES, id: PICKER_ID }));
                 setName(sessionNameOf(handle!.name));
             }
+            await engine.refreshPluginStates();
             const blob = packSession(capture());
             const writable = await handle!.createWritable();
             await writable.write(blob);
             await writable.close();
         } else {
+            await engine.refreshPluginStates();
             downloadBlob(packSession(capture()), sessionFileName(name.value));
         }
         savedRevision.value = revision.value;

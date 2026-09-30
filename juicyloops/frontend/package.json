@@ -21,6 +21,8 @@
         "@iconify/vue": "^5.0.2",
         "@primeuix/themes": "^2.0.3",
         "@tailwindcss/vite": "^4.3.3",
+        "@webaudiomodules/api": "2.0.0-alpha.6",
+        "@webaudiomodules/sdk": "0.0.12",
         "primevue": "^4.5.5",
         "sass": "^1.104.1",
         "tailwindcss": "^4.3.3",

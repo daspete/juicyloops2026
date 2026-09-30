@@ -114,6 +114,11 @@ export class Engine {
         return this.sequencer.capture();
     }
 
+    /** Reads every plugin's state into the session (see `Sequencer.refreshPluginStates`); call before a capture that is kept. */
+    refreshPluginStates(): Promise<void> {
+        return this.sequencer.refreshPluginStates();
+    }
+
     restore(state: SessionState): void {
         this.sequencer.restore(state);
     }

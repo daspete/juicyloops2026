@@ -68,6 +68,11 @@ const lfoFrequency = (initial: number): EffectParamDefinition => ({
 });
 
 export const EFFECT_DEFINITIONS = {
+    /**
+     * A Web Audio Module (see `../plugins`). Its settings live in the plugin (and in the slot's `plugin.state`), not in
+     * params; it is always in the chain unless bypassed.
+     */
+    plugin: { label: 'Plugin', params: [], isNeutral: () => false },
     autoFilter: { label: 'AutoFilter', params: [wet, depth(1), lfoFrequency(1)] },
     bitCrusher: { label: 'BitCrusher', params: [wet, { key: 'bits', label: 'Bits', min: 1, max: 16, step: 1, initial: 8, format: (v) => `${v}` }] },
     chorus: {
@@ -140,6 +145,9 @@ export type EffectParamKey<K extends EffectKey> = (typeof EFFECT_DEFINITIONS)[K]
 
 export const EFFECT_KEYS = Object.keys(EFFECT_DEFINITIONS) as EffectKey[];
 
+/** Every effect but the plugin slot: what racks stored before plugins could hold. */
+export const BUILT_IN_EFFECT_KEYS: EffectKey[] = EFFECT_KEYS.filter((key) => key !== 'plugin');
+
 /** The initial value of every parameter of an effect, keyed by parameter, for a rack in the given place. */
 export const initialParams = (effect: EffectKey, role: EffectRackRole = 'track'): Record<string, number> => {
     const params: Record<string, number> = Object.fromEntries(EFFECT_DEFINITIONS[effect].params.map((param) => [param.key, param.initial]));
@@ -163,7 +171,8 @@ export const isEffectNeeded = (effect: EffectKey, params: Readonly<Record<string
 
 /* ---- the device rack: how effects are offered, added and shown ---- */
 
-export type EffectCategory = 'dynamics' | 'eq' | 'space' | 'modulation' | 'drive';
+/** `plugins` is not in the add menu's list: plugins come from the plugin browser. */
+export type EffectCategory = 'dynamics' | 'eq' | 'space' | 'modulation' | 'drive' | 'plugins';
 
 export const EFFECT_CATEGORIES: readonly { key: EffectCategory; label: string; icon: string }[] = [
     { key: 'dynamics', label: 'Dynamics', icon: 'mdi:chart-bell-curve-cumulative' },
@@ -185,6 +194,7 @@ export interface EffectInfo {
 }
 
 export const EFFECT_INFO: Record<EffectKey, EffectInfo> = {
+    plugin: { category: 'plugins', icon: 'mdi:puzzle-outline', blurb: 'A Web Audio Module from the web', macros: [] },
     compressor: {
         category: 'dynamics',
         icon: 'mdi:arrow-collapse-vertical',

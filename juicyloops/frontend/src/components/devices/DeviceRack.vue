@@ -5,6 +5,7 @@ import { channelOf, type ChannelModel } from '@/composables/useChannels';
 import { useHistory } from '@/composables/useHistory';
 import { provideLearnOwner } from '@/composables/useMidiLearn';
 import { useMeter } from '@/composables/useMeter';
+import { usePlugins } from '@/composables/usePlugins';
 import { useWorkspace } from '@/composables/useWorkspace';
 import { EFFECT_CATEGORIES, EFFECT_DEFINITIONS, EFFECT_INFO, EFFECT_KEYS, type EffectKey } from '@/juicyloops/effects/definitions';
 import type { Effects } from '@/juicyloops/effects/effects';
@@ -47,6 +48,17 @@ const isAdding = ref(false);
 const addEffect = (effect: EffectKey) => {
     effects.value?.add(effect);
     isAdding.value = false;
+};
+
+const { openBrowser } = usePlugins();
+
+/** Adds a Web Audio Module picked in the plugin browser to this channel's rack. */
+const addPlugin = () => {
+    const rack = effects.value;
+    isAdding.value = false;
+    if (rack) {
+        openBrowser('effect', (plugin) => rack.addPlugin(plugin));
+    }
 };
 
 const categories = EFFECT_CATEGORIES.map((category) => ({
@@ -98,11 +110,7 @@ const onDrop = (event: DragEvent) => {
     }
     event.preventDefault();
     if (event.altKey) {
-        const effect = source.rack.effectOf(source.slotId);
-        if (effect) {
-            const id = rack.add(effect, index, source.rack.paramsOf(source.slotId));
-            rack.setBypassed(id, source.rack.isBypassed(source.slotId));
-        }
+        rack.copySlot(source.rack, source.slotId, index);
         return;
     }
     const from = rack.chain.findIndex((slot) => slot.id === source.slotId);
@@ -192,6 +200,14 @@ const learn = (param: string) => (channel.value ? { target: channel.value.target
                                     <Icon :icon="item.icon" class="w-4 h-4" />
                                     <span class="rack2-picker-label">{{ item.label }}</span>
                                     <small>{{ item.blurb }}</small>
+                                </button>
+                            </section>
+                            <section class="rack2-picker-group">
+                                <h4><Icon icon="mdi:puzzle-outline" class="w-3.5 h-3.5" /> Plugins</h4>
+                                <button type="button" class="rack2-picker-item" role="menuitem" @click="addPlugin">
+                                    <Icon icon="mdi:puzzle-plus-outline" class="w-4 h-4" />
+                                    <span class="rack2-picker-label">Web Audio Module…</span>
+                                    <small>Effects from the web: amps, pedals, reverbs</small>
                                 </button>
                             </section>
                         </div>

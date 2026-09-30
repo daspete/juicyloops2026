@@ -2009,3 +2009,346 @@
         transition: none;
     }
 }
+
+/* ---- synth models (analog, wavetable, FM): the model picker and the patch panel ---- */
+
+.synth-models {
+    flex-wrap: wrap;
+    align-self: stretch;
+}
+
+.synth-models button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* A patch synth shows every section side by side in its full face. */
+.device-card--instrument.device-card--patch.device-card--full {
+    width: min(58rem, calc(100vw - 4rem));
+}
+
+.patch-panel {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(14.5rem, 1fr));
+    gap: 0.6rem;
+    align-items: start;
+}
+
+.patch-panel[data-face='macro'] {
+    grid-template-columns: 1fr;
+}
+
+.patch-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.45rem 0.5rem 0.55rem;
+    border-radius: 0.6rem;
+    background: color-mix(in oklab, var(--jl-accent) 4%, var(--jl-raised));
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+}
+
+.patch-panel[data-face='macro'] .patch-section {
+    padding: 0;
+    background: none;
+    box-shadow: none;
+}
+
+.patch-choices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr));
+    gap: 0.3rem 0.4rem;
+}
+
+.patch-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+}
+
+.patch-choice-label {
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+.patch-choice .select {
+    width: 100%;
+}
+
+.patch-knobs {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(3.3rem, 1fr));
+    justify-items: center;
+    gap: 0.35rem 0.15rem;
+}
+
+.patch-curve {
+    width: 100%;
+    height: 2.2rem;
+    border-radius: 0.4rem;
+    background: var(--jl-bg);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+}
+
+.patch-matrix {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.patch-matrix-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    align-items: end;
+    gap: 0.35rem;
+}
+
+/* ---- plugins (Web Audio Modules): summary in a device card, browser, floating windows ---- */
+
+.plugin-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    padding: 0.55rem 0.6rem;
+    border-radius: 0.6rem;
+    background: color-mix(in oklab, var(--jl-accent) 6%, var(--jl-raised));
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+}
+
+.plugin-summary-name {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--jl-accent);
+}
+
+.plugin-summary-name strong {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.82rem;
+    color: var(--jl-text);
+}
+
+.plugin-summary-name small {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--jl-muted);
+}
+
+.plugin-summary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.plugin-choose {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    min-height: 3.5rem;
+    border-radius: 0.6rem;
+    border: 1px dashed color-mix(in oklab, var(--jl-accent) 55%, transparent);
+    color: var(--jl-accent);
+    font-size: 0.8rem;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.plugin-choose:hover {
+    background: color-mix(in oklab, var(--jl-accent) 8%, transparent);
+}
+
+.plugin-empty,
+.plugin-error {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.74rem;
+    color: var(--jl-muted);
+}
+
+.plugin-error {
+    color: var(--jl-danger, #d33);
+}
+
+.plugin-browser {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.plugin-note {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem 0.65rem;
+    border-radius: 0.5rem;
+    background: var(--jl-cell);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    color: var(--jl-muted);
+}
+
+.plugin-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.plugin-group h4 {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--jl-muted);
+}
+
+.plugin-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+    gap: 0.4rem;
+    max-height: 22rem;
+    overflow-y: auto;
+}
+
+.plugin-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+
+.plugin-pick {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.6rem;
+    min-width: 0;
+    padding: 0.45rem;
+    border-radius: 0.55rem;
+    background: var(--jl-raised);
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+    text-align: left;
+    cursor: pointer;
+}
+
+.plugin-pick:hover {
+    box-shadow: inset 0 0 0 1px var(--jl-line-strong);
+}
+
+.plugin-thumb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 3.2rem;
+    height: 2.6rem;
+    overflow: hidden;
+    border-radius: 0.35rem;
+    background: var(--jl-bg);
+    color: var(--jl-muted);
+}
+
+.plugin-thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.plugin-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.plugin-name {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--jl-text);
+}
+
+.plugin-meta {
+    font-size: 0.68rem;
+    color: var(--jl-muted);
+}
+
+.plugin-desc {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    font-size: 0.7rem;
+    line-height: 1.3;
+    color: var(--jl-muted);
+}
+
+.plugin-address {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.plugin-address-row {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.plugin-address-row .input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.plugin-window {
+    position: fixed;
+    display: flex;
+    flex-direction: column;
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 1rem);
+    border-radius: 0.75rem;
+    background: var(--jl-raised);
+    box-shadow:
+        inset 0 0 0 1px var(--jl-line),
+        0 18px 50px -12px rgb(0 0 0 / 0.45);
+    overflow: hidden;
+}
+
+.plugin-window-head {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    height: 2.1rem;
+    padding: 0 0.35rem 0 0.6rem;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--jl-line);
+    color: var(--jl-muted);
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
+}
+
+.plugin-window-title {
+    flex: 1 1 auto;
+    font-family: var(--font-display);
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--jl-text);
+}
+
+.plugin-window-body {
+    min-width: 16rem;
+    min-height: 4rem;
+    overflow: auto;
+    background: #111;
+}
+
+.plugin-window-body > .plugin-empty,
+.plugin-window-body > .plugin-error {
+    padding: 0.75rem;
+}

@@ -5,7 +5,11 @@ import { NoteStack } from '../midi/liveNotes';
 import type { OscillatorType } from '../notes';
 import type { PatternNote } from '../notes/Note';
 import type { LegacyTrackState } from '../notes/migrate';
+import { AUTOMATABLE_PATCH_PARAMS, clampPatchValue, isPatchModel, normalizePatch, patchParam, SYNTH_MODELS, type PatchModel, type PatchValues, type SynthModel } from '../synths/params';
 import { BaseTrack, type TrackSnapshot, type TrackState } from './BaseTrack';
+import { copyPluginRef, isPluginRef, type PluginRef } from '../plugins/pluginRef';
+import { setPluginStatus } from '../plugins/pluginStatus';
+import { WamInstrument } from '../plugins/WamInstrument';
 import { createSynthEngine, type SynthEngine, type SynthEnvelope, type SynthEnvelopeParam } from './synthEngine';
 
 export type { SynthEnvelope, SynthEnvelopeParam } from './synthEngine';
@@ -49,6 +53,11 @@ export const BEND_PARAM: AutomationParam & { hint: string } = {
 
 const SYNTH_PARAMS: readonly AutomationParam[] = [...ENVELOPE_PARAMS, BEND_PARAM];
 
+const PATCH_PREFIX = 'patch.';
+
+/** A stored model name, or classic for anything else (sessions from before models). */
+const readModel = (value: unknown): SynthModel => (SYNTH_MODELS.includes(value as SynthModel) ? (value as SynthModel) : 'classic');
+
 const ENVELOPE_PREFIX = 'envelope.';
 const envelopeStage = (key: string): SynthEnvelopeParam | null => (key.startsWith(ENVELOPE_PREFIX) ? (key.slice(ENVELOPE_PREFIX.length) as SynthEnvelopeParam) : null);
 
@@ -58,6 +67,12 @@ export interface SynthTrackSnapshot extends TrackSnapshot {
     /** Missing in snapshots from before pitch bend: 0 and `DEFAULT_BEND_RANGE` then. */
     bend?: number;
     bendRange?: number;
+    /** Missing in snapshots from before synth models: classic then. */
+    model?: SynthModel;
+    /** The patch of an analog, wavetable or FM synth, by parameter key. */
+    patch?: PatchValues;
+    /** The plugin of a plugin synth, with its state. */
+    plugin?: PluginRef | null;
 }
 
 export interface SynthTrackState extends TrackState {
@@ -65,6 +80,9 @@ export interface SynthTrackState extends TrackState {
     envelope: SynthEnvelope;
     bend?: number;
     bendRange?: number;
+    model?: SynthModel;
+    patch?: PatchValues;
+    plugin?: PluginRef | null;
 }
 
 /** A live note on the synth: its engine id (a number, the engines' `noteOn` id), note and velocity. */
@@ -97,6 +115,21 @@ export class SynthTrack extends BaseTrack {
 
     /** Semitones a full bend reaches either way. */
     bendRange = DEFAULT_BEND_RANGE;
+
+    /**
+     * What makes the sound: the classic one-oscillator synth (`oscillatorType` and `envelope`), one of the patch
+     * synths (analog, wavetable, FM: `patch`), or a plugin.
+     */
+    model: SynthModel = 'classic';
+
+    /** The patch of a patch model, every parameter by key (`patch.filter.cutoff`); empty for the others. */
+    patch: PatchValues = {};
+
+    /**
+     * The plugin of the `plugin` model (null until one is picked). Its `state` is what the plugin last reported
+     * (`refreshPluginState`): history, saves and renders use it.
+     */
+    plugin: PluginRef | null = null;
 
     /** Live notes by their MIDI id. Raw: the track itself is reactive. */
     private readonly liveNotes = markRaw(new Map<string, LiveSynthNote>());
@@ -152,6 +185,10 @@ export class SynthTrack extends BaseTrack {
         this.engine?.setBend(Math.min(1, Math.max(-1, this.bend + value)) * this.bendRange, time);
     }
 
+    override setLiveModWheel(value: number, time: number): void {
+        this.setPatch('patch.modWheel', value, time);
+    }
+
     override setCutsNotes(cuts: boolean): void {
         // Held notes belong to the mode they started in.
         if (cuts !== this.cutsNotes) {
@@ -161,11 +198,14 @@ export class SynthTrack extends BaseTrack {
         this.engine?.setCutsNotes(cuts);
     }
 
-    /** A sleeping track has no engine at all: its nodes would be processed even while silent. */
+    /** A sleeping track has no engine at all (except a plugin): its nodes would be processed even while silent. */
     override sleep(): void {
         this.allNotesOff(this.now);
         super.sleep();
-        this.disposeEngine();
+        // A plugin stays: reloading it would lose whatever was changed in its window since its state was last read.
+        if (this.model !== 'plugin') {
+            this.disposeEngine();
+        }
     }
 
     override wake(): void {
@@ -182,12 +222,25 @@ export class SynthTrack extends BaseTrack {
         if (this.engine) {
             return;
         }
+        if (this.model === 'plugin') {
+            if (!this.plugin) {
+                // No plugin picked yet: no engine, no sound.
+                return;
+            }
+            const plugin = markRaw(new WamInstrument({ context: this.input.context, owner: this.id, plugin: copyPluginRef(this.plugin), bendRange: this.bendRange }));
+            plugin.connect(this.input);
+            this.engine = plugin;
+            return;
+        }
+        const model = this.model;
         const settings = {
             context: this.input.context,
             cutsNotes: this.cutsNotes,
             oscillatorType: this.oscillatorType,
             envelope: { ...this.envelope },
             bend: this.bend * this.bendRange,
+            model,
+            patch: { ...this.patch },
         };
         const engine = createSynthEngine(settings, () => {
             // The worklet engine could not start: rebuild, which gives the Tone engine from now on.
@@ -207,14 +260,110 @@ export class SynthTrack extends BaseTrack {
         this.engine = null;
     }
 
+    /**
+     * Switches the model. A patch model starts from `patch` (a preset) or its defaults; the engine is rebuilt, so
+     * notes that sound stop. For the model the track already plays, `patch` is applied like a preset. Automation lanes of parameters the new model has not got are dropped.
+     */
+    setModel(model: SynthModel, patch?: Readonly<Record<string, unknown>>): void {
+        if (model === this.model) {
+            // Same model: only the values change, and the engine keeps playing.
+            if (patch) {
+                this.applyPatch(patch);
+            }
+            return;
+        }
+        this.allNotesOff(this.now);
+        this.disposeEngine();
+        this.model = model;
+        this.patch = isPatchModel(model) ? normalizePatch(model, patch) : {};
+        for (const lane of [...this.automation.lanes]) {
+            if (!this.parameter(lane.param)) {
+                this.automation.remove(lane.id);
+            }
+        }
+        if (model !== 'plugin') {
+            setPluginStatus(this.id, null);
+        }
+        if (!this.isAsleep) {
+            this.buildEngine();
+        }
+    }
+
+    /** Plays a plugin (from the browser, or a stored one): the model becomes `plugin` and the engine is rebuilt. */
+    setPlugin(plugin: PluginRef): void {
+        this.allNotesOff(this.now);
+        this.disposeEngine();
+        this.plugin = copyPluginRef(plugin);
+        if (this.model !== 'plugin') {
+            this.setModel('plugin');
+        } else if (!this.isAsleep) {
+            this.buildEngine();
+        }
+    }
+
+    /** Asks the plugin for its state and keeps it, so history, saves and renders have the plugin as it sounds now. */
+    async refreshPluginState(): Promise<void> {
+        const engine = this.engine;
+        if (this.model !== 'plugin' || !this.plugin || !engine?.getState) {
+            return;
+        }
+        const state = await engine.getState();
+        if (state !== null && this.plugin) {
+            this.plugin = { ...this.plugin, state };
+        }
+    }
+
+    /** The loaded plugin engine (its GUI), or null. */
+    get pluginEngine(): WamInstrument | null {
+        return this.engine instanceof WamInstrument ? this.engine : null;
+    }
+
+    /** The patch model the track plays, or null for classic and plugin. */
+    get patchModel(): PatchModel | null {
+        return isPatchModel(this.model) ? this.model : null;
+    }
+
+    /** Sets one patch parameter by key (`patch.filter.cutoff`). With a `time` it is only played (automation), not stored. */
+    setPatch(key: string, value: number, time?: number): void {
+        const model = this.patchModel;
+        const param = model ? patchParam(model, key) : undefined;
+        if (!param) {
+            return;
+        }
+        const clamped = clampPatchValue(param, value);
+        this.engine?.setPatchParam(param.id, clamped, time);
+        if (time === undefined) {
+            this.patch = { ...this.patch, [key]: clamped };
+        }
+    }
+
+    /** Sets many patch parameters at once (a preset), keeping the model. */
+    applyPatch(values: Readonly<Record<string, unknown>>): void {
+        const model = this.patchModel;
+        if (!model) {
+            return;
+        }
+        const patch = normalizePatch(model, values);
+        for (const [key, value] of Object.entries(patch)) {
+            if (this.patch[key] !== value) {
+                this.setPatch(key, value);
+            }
+        }
+    }
+
+    /** The classic synth's oscillator. Stored whatever the model; only a classic engine hears it. */
     setOscillatorType(type: OscillatorType): void {
-        this.engine?.setOscillatorType(type);
+        if (this.model === 'classic') {
+            this.engine?.setOscillatorType(type);
+        }
         this.oscillatorType = type;
     }
 
     /** Sets one stage of the amplitude envelope, e.g. `setEnvelope('attack', 0.2)`. */
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void {
-        this.engine?.setEnvelope(param, value, time);
+        if (this.model === 'classic') {
+            this.engine?.setEnvelope(param, value, time);
+        }
         if (time === undefined) {
             this.envelope = { ...this.envelope, [param]: value };
         }
@@ -232,16 +381,28 @@ export class SynthTrack extends BaseTrack {
     /** How many semitones a full bend reaches either way (1..24). */
     setBendRange(semitones: number): void {
         this.bendRange = Math.min(MAX_BEND_RANGE, Math.max(1, Math.round(semitones)));
+        this.engine?.setBendRange?.(this.bendRange);
         this.engine?.setBend(this.bend * this.bendRange);
     }
 
     protected ownParameters(): readonly AutomationParam[] {
-        return SYNTH_PARAMS;
+        const model = this.patchModel;
+        if (model) {
+            return [...AUTOMATABLE_PATCH_PARAMS[model], BEND_PARAM];
+        }
+        return this.model === 'plugin' ? [BEND_PARAM] : SYNTH_PARAMS;
+    }
+
+    protected override parameterVariant(): unknown {
+        return `synth:${this.model}`;
     }
 
     getParameter(key: string): number {
         if (key === BEND_PARAM.key) {
             return this.bend;
+        }
+        if (key.startsWith(PATCH_PREFIX)) {
+            return this.patch[key] ?? 0;
         }
         const stage = envelopeStage(key);
         return stage && stage in this.envelope ? this.envelope[stage] : super.getParameter(key);
@@ -251,7 +412,9 @@ export class SynthTrack extends BaseTrack {
         const stage = envelopeStage(key);
         if (key === BEND_PARAM.key) {
             this.setBend(value, time);
-        } else if (stage && stage in this.envelope) {
+        } else if (key.startsWith(PATCH_PREFIX)) {
+            this.setPatch(key, value, time);
+        } else if (stage && stage in this.envelope && this.model === 'classic') {
             this.setEnvelope(stage, value, time);
         } else {
             super.setParameter(key, value, time);
@@ -259,6 +422,12 @@ export class SynthTrack extends BaseTrack {
     }
 
     async copyFrom(source: this): Promise<void> {
+        if (source.model === 'plugin' && source.plugin) {
+            await source.refreshPluginState();
+            this.setPlugin(source.plugin);
+        } else {
+            this.setModel(source.model, source.patch);
+        }
         await super.copyFrom(source);
         this.setOscillatorType(source.oscillatorType);
         for (const param of Object.keys(source.envelope) as SynthEnvelopeParam[]) {
@@ -270,17 +439,36 @@ export class SynthTrack extends BaseTrack {
 
     dispose(): void {
         this.disposeEngine();
+        setPluginStatus(this.id, null);
         this.input.dispose();
         super.dispose();
     }
 
     capture(): SynthTrackState {
-        return { ...super.capture(), oscillatorType: this.oscillatorType, envelope: { ...this.envelope }, bend: this.bend, bendRange: this.bendRange };
+        return {
+            ...super.capture(),
+            oscillatorType: this.oscillatorType,
+            envelope: { ...this.envelope },
+            bend: this.bend,
+            bendRange: this.bendRange,
+            model: this.model,
+            patch: { ...this.patch },
+            plugin: this.plugin ? copyPluginRef(this.plugin) : null,
+        };
     }
 
     restore(state: TrackState | LegacyTrackState): void {
-        super.restore(state);
         const synth = state as SynthTrackState;
+        // The model first: it decides which parameters (and so which automation lanes) the track has.
+        const model = readModel(synth.model);
+        if (model === 'plugin' && isPluginRef(synth.plugin)) {
+            if (!this.plugin || this.plugin.url !== synth.plugin.url || JSON.stringify(this.plugin.state) !== JSON.stringify(synth.plugin.state)) {
+                this.setPlugin(synth.plugin);
+            }
+        } else {
+            this.setModel(model, synth.patch);
+        }
+        super.restore(state);
         this.setOscillatorType(synth.oscillatorType);
         for (const param of Object.keys(synth.envelope) as SynthEnvelopeParam[]) {
             this.setEnvelope(param, synth.envelope[param]);
@@ -290,12 +478,16 @@ export class SynthTrack extends BaseTrack {
     }
 
     async serialize(): Promise<SynthTrackSnapshot> {
+        await this.refreshPluginState();
         return {
             ...(await super.serialize()),
             oscillatorType: this.oscillatorType,
             envelope: { ...this.envelope },
             bend: this.bend,
             bendRange: this.bendRange,
+            model: this.model,
+            patch: { ...this.patch },
+            plugin: this.plugin ? copyPluginRef(this.plugin) : null,
         };
     }
 }

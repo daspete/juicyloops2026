@@ -9,6 +9,11 @@
 extern crate alloc;
 
 pub mod envelope;
+pub mod fft;
+pub mod filter;
+pub mod instrument;
+pub mod lfo;
+pub mod math;
 pub mod oscillator;
 pub mod smoother;
 pub mod synth;
@@ -16,4 +21,5 @@ pub mod synth;
 pub use envelope::{Adsr, AdsrParams, Stage};
 pub use oscillator::{PolyBlepOsc, Waveform};
 pub use smoother::OnePole;
+pub use instrument::{Instrument, Model, Patch, PARAM_COUNT};
 pub use synth::{Param, Synth, MAX_EVENTS, MAX_VOICES};

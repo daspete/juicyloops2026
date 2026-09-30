@@ -7,12 +7,12 @@
  */
 
 /** The ABI of `synth-worklet.wasm` this code speaks; the processor checks `abi_version()` against it. */
-export const SYNTH_ABI = 3;
+export const SYNTH_ABI = 4;
 
 /** The name the processor registers under. `synthProcessor.ts` repeats it (it may not import anything at runtime). */
 export const SYNTH_PROCESSOR = 'juicyloops-synth';
 
-/** Parameter ids of the engine's `set_param` (see `juicyloops_dsp_core::Param`). */
+/** Parameter ids of the classic engine's `set_param` (see `juicyloops_dsp_core::Param`). The other engines take patch ids (`synths/params.ts`). */
 export const SynthParam = {
     waveform: 0,
     attack: 1,
@@ -48,6 +48,8 @@ export type SynthMessage =
 export interface SynthProcessorOptions {
     module: WebAssembly.Module;
     abi: number;
+    /** Which engine the module runs: 0 classic, 1 analog, 2 wavetable, 3 FM (`ENGINE_KIND`). Classic when missing. */
+    kind?: number;
 }
 
 export interface SynthPort {
@@ -96,9 +98,14 @@ export class SynthEvents {
         this.send({ type: 'noteOff', time, id });
     }
 
-    /** Sets a parameter at `time`, or right away. */
+    /** Sets a parameter of the classic engine at `time`, or right away. */
     param(name: SynthParamName, value: number, time = 0): void {
         this.send({ type: 'param', time, id: SynthParam[name], value });
+    }
+
+    /** Sets a parameter by its engine id at `time`, or right away. */
+    paramId(id: number, value: number, time = 0): void {
+        this.send({ type: 'param', time, id, value });
     }
 
     mode(mono: boolean): void {

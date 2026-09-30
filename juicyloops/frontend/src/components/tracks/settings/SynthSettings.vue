@@ -24,7 +24,7 @@ const OSCILLATORS: Record<OscillatorType, { icon: string; label: string }> = {
 </script>
 
 <template>
-    <div class="setting">
+    <div v-if="props.track.model === 'classic'" class="setting">
         <div class="setting-label">Waveform</div>
         <div class="setting-row">
             <button

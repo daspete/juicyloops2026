@@ -1,6 +1,7 @@
 import { ref, watch } from 'vue';
 import { EFFECT_PRESETS, type EffectKey } from '@/juicyloops/effects/definitions';
 import type { OscillatorType } from '@/juicyloops/notes';
+import type { SynthModel } from '@/juicyloops/synths/params';
 import type { SynthEnvelope } from '@/juicyloops/tracks/synthEngine';
 
 /**
@@ -15,6 +16,10 @@ export interface SynthPreset {
     oscillatorType: OscillatorType;
     envelope: SynthEnvelope;
     bendRange?: number;
+    /** The synth model; classic when missing (presets from before models). */
+    model?: SynthModel;
+    /** The patch of an analog, wavetable or FM preset, by parameter key. */
+    patch?: Record<string, number>;
 }
 
 export interface SamplerPreset {
@@ -103,7 +108,7 @@ const removeEffectPreset = (effect: EffectKey, name: string): void => {
 };
 
 const saveSynthPreset = (preset: SynthPreset): void => {
-    user.value = { ...user.value, synth: upsert(user.value.synth, { ...preset, envelope: { ...preset.envelope } }) };
+    user.value = { ...user.value, synth: upsert(user.value.synth, { ...preset, envelope: { ...preset.envelope }, ...(preset.patch ? { patch: { ...preset.patch } } : {}) }) };
 };
 
 const removeSynthPreset = (name: string): void => {

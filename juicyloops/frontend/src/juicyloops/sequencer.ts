@@ -249,6 +249,22 @@ export class Sequencer {
         ]);
     }
 
+    /**
+     * Asks every plugin (synth tracks and effect slots) for its state and stores it, so a capture right after has
+     * the plugins as they sound now. Plugins change inside their own windows, where the app cannot see it.
+     */
+    async refreshPluginStates(): Promise<void> {
+        const containers = toRaw(this.containers).map((container) => toRaw(container));
+        const tracks = containers.flatMap((container) => container.tracks.map((track) => toRaw(track)));
+        await Promise.all([
+            ...tracks.map((track) => (track as { refreshPluginState?: () => Promise<void> }).refreshPluginState?.()),
+            ...tracks.map((track) => track.effects.refreshPluginStates()),
+            ...containers.map((container) => container.bus.effects.refreshPluginStates()),
+            ...this.returns.map((bus) => bus.effects.refreshPluginStates()),
+            this.master.effects.refreshPluginStates(),
+        ]);
+    }
+
     /** Takes the step callback off the transport and frees every audio node. For sequencers that only lived for a render. */
     dispose(): void {
         if (this.eventId !== null) {

@@ -4,6 +4,7 @@ import { markRaw } from 'vue';
 import { atTime } from '../automation';
 import { isSynthWorkletUsable, SynthVoices } from '../dsp/SynthVoices';
 import type { OscillatorType } from '../notes';
+import { ENGINE_KIND, PATCH_PARAMS, PatchId, type PatchModel, type PatchValues } from '../synths/params';
 
 /** Amplitude envelope of the synth voice. Times are seconds, sustain is a level between 0 and 1. */
 export interface SynthEnvelope {
@@ -23,7 +24,13 @@ export interface SynthEngineSettings {
     envelope: SynthEnvelope;
     /** Pitch bend of every voice, in semitones. */
     bend: number;
+    /** The model and its patch; without them (or `classic`) the engine is the classic one-oscillator synth. */
+    model?: 'classic' | PatchModel;
+    patch?: PatchValues;
 }
+
+/** A patch as the engine takes it: `[id, value]` for every parameter. */
+export const patchEntries = (model: PatchModel, patch: PatchValues): [number, number][] => PATCH_PARAMS[model].map((param) => [param.id, patch[param.key] ?? param.default]);
 
 /** The sound source of a `SynthTrack`: every voice of the track, behind one output. */
 export interface SynthEngine {
@@ -41,8 +48,13 @@ export interface SynthEngine {
     setOscillatorType(type: OscillatorType): void;
     /** With a `time`, the change is scheduled for then. */
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void;
+    /** Sets a patch parameter (analog, wavetable, FM) by its engine id; with a `time`, at that time. */
+    setPatchParam(id: number, value: number, time?: number): void;
     /** Resolves once notes can sound (the worklet engine loads its module first). */
     whenReady(): Promise<void>;
+    /** A plugin engine: the range its MIDI pitch bend covers, and the plugin's state. */
+    setBendRange?(semitones: number): void;
+    getState?(): Promise<unknown>;
     connect(destination: InputNode): unknown;
     dispose(): unknown;
 }
@@ -58,10 +70,33 @@ export const RUST_SYNTH = import.meta.env.PUBLIC_RUST_SYNTH !== 'false';
  * Builds the engine for a track. `onFailure` is called when the worklet engine cannot load after all; the track then
  * builds a new engine, which is the Tone one from then on.
  */
-export const createSynthEngine = (settings: SynthEngineSettings, onFailure: () => void): SynthEngine =>
-    RUST_SYNTH && isSynthWorkletUsable(settings.context)
-        ? markRaw(new SynthVoices({ ...settings, onFailure }))
-        : markRaw(new ToneSynthEngine(settings));
+export const createSynthEngine = (settings: SynthEngineSettings, onFailure: () => void): SynthEngine => {
+    const model = settings.model ?? 'classic';
+    const patch = model !== 'classic' && settings.patch ? patchEntries(model, settings.patch) : [];
+    if (RUST_SYNTH && isSynthWorkletUsable(settings.context)) {
+        return markRaw(new SynthVoices({ ...settings, kind: ENGINE_KIND[model], patch, onFailure }));
+    }
+    return markRaw(new ToneSynthEngine(model === 'classic' ? settings : { ...settings, ...fallbackSound(model, new Map(patch)) }));
+};
+
+/** Waveform numbers of the analog oscillators, as Tone oscillator types. */
+const ANALOG_WAVE_TYPES: readonly OscillatorType[] = ['sine', 'triangle', 'sawtooth', 'square'];
+
+/**
+ * What the Tone engine can play of a patch where the worklet is missing: oscillator 1's wave (analog) and the amp
+ * envelope. Far from the real thing, but notes sound and keep their shape.
+ */
+const fallbackSound = (model: PatchModel, patch: ReadonlyMap<number, number>): { oscillatorType: OscillatorType; envelope: SynthEnvelope } => ({
+    oscillatorType: model === 'analog' ? (ANALOG_WAVE_TYPES[patch.get(PatchId.osc) ?? 2] ?? 'sawtooth') : 'sine',
+    envelope: {
+        attack: patch.get(PatchId.ampAttack) ?? 0.005,
+        decay: patch.get(PatchId.ampAttack + 1) ?? 0.1,
+        sustain: patch.get(PatchId.ampAttack + 2) ?? 0.8,
+        release: patch.get(PatchId.ampAttack + 3) ?? 0.3,
+    },
+});
+
+const AMP_STAGES: readonly SynthEnvelopeParam[] = ['attack', 'decay', 'sustain', 'release'];
 
 /** Extra time an engine switched away from keeps ringing after its last note's release, in seconds. */
 const RELEASE_MARGIN = 0.1;
@@ -73,6 +108,7 @@ const RELEASE_MARGIN = 0.1;
  */
 export class ToneSynthEngine implements SynthEngine {
     private readonly context: BaseContext;
+    private readonly model: 'classic' | PatchModel;
     /** Where the engines play into; one built later connects there too. */
     private destination: InputNode | null = null;
     private cutsNotes: boolean;
@@ -92,8 +128,9 @@ export class ToneSynthEngine implements SynthEngine {
     /** When the last live note started in cut mode (see `noteOn`). */
     private lastLiveAttack = -Infinity;
 
-    constructor({ context, cutsNotes, oscillatorType, envelope, bend }: SynthEngineSettings) {
+    constructor({ context, cutsNotes, oscillatorType, envelope, bend, model }: SynthEngineSettings) {
         this.context = context;
+        this.model = model ?? 'classic';
         this.cutsNotes = cutsNotes;
         this.oscillatorType = oscillatorType;
         this.envelope = { ...envelope };
@@ -178,6 +215,16 @@ export class ToneSynthEngine implements SynthEngine {
             this.synth?.set({ envelope: { [param]: value } });
             this.polySynth?.set({ envelope: { [param]: value } });
         });
+    }
+
+    /** The fallback follows what it can: the amp envelope, and oscillator 1's wave of an analog patch. */
+    setPatchParam(id: number, value: number, time?: number): void {
+        const stage = AMP_STAGES[id - PatchId.ampAttack];
+        if (stage) {
+            this.setEnvelope(stage, value, time);
+        } else if (id === PatchId.osc && this.model === 'analog' && time === undefined) {
+            this.setOscillatorType(ANALOG_WAVE_TYPES[Math.round(value)] ?? 'sawtooth');
+        }
     }
 
     whenReady(): Promise<void> {

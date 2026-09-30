@@ -1,4 +1,5 @@
-import { Gain, getDestination, PanVol, type ToneAudioNode } from 'tone';
+import { Gain, getDestination, type ToneAudioNode } from 'tone';
+import { StereoPanVol } from './stereoPanVol';
 import { markRaw, shallowRef } from 'vue';
 import { createParameterTable, MIX_PARAMS, type Automatable, type AutomationParam, type ParameterTable } from './automation';
 import { PARAM_RAMP_TIME } from './constants';
@@ -39,7 +40,7 @@ export class MixBus implements Automatable {
     readonly role: BusRole;
 
     /** Volume (dB) and pan (-1..1) stage after the effects. */
-    private readonly panVol = new PanVol(0, 0);
+    private readonly panVol = new StereoPanVol(0, 0);
 
     /** Mute and solo close this gate. The bus's output. */
     private readonly gate = new Gain(1);

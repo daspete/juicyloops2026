@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
 import { computed, nextTick, ref } from 'vue';
+import { usePlugins } from '@/composables/usePlugins';
+import PluginSummary from '../plugins/PluginSummary.vue';
 import { usePresets } from '@/composables/usePresets';
 import { EFFECT_DEFINITIONS, EFFECT_INFO, EFFECT_PRESETS, addedParams, type EffectParamDefinition } from '@/juicyloops/effects/definitions';
 import type { Effects } from '@/juicyloops/effects/effects';
@@ -81,6 +83,24 @@ const knobs = computed(() => {
 
 const setBypassed = (value: boolean) => props.effects.setBypassed(props.slotId, value);
 
+/* ---- a plugin slot ---- */
+
+const { openWindow } = usePlugins();
+
+const plugin = computed(() => {
+    void props.effects.revision;
+    return effect.value === 'plugin' ? (props.effects.pluginOf(props.slotId) ?? null) : null;
+});
+const pluginOwner = computed(() => props.effects.pluginOwner(props.slotId) ?? '');
+
+const openPlugin = () => {
+    const effects = props.effects;
+    const slotId = props.slotId;
+    if (plugin.value) {
+        openWindow({ key: pluginOwner.value, title: label.value, module: () => effects.pluginNode(slotId)?.module ?? null, refresh: () => void effects.refreshPluginStates() });
+    }
+};
+
 /** The limiter's own on/off switch sits next to the power button. */
 const switchedOn = computed(() => {
     void local.value;
@@ -127,6 +147,14 @@ const savePreset = () => {
 };
 
 const menuItems = computed<SongMenuItem[]>(() => {
+    if (plugin.value) {
+        return [
+            { label: 'Open plugin window', icon: 'mdi:open-in-new', action: openPlugin },
+            { label: 'Duplicate', icon: 'mdi:content-duplicate', action: () => props.effects.duplicate(props.slotId) },
+            { label: 'Copy (paste on another channel)', icon: 'mdi:content-copy', action: () => copyDevice(props.effects, props.slotId) },
+            { label: 'Remove', icon: 'mdi:close', danger: true, action: () => props.effects.remove(props.slotId) },
+        ];
+    }
     const factory = EFFECT_PRESETS[effect.value] ?? [];
     const mine = user.value.effects[effect.value] ?? [];
     return [
@@ -186,8 +214,9 @@ const menuItems = computed<SongMenuItem[]>(() => {
         </header>
 
         <div class="device-card-body">
-            <EffectVisual :effects="props.effects" :slot-id="props.slotId" :effect="effect" :version="local + tick + props.version" :on="isOn" />
-            <p v-if="face === 'macro'" class="device-card-blurb">{{ info.blurb }}</p>
+            <PluginSummary v-if="plugin" :owner="pluginOwner" :name="plugin.name" :vendor="plugin.vendor" @open="openPlugin" />
+            <EffectVisual v-else :effects="props.effects" :slot-id="props.slotId" :effect="effect" :version="local + tick + props.version" :on="isOn" />
+            <p v-if="face === 'macro' && !plugin" class="device-card-blurb">{{ info.blurb }}</p>
             <div class="device-card-knobs" :key="knobKey">
                 <EffectKnob
                     v-for="knob in knobs"

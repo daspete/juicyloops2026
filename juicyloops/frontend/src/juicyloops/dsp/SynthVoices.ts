@@ -1,5 +1,6 @@
 import { FrequencyClass, getContext, ToneAudioNode, type BaseContext } from 'tone';
 import type { OscillatorType } from '../notes';
+import { PatchId } from '../synths/params';
 import type { SynthEnvelope, SynthEnvelopeParam } from '../tracks/synthEngine';
 import { SYNTH_ABI, SYNTH_PROCESSOR, SynthEvents, WAVEFORMS, type SynthProcessorOptions } from './synthProtocol';
 // Vite bundles the processor as a worker script (a hashed asset in the build) and emits the module as a hashed asset.
@@ -23,6 +24,11 @@ export interface SynthVoicesOptions {
     envelope: SynthEnvelope;
     /** Pitch bend in semitones. */
     bend: number;
+    /** The engine kind (`ENGINE_KIND`): 0 is the classic synth, which takes the oscillator type and envelope; the
+     * others take `patch` instead. */
+    kind?: number;
+    /** `[id, value]` of every patch parameter, for the patch engines. */
+    patch?: readonly (readonly [number, number])[];
     /** Called when the worklet cannot be built after all; the owner switches to another engine. */
     onFailure?: (error: unknown) => void;
 }
@@ -93,10 +99,14 @@ export class SynthVoices extends ToneAudioNode {
     private node: AudioWorkletNode | null = null;
     private readonly events: SynthEvents;
     private readonly ready: Promise<void>;
+    private readonly kind: number;
+    /** The tempo the engine was last told (synced LFOs), NaN before. */
+    private tempo = NaN;
     private isDisposed = false;
 
-    constructor({ context, cutsNotes, oscillatorType, envelope, bend, onFailure }: SynthVoicesOptions) {
+    constructor({ context, cutsNotes, oscillatorType, envelope, bend, kind = 0, patch = [], onFailure }: SynthVoicesOptions) {
         super({ context });
+        this.kind = kind;
         this.output = this.context.createGain();
         this.events = new SynthEvents({
             frequency: noteFrequency,
@@ -104,23 +114,43 @@ export class SynthVoices extends ToneAudioNode {
             seconds: (duration) => this.toSeconds(duration),
         });
         this.events.mode(cutsNotes);
-        this.setOscillatorType(oscillatorType);
-        for (const param of Object.keys(envelope) as SynthEnvelopeParam[]) {
-            this.events.param(param, envelope[param]);
+        if (kind === 0) {
+            this.setOscillatorType(oscillatorType);
+            for (const param of Object.keys(envelope) as SynthEnvelopeParam[]) {
+                this.events.param(param, envelope[param]);
+            }
+        } else {
+            for (const [id, value] of patch) {
+                this.events.paramId(id, value);
+            }
         }
         if (bend) {
-            this.events.param('bend', bend);
+            this.setBend(bend);
         }
         this.ready = this.build(onFailure);
     }
 
     /** Plays a note at `time`; returns its length in seconds. */
     triggerAttackRelease(note: string | number, duration: string | number, time: number, velocity = 1): number {
+        this.syncTempo(time);
         return this.events.note(note, duration, time, velocity);
     }
 
     noteOn(id: number, note: string | number, time: number, velocity: number): void {
+        this.syncTempo(time);
         this.events.noteOn(id, note, time, velocity);
+    }
+
+    /** Patch engines sync their LFOs to the tempo; it is sent with the notes whenever it has changed. */
+    private syncTempo(time: number): void {
+        if (this.kind === 0) {
+            return;
+        }
+        const bpm = this.context.transport.bpm.getValueAtTime(time);
+        if (bpm !== this.tempo) {
+            this.tempo = bpm;
+            this.events.paramId(PatchId.tempo, bpm, time);
+        }
     }
 
     noteOff(id: number, time: number): void {
@@ -129,20 +159,34 @@ export class SynthVoices extends ToneAudioNode {
 
     /** The engine glides to a new bend itself (a few ms), timed to the frame. */
     setBend(semitones: number, time?: number): void {
-        this.events.param('bend', semitones, time);
+        if (this.kind === 0) {
+            this.events.param('bend', semitones, time);
+        } else {
+            this.events.paramId(PatchId.bend, semitones, time);
+        }
+    }
+
+    /** A patch parameter by engine id; with a `time`, the engine applies it on that very frame. */
+    setPatchParam(id: number, value: number, time?: number): void {
+        this.events.paramId(id, value, time);
     }
 
     setCutsNotes(cuts: boolean): void {
         this.events.mode(cuts);
     }
 
+    /** Classic engine only: the patch engines read other ids (id 0 is their volume). */
     setOscillatorType(type: OscillatorType): void {
-        this.events.param('waveform', WAVEFORMS[type] ?? WAVEFORMS.sine);
+        if (this.kind === 0) {
+            this.events.param('waveform', WAVEFORMS[type] ?? WAVEFORMS.sine);
+        }
     }
 
-    /** With a `time`, the engine applies the change on that very frame. */
+    /** Classic engine only. With a `time`, the engine applies the change on that very frame. */
     setEnvelope(param: SynthEnvelopeParam, value: number, time?: number): void {
-        this.events.param(param, value, time);
+        if (this.kind === 0) {
+            this.events.param(param, value, time);
+        }
     }
 
     whenReady(): Promise<void> {
@@ -171,11 +215,12 @@ export class SynthVoices extends ToneAudioNode {
     }
 
     private createNode(module: WebAssembly.Module, onFailure: SynthVoicesOptions['onFailure']): void {
-        const processorOptions: SynthProcessorOptions = { module, abi: SYNTH_ABI };
+        const processorOptions: SynthProcessorOptions = { module, abi: SYNTH_ABI, kind: this.kind };
         const node = this.context.createAudioWorkletNode(SYNTH_PROCESSOR, {
             numberOfInputs: 0,
             numberOfOutputs: 1,
-            outputChannelCount: [1],
+            // The classic engine is mono; the others are stereo (unison spread, pan).
+            outputChannelCount: [this.kind === 0 ? 1 : 2],
             processorOptions,
         });
         node.onprocessorerror = (event) => this.fail(event, onFailure);

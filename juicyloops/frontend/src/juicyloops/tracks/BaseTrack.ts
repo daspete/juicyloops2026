@@ -1,4 +1,4 @@
-import { PanVol, type ToneAudioNode } from 'tone';
+import type { ToneAudioNode } from 'tone';
 import { markRaw, toRaw } from 'vue';
 import { createId } from '../audio';
 import {
@@ -21,6 +21,7 @@ import { SEND_PARAMS, sendIndexOf, Sends } from '../sends';
 import { publishHeldKeys } from '../midi/heldKeys';
 import { SustainGate } from '../midi/liveNotes';
 import type { LiveTrack } from '../midi/router';
+import { StereoPanVol } from '../stereoPanVol';
 import { upgradeTrackState, type LegacyTrackState } from '../notes/migrate';
 import type { PatternNote } from '../notes/Note';
 import { NotePattern } from '../notes/NotePattern';
@@ -53,7 +54,7 @@ export interface TrackState extends TrackSnapshot {
 }
 
 /** Every parameter of a track type, in menu order and by key. Frozen, so Vue hands it out without proxying it. */
-const PARAMETER_TABLES = new WeakMap<object, ParameterTable>();
+const PARAMETER_TABLES = new Map<unknown, ParameterTable>();
 
 /** A tempo lookup that needs no allocation: the transport's BPM param. */
 interface TempoSource {
@@ -92,7 +93,7 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
     readonly automation = new TrackAutomation(STEP_COUNT);
 
     /** Volume (dB) and pan (-1..1) stage at the end of the chain. */
-    protected readonly output = markRaw(new PanVol(0, 0));
+    protected readonly output = markRaw(new StereoPanVol(0, 0));
 
     /** A name the user gave the track; empty shows its type and number. */
     name = '';
@@ -233,6 +234,10 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     setLiveBend(value: number, time: number): void {}
 
+    /** The live mod wheel, 0..1. Only synths with a patch use it (a modulation source); played, not stored. */
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    setLiveModWheel(value: number, time: number): void {}
+
     /** Makes a live note sound. The track type decides how (a synth voice, a sample voice). */
     protected abstract startLiveNote(id: string, note: string, velocity: number, time: number): void;
 
@@ -330,9 +335,17 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
         return [...this.parameterTable().list, ...this.effects.parameters];
     }
 
-    /** Parameters specific to a track type (a synth's envelope, ...). Must be the same for every track of a type: the result is cached per type. */
+    /**
+     * Parameters specific to a track type (a synth's envelope, ...). Must be the same for every track of the same
+     * `parameterVariant`: the result is cached per variant.
+     */
     protected ownParameters(): readonly AutomationParam[] {
         return [];
+    }
+
+    /** What `ownParameters` depends on: the track's class, unless a type's parameters change with its settings (a synth's model). */
+    protected parameterVariant(): unknown {
+        return this.constructor;
     }
 
     /** A parameter by its key. A map lookup: automation calls it for every lane on every step. */
@@ -341,11 +354,11 @@ export abstract class BaseTrack extends NotePattern implements Automatable, Live
     }
 
     private parameterTable(): ParameterTable {
-        const type = this.constructor;
-        let table = PARAMETER_TABLES.get(type);
+        const variant = this.parameterVariant();
+        let table = PARAMETER_TABLES.get(variant);
         if (!table) {
             table = createParameterTable([...MIX_PARAMS, ...SEND_PARAMS, ...this.ownParameters()]);
-            PARAMETER_TABLES.set(type, table);
+            PARAMETER_TABLES.set(variant, table);
         }
         return table;
     }

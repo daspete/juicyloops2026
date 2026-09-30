@@ -11,6 +11,7 @@ const fakeTrack = (id: string) => {
         noteOff: (note, time) => calls.push(`off ${note} @${time}`),
         setSustain: (down, time) => calls.push(`pedal ${down ? 'down' : 'up'} @${time}`),
         setLiveBend: (value, time) => calls.push(`bend ${value.toFixed(2)} @${time}`),
+        setLiveModWheel: (value, time) => calls.push(`wheel ${value.toFixed(2)} @${time}`),
         allNotesOff: (time) => calls.push(`all off @${time}`),
     };
     return { track, calls };
@@ -74,6 +75,13 @@ describe('MIDI router', () => {
         send(0xe0, 0x00, 0x40);
         expect(a.calls).toEqual(['bend 1.00 @1', 'bend 0.00 @1']);
         expect(b.calls).toEqual(['bend 0.00 @1']);
+    });
+
+    it('moves the armed tracks’ mod wheel with CC 1 only', () => {
+        const { a, send } = setup();
+        send(0xb0, 1, 127);
+        send(0xb0, 7, 100);
+        expect(a.calls).toEqual(['wheel 1.00 @1']);
     });
 
     it('stops everything on all notes off, and only one input when it goes away', () => {

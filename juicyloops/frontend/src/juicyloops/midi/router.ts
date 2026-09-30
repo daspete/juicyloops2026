@@ -18,6 +18,9 @@ import { liveNoteId, midiNoteName, type MidiMessage } from './messages';
  * activity light listen on.
  */
 
+/** The mod wheel's controller number. */
+const MOD_WHEEL_CC = 1;
+
 /** What the router needs of a track. `BaseTrack` is one; the router calls it on the raw object. */
 export interface LiveTrack {
     readonly id: string;
@@ -27,6 +30,8 @@ export interface LiveTrack {
     setSustain(down: boolean, time: number): void;
     /** Pitch bend, -1..1 (the track scales it by its own range). */
     setLiveBend(value: number, time: number): void;
+    /** The mod wheel (CC 1), 0..1. */
+    setLiveModWheel(value: number, time: number): void;
     allNotesOff(time: number): void;
 }
 
@@ -185,6 +190,11 @@ export class MidiRouter {
             }
             case 'cc': {
                 const tracks = this.options.live();
+                if (message.controller === MOD_WHEEL_CC) {
+                    for (const track of tracks) {
+                        track.setLiveModWheel(message.value / 127, time);
+                    }
+                }
                 this.emit({ type: 'cc', input, channel: message.channel, cc: message.controller, value: message.value, timeStamp, time }, tracks, this.recordIdsAmong(tracks));
                 return;
             }
