@@ -93,8 +93,9 @@ Everything builds in Docker; the host needs only `bash` and `docker`.
 | Lints, formatting, type-check of all three OSes | `bash scripts/check.sh` | |
 | Tests | `bash scripts/test.sh [--fixtures]` | |
 
-A GitHub Actions workflow that builds all three (macOS on a `macos-14` runner) is in
-[`ci/github-actions.yml`](ci/github-actions.yml); copy it to `.github/workflows/` to use it. Releases should be
+The GitHub Actions workflow [`.github/workflows/vst-bridge.yml`](../../.github/workflows/vst-bridge.yml) builds all
+three (macOS on a `macos-14` runner) on every push to `main` that touches the bridge, and on demand from the Actions
+tab; the binaries are attached to the run as artifacts. Releases should be
 code-signed (Windows: `signtool`; macOS: Developer ID + notarization, the script prints the command), otherwise
 SmartScreen and Gatekeeper warn on first start.
 

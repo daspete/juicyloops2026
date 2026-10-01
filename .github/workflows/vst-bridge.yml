@@ -1,10 +1,11 @@
-# Builds the Juicy Loops Bridge for Linux, Windows and macOS. Copy to .github/workflows/vst-bridge.yml to use it.
-# Signing is left out on purpose (secrets); see README "Building".
+# Builds the Juicy Loops Bridge (juicyloops/vst-bridge) for Linux, Windows and macOS on every push to main that
+# changes it (or this workflow), and on demand. Signing is left out on purpose (secrets); see its README "Building".
 name: vst-bridge
 
 on:
   push:
-    paths: ['juicyloops/vst-bridge/**']
+    branches: [main]
+    paths: ['juicyloops/vst-bridge/**', '.github/workflows/vst-bridge.yml']
   workflow_dispatch:
 
 defaults:
