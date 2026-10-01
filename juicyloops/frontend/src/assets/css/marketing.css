@@ -233,7 +233,8 @@ html:not(.dark) .mk-theme {
 
 /* ---------- buttons ---------- */
 
-.mk-btn {
+/* Under `.mk` so the ink colour wins over the link reset (`.mk a` inherits the page's text colour). */
+.mk .mk-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -679,7 +680,7 @@ html:not(.dark) .mk-theme {
     }
 }
 
-/* ---------- flow: a song timeline with three clips ---------- */
+/* ---------- flow: a song timeline with four clips ---------- */
 
 .mk-flow {
     padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
@@ -694,7 +695,7 @@ html:not(.dark) .mk-theme {
 .mk-timeline {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(12, 1fr);
+    grid-template-columns: repeat(16, 1fr);
     margin-top: clamp(2rem, 4vw, 3.5rem);
     padding-bottom: 0.5rem;
     border-bottom: 2px solid var(--jl-line-strong);
@@ -721,7 +722,7 @@ html:not(.dark) .mk-theme {
     width: 2px;
     background: var(--jl-brand);
     box-shadow: 0 0 10px var(--jl-brand);
-    animation: mk-sweep 9.6s linear infinite;
+    animation: mk-sweep 12.8s linear infinite;
 
     &::before {
         content: '';
@@ -741,7 +742,7 @@ html:not(.dark) .mk-theme {
 
 .mk-flow-list {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 0.75rem;
     margin: 0.75rem 0 0;
     padding: 0;
@@ -901,6 +902,22 @@ html:not(.dark) .mk-theme {
     }
 }
 
+/* The bounced file: a waveform with the render head running over it. */
+.mk-mini-wave {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 100%;
+
+    & i {
+        flex: 1;
+        height: calc(var(--h) * 1%);
+        border-radius: 2px;
+        background: var(--c);
+        animation: mk-chase 4s steps(1, end) calc(var(--i) * 0.125s) infinite;
+    }
+}
+
 /* ---------- rack: modules in a chain ---------- */
 
 .mk-rack {
@@ -1047,6 +1064,122 @@ html:not(.dark) .mk-theme {
     }
     50% {
         opacity: 1;
+    }
+}
+
+/* ---------- plugins: one faceplate per source ---------- */
+
+.mk-plugins {
+    padding: clamp(3.5rem, 8vw, 7rem) var(--mk-gutter) 0;
+}
+
+.mk-plug-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+    margin: clamp(2rem, 4vw, 3.5rem) 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.mk-plug {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: 1rem;
+    overflow: hidden;
+    background: var(--jl-panel);
+    box-shadow: inset 0 0 0 1px var(--jl-line-strong);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+        transform: translateY(-3px);
+        box-shadow: inset 0 0 0 1px var(--c), 0 24px 40px -30px var(--c);
+    }
+}
+
+/* The formats, printed on the plate like a model name. */
+.mk-plug-formats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 1.5rem;
+    padding: 2.4rem 1.4rem 1.3rem;
+    background: linear-gradient(180deg, color-mix(in oklab, var(--c) 20%, transparent), transparent);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: clamp(2.6rem, 6vw, 5rem);
+    line-height: 1;
+    letter-spacing: -0.02em;
+    color: var(--c);
+
+    & span + span::before {
+        content: '+';
+        margin-right: 1.5rem;
+        font-weight: 400;
+        color: var(--jl-muted);
+    }
+}
+
+.mk-plug-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    padding: 0.4rem 1.4rem 1.5rem;
+
+    & .mk-h3 {
+        font-size: 1.35rem;
+    }
+
+    & > p {
+        max-width: 34rem;
+        color: var(--jl-muted);
+    }
+}
+
+.mk-plug-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.9rem 1.5rem;
+    margin-top: auto;
+    padding-top: 1.4rem;
+}
+
+.mk-plug-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+
+    & li {
+        padding: 0.3rem 0.6rem;
+        border-radius: 0.3rem;
+        color: var(--jl-text);
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--c) 45%, var(--jl-line-strong));
+    }
+}
+
+.mk-plug-link {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    border-bottom: 1px solid var(--c);
+
+    &::after {
+        content: ' \2197';
+    }
+
+    &:hover {
+        color: var(--c);
     }
 }
 
@@ -1335,9 +1468,23 @@ html:not(.dark) .mk-theme {
     }
 }
 
+/* Four clips get tight before the page turns to one column: two bars of two in between. */
+@media (max-width: 76rem) {
+    .mk-flow-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .mk-timeline span:nth-child(n + 9) {
+        display: none;
+    }
+    .mk-timeline {
+        grid-template-columns: repeat(8, 1fr);
+    }
+}
+
 @media (max-width: 56rem) {
     .mk-flow-list,
-    .mk-rack-copy {
+    .mk-rack-copy,
+    .mk-plug-list {
         grid-template-columns: 1fr;
     }
     .mk-mixer {
@@ -1349,12 +1496,6 @@ html:not(.dark) .mk-theme {
     }
     .mk-rack-list {
         grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-    .mk-timeline span:nth-child(n + 9) {
-        display: none;
-    }
-    .mk-timeline {
-        grid-template-columns: repeat(8, 1fr);
     }
 }
 
@@ -1485,6 +1626,7 @@ html:not(.dark) .mk-theme {
     .mk-mini-grid i,
     .mk-mini-lane i,
     .mk-mini-curve path,
+    .mk-mini-wave i,
     .mk-module-led,
     .mk-strip-led,
     .mk-meter i {

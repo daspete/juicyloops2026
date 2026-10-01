@@ -10,7 +10,7 @@ const JUICE = [
         label: 'Synth',
         color: 'var(--jl-synth)',
         line: 'Draw it.',
-        text: 'Notes on a piano roll, a waveform to pick, an envelope to shape. Every note carries its own velocity and length.',
+        text: 'Four engines, from one plain oscillator to analog, FM and wavetable, with presets to start from. Draw notes on the piano roll or play them on a MIDI keyboard; every note carries its own velocity and length.',
         steps: [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0],
     },
     {
@@ -18,7 +18,7 @@ const JUICE = [
         label: 'Sampler',
         color: 'var(--jl-sampler)',
         line: 'Chop it.',
-        text: 'Drop in any audio file, trim it, flip it backwards, put it on the grid. The sample travels inside your session file.',
+        text: 'Drop in any audio file, or browse the sample folders on your disk. Trim it, slice it at the hits, change its pitch and speed, flip it backwards. The sample travels inside your session file.',
         steps: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0],
     },
     {
@@ -31,14 +31,14 @@ const JUICE = [
     },
 ];
 
-/* The three moves as clips on a song timeline, each in its own colour with a small picture of what it does. */
+/* The four moves as clips on a song timeline, each in its own colour with a small picture of what it does. */
 const FLOW = [
     {
         beat: '1',
         title: 'Loop',
         color: 'var(--jl-synth)',
         visual: 'grid',
-        text: 'Tap steps on a one-bar grid. Give a track its own length to make polyrhythms, and the ghost steps show you where it repeats.',
+        text: 'Tap steps on a one-bar grid, or record what you play on a MIDI keyboard, with a count-in, a metronome and quantize for afterwards. Give a track its own length to make polyrhythms.',
     },
     {
         beat: '2',
@@ -52,11 +52,18 @@ const FLOW = [
         title: 'Mix and automate',
         color: 'var(--jl-mic)',
         visual: 'curve',
-        text: 'Effects on each track, on each group, and on the master. Any knob can ride a curve, per step inside a loop or across the whole song.',
+        text: 'Effects on each track, on each group, and on the master. Any knob can ride a curve, per step inside a loop or across the whole song, or follow a MIDI controller.',
+    },
+    {
+        beat: '4',
+        title: 'Export',
+        color: 'var(--jl-sampler)',
+        visual: 'wave',
+        text: 'Bounce the song, a loop or a single track to WAV or MP3. Rendered fast in the background, or recorded in real time, exactly as you hear it.',
     },
 ];
 
-/* Pictures inside the flow clips: a tiny grid, a few clips on lanes, and an automation curve. All fixed. */
+/* Pictures inside the flow clips: a tiny grid, a few clips on lanes, an automation curve and a bounced waveform. All fixed. */
 const FLOW_GRID = [
     [1, 0, 0, 1, 0, 0, 1, 0],
     [0, 0, 1, 0, 0, 0, 1, 0],
@@ -79,6 +86,7 @@ const FLOW_CLIPS = [
     ],
 ];
 const FLOW_CURVE = 'M0,70 C30,70 40,20 70,20 S110,60 140,60 S180,10 210,10 S250,50 280,50';
+const FLOW_WAVE = [22, 48, 74, 96, 62, 40, 30, 58, 84, 66, 44, 28, 20, 36, 70, 100, 78, 52, 34, 26, 46, 68, 88, 60, 38, 24, 32, 54, 72, 50, 30, 18];
 
 /* The rack shows each effect as a module with one knob; the knob angles are fixed so both sides draw the same. */
 const JUICE_CYCLE = ['var(--jl-synth)', 'var(--jl-sampler)', 'var(--jl-mic)', 'var(--jl-brand)'];
@@ -96,6 +104,28 @@ const EFFECTS = [
     { label: 'Tremolo', angle: -5 },
     { label: 'Vibrato', angle: 25 },
 ].map((effect, index) => ({ ...effect, color: JUICE_CYCLE[index % JUICE_CYCLE.length] }));
+
+/* Where plugins come from: each source is a faceplate with its formats printed large. */
+const BRIDGE_DOWNLOAD_URL = 'https://github.com/daspete/juicyloops2026/releases';
+const PLUGINS = [
+    {
+        key: 'web',
+        formats: ['WAM'],
+        color: 'var(--jl-synth)',
+        title: 'From the web',
+        text: 'Web Audio Modules run right in the browser. Pick a polysynth, an electric piano, an amp model or a convolution reverb from the list, or add one by its URL.',
+        tags: ['Synths', 'Keys', 'Amps', 'Reverbs'],
+    },
+    {
+        key: 'desktop',
+        formats: ['VST3', 'CLAP'],
+        color: 'var(--jl-brand)',
+        title: 'From your computer',
+        text: 'The Juicy Loops Bridge is a small desktop app that plays the plugins installed on your machine into the studio. Their own windows open on your desktop, like in any other host.',
+        tags: ['Windows', 'macOS', 'Linux'],
+        link: { href: BRIDGE_DOWNLOAD_URL, label: 'Get the Bridge' },
+    },
+];
 
 /* Bar heights of the waveform under the closing section, in percent; fixed so the server and the browser draw the same. */
 const WAVE = [
@@ -117,9 +147,9 @@ const DETAILS = [
         level: 48,
         text: 'Save the session to your disk as a single file: tracks, samples, recordings, automation. Open it on any machine.',
     },
-    { key: '0 MB', title: 'Nothing to install', level: 91, text: 'No account, no download, no plugins. It runs in the browser you already have, on a phone too.' },
+    { key: '0 MB', title: 'Nothing to install', level: 91, text: 'No account, no download, no setup. It runs in the browser you already have, on a phone too.' },
     { key: 'Light / Dark', title: 'Light or dark', level: 55, text: 'Follows your system, or flip it yourself. The colours of the tracks stay the same either way.' },
-    { key: 'Space', title: 'Keyboard first', level: 73, text: 'Space plays and stops, Ctrl+S saves, Ctrl+O opens. Hold a button to repeat it, the app keeps up.' },
+    { key: 'Space', title: 'Keyboard first', level: 73, text: 'Space plays and stops, R records, Ctrl+S saves. Press ? for every shortcut and a two-minute tour of the studio.' },
 ].map((item, index) => ({ ...item, color: JUICE_CYCLE[index % JUICE_CYCLE.length] }));
 
 /* Ten segments per meter, bottom to top. */
@@ -164,10 +194,10 @@ const METER = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
         <section class="mk-flow" aria-labelledby="flow-title">
             <div class="mk-flow-head">
                 <p class="mk-eyebrow" data-reveal>From loop to track</p>
-                <h2 id="flow-title" class="mk-h2" data-reveal>Three moves. Same order as in every studio, minus the studio.</h2>
+                <h2 id="flow-title" class="mk-h2" data-reveal>Four moves. Same order as in every studio, minus the studio.</h2>
             </div>
             <div class="mk-timeline" aria-hidden="true">
-                <span v-for="bar in 12" :key="bar" :data-major="bar % 4 === 1">{{ bar }}</span>
+                <span v-for="bar in 16" :key="bar" :data-major="bar % 4 === 1">{{ bar }}</span>
                 <i class="mk-timeline-head"></i>
             </div>
             <ol class="mk-flow-list">
@@ -186,10 +216,11 @@ const METER = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
                                     <i v-for="(clip, c) in lane" :key="c" :style="{ '--start': clip.start, '--span': clip.span }"></i>
                                 </div>
                             </div>
-                            <svg v-else class="mk-mini-curve" viewBox="0 0 280 80" preserveAspectRatio="none">
+                            <svg v-else-if="step.visual === 'curve'" class="mk-mini-curve" viewBox="0 0 280 80" preserveAspectRatio="none">
                                 <path :d="FLOW_CURVE" />
                                 <circle v-for="(x, i) in [0, 70, 140, 210, 280]" :key="i" :cx="x" :cy="[70, 20, 60, 10, 50][i]" r="4" />
                             </svg>
+                            <div v-else class="mk-mini-wave"><i v-for="(h, i) in FLOW_WAVE" :key="i" :style="{ '--h': h, '--i': i }"></i></div>
                         </div>
                         <h3 class="mk-h3">{{ step.title }}</h3>
                         <p>{{ step.text }}</p>
@@ -219,6 +250,36 @@ const METER = Array.from({ length: 10 }, (_, i) => (i + 1) * 10);
                     <span class="mk-knob" aria-hidden="true"><i></i></span>
                     <span class="mk-module-label">{{ effect.label }}</span>
                     <span class="mk-module-led" aria-hidden="true"></span>
+                </li>
+            </ul>
+        </section>
+
+        <section class="mk-plugins" aria-labelledby="plugins-title">
+            <div class="mk-rack-copy" data-reveal>
+                <p class="mk-eyebrow">Plugins</p>
+                <h2 id="plugins-title" class="mk-h2">Bring your own plugins, VST3 and CLAP included.</h2>
+                <p class="mk-lead mk-lead--small">
+                    A plugin can be the sound of a synth track or an effect in any rack. It is saved with your session, follows undo and plays in your
+                    exports.
+                </p>
+            </div>
+            <ul class="mk-plug-list" aria-label="Plugin formats">
+                <li v-for="(source, index) in PLUGINS" :key="source.key" class="mk-plug" :style="{ '--i': index, '--c': source.color }" data-reveal>
+                    <span class="mk-module-jack" aria-hidden="true"></span>
+                    <span class="mk-module-led" aria-hidden="true"></span>
+                    <p class="mk-plug-formats">
+                        <span v-for="format in source.formats" :key="format">{{ format }}</span>
+                    </p>
+                    <div class="mk-plug-body">
+                        <h3 class="mk-h3">{{ source.title }}</h3>
+                        <p>{{ source.text }}</p>
+                        <div class="mk-plug-foot">
+                            <ul class="mk-plug-tags">
+                                <li v-for="tag in source.tags" :key="tag">{{ tag }}</li>
+                            </ul>
+                            <a v-if="source.link" :href="source.link.href" target="_blank" rel="noopener noreferrer" class="mk-plug-link">{{ source.link.label }}</a>
+                        </div>
+                    </div>
                 </li>
             </ul>
         </section>
