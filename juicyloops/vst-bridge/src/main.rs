@@ -73,6 +73,8 @@ fn main() {
 
     init_logging();
     let config_path = options.config_path.clone().unwrap_or_else(|| config::config_dir().join("config.json"));
+    // A new token is made on the first start (no settings yet) and on --reset-token: the user has to pair (again).
+    let new_token = options.reset_token || !config_path.exists();
     let mut config = match Config::load_or_create(&config_path) {
         Ok(config) => config,
         Err(error) => {
@@ -150,6 +152,9 @@ fn main() {
     println!("  Settings:        {}", config_path.display());
     println!("  Plugin windows:  {}", if editors { "on" } else { "off (no display)" });
     println!("Leave this running while you use desktop plugins in the studio. Ctrl+C quits.");
+    if new_token {
+        show_status_page_without_terminal(port);
+    }
 
     let shared = Shared { config: Arc::new(config), main: main.clone(), audio, scanner, editors_available: editors, port };
     std::thread::Builder::new().name("bridge-server".into()).spawn(move || server::serve(listener, shared)).expect("could not start the server thread");
@@ -161,3 +166,20 @@ fn main() {
     }
     vst_bridge::engine::run_headless(&mut engine, &receiver);
 }
+
+/// The Mac app started from Finder or the Dock has no terminal to print the pairing token to. When there is one to
+/// pair with, it shows the status page (which has the token) in the default browser instead.
+#[cfg(target_os = "macos")]
+fn show_status_page_without_terminal(port: u16) {
+    // SAFETY: isatty only looks at the descriptor.
+    if unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1 {
+        return;
+    }
+    if let Err(error) = std::process::Command::new("/usr/bin/open").arg(format!("http://127.0.0.1:{port}/")).spawn() {
+        log::warn!("Could not open the status page: {error}");
+    }
+}
+
+/// Elsewhere the bridge runs in a terminal (Windows starts it in a console window), which shows the token.
+#[cfg(not(target_os = "macos"))]
+fn show_status_page_without_terminal(_port: u16) {}

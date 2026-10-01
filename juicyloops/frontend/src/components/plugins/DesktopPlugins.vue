@@ -183,6 +183,21 @@ const pick = (plugin: BridgePluginInfo) => {
                 Instruments add no delay to sequenced notes; effects play about 30 ms late.
                 <button type="button" class="bridge-link-button" @click="forget">Unpair</button>
             </p>
+            <details class="bridge-advanced bridge-vst2">
+                <summary>Have VST2 plugins?</summary>
+                <p class="bridge-help">
+                    The bridge plays VST3 and CLAP. For a VST2 plugin, install a <strong>wrapper</strong>: a VST3 plugin that hosts others inside itself, such as
+                    <a href="https://kushview.net/element/" target="_blank" rel="noopener">Element</a> (free; VST2 on Windows and macOS),
+                    <a href="https://www.bluecataudio.com/Products/Product_PatchWork/" target="_blank" rel="noopener">PatchWork</a> or
+                    <a href="https://ddmf.eu/metaplugin-chainer-vst-au-rtas-aax-wrapper/" target="_blank" rel="noopener">Metaplugin</a>.
+                </p>
+                <ol class="bridge-steps">
+                    <li>Install the wrapper's VST3 version, then press ↻ above. It shows up in this list.</li>
+                    <li>Pick it ({{ kind === 'instrument' ? 'its instrument or synth version, so it gets your notes' : 'as an effect' }}), then press <strong>Open</strong> on its device.</li>
+                    <li>In the wrapper's window, load your VST2 plugin. Everything inside is saved with your session and plays in exports.</li>
+                </ol>
+                <p class="bridge-help">32-bit VST2 plugins need a 64-bit version, or a 32-to-64-bit bridge such as jBridge first.</p>
+            </details>
         </template>
     </section>
 </template>

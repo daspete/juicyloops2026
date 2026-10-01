@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Juicy Loops Bridge
+GenericName=Plugin bridge
+Comment=Plays your CLAP and VST3 plugins in the Juicy Loops studio
+Exec=juicyloops-bridge
+Icon=juicyloops-bridge
+Terminal=true
+Categories=AudioVideo;Audio;Music;
+Keywords=VST;VST3;CLAP;plugins;Juicy Loops;

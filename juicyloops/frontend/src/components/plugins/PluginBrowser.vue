@@ -6,6 +6,8 @@ import { usePlugins } from '@/composables/usePlugins';
 import { addMyPlugin, communityPlugins, CURATED_PLUGINS, myPlugins, normalizePluginUrl, removeMyPlugin, type PluginEntry } from '@/juicyloops/plugins/catalog';
 import type { PluginRef } from '@/juicyloops/plugins/pluginRef';
 import DesktopPlugins from './DesktopPlugins.vue';
+import { bridge } from '@/juicyloops/bridge/client';
+import { desktopSystem, FREE_DESKTOP_PLUGINS, type FreeDesktopPlugin } from '@/juicyloops/plugins/freeDesktopPlugins';
 
 /**
  * Picks a Web Audio Module: the community list (instruments or effects, whichever was asked for), the user's own,
@@ -43,7 +45,7 @@ watch(isOpen, (open) => {
     }
 });
 
-const matches = (entry: PluginEntry) => {
+const matches = (entry: { name: string; vendor: string; category: string; description: string }) => {
     const words = query.value.trim().toLowerCase();
     return !words || `${entry.name} ${entry.vendor} ${entry.category} ${entry.description}`.toLowerCase().includes(words);
 };
@@ -51,6 +53,25 @@ const matches = (entry: PluginEntry) => {
 const mine = computed(() => myPlugins.value.filter((entry) => entry.kind === kind.value && matches(entry)));
 const listed = computed(() => community.value.filter((entry) => entry.kind === kind.value && matches(entry)));
 const curated = computed(() => CURATED_PLUGINS.filter((entry) => entry.kind === kind.value && matches(entry)));
+
+/* ---- tabs: plugins that run in the page, and desktop plugins through the bridge ---- */
+
+type Tab = 'wam' | 'desktop';
+const tab = ref<Tab>('wam');
+const TABS: readonly { key: Tab; label: string; icon: string }[] = [
+    { key: 'wam', label: 'Web Audio Modules', icon: 'mdi:web' },
+    { key: 'desktop', label: 'Desktop (VST3 / CLAP)', icon: 'mdi:monitor' },
+];
+
+/** The system the free list is sorted and marked for: the bridge's, else the browser's. */
+const system = computed(() => desktopSystem(bridge.info.value?.os));
+
+/** Free desktop plugins of the kind asked for, the ones for this system first. */
+const freeDesktop = computed(() => {
+    const target = system.value;
+    const missing = (entry: FreeDesktopPlugin) => Number(!!target && !entry.systems.includes(target));
+    return FREE_DESKTOP_PLUGINS.filter((entry) => entry.kind === kind.value && matches(entry)).sort((a, b) => missing(a) - missing(b));
+});
 
 const LIVE_ONLY_HINT = 'Plays live, but is silent in exports: it takes its notes or makes its sound outside the audio engine.';
 
@@ -101,13 +122,30 @@ const onVisible = (visible: boolean) => {
         @update:visible="onVisible"
     >
         <div class="plugin-browser">
+            <div class="plugin-tabs" role="tablist" aria-label="Plugin kind">
+                <button
+                    v-for="item in TABS"
+                    :id="`plugin-tab-${item.key}`"
+                    :key="item.key"
+                    type="button"
+                    role="tab"
+                    class="plugin-tab"
+                    :aria-selected="tab === item.key"
+                    :aria-controls="`plugin-panel-${item.key}`"
+                    :data-active="tab === item.key"
+                    @click="tab = item.key"
+                >
+                    <Icon :icon="item.icon" class="w-4 h-4" />
+                    <span>{{ item.label }}</span>
+                </button>
+            </div>
+            <input v-model="query" class="input" type="search" placeholder="Search plugins" aria-label="Search plugins" />
+
+            <div v-if="tab === 'wam'" id="plugin-panel-wam" class="plugin-panel" role="tabpanel" aria-labelledby="plugin-tab-wam">
             <p class="plugin-note">
                 <Icon icon="mdi:shield-alert-outline" class="w-4 h-4 shrink-0" />
                 <span>Web Audio Modules are plugins that run in your browser. They load code from the site that hosts them, so only add ones you trust. Plugins marked “Live only” play live but are silent in exports.</span>
             </p>
-            <input v-model="query" class="input" type="search" placeholder="Search plugins" aria-label="Search plugins" />
-
-            <DesktopPlugins :kind="kind" :query="query" @pick="pickDesktop" />
 
             <section v-if="mine.length" class="plugin-group" aria-label="Your plugins">
                 <h4>Yours</h4>
@@ -176,6 +214,47 @@ const onVisible = (visible: boolean) => {
                 </div>
                 <p v-if="addressError" class="plugin-error">{{ addressError }}</p>
             </form>
+            </div>
+
+            <div v-else id="plugin-panel-desktop" class="plugin-panel" role="tabpanel" aria-labelledby="plugin-tab-desktop">
+                <DesktopPlugins :kind="kind" :query="query" @pick="pickDesktop" />
+
+                <section class="plugin-group" aria-label="Free desktop plugins">
+                    <h4>Free {{ kind === 'instrument' ? 'instruments' : 'effects' }} to download</h4>
+                    <p class="bridge-help">
+                        Install one, then press ↻ in Desktop plugins above. These open the maker’s page in a new tab.
+                        <template v-if="system">Sorted for {{ system }}.</template>
+                    </p>
+                    <p v-if="!freeDesktop.length" class="plugin-empty">No plugin matches.</p>
+                    <div v-else class="plugin-grid">
+                        <a
+                            v-for="entry in freeDesktop"
+                            :key="entry.url + entry.name"
+                            class="plugin-pick plugin-free"
+                            :href="entry.url"
+                            target="_blank"
+                            rel="noopener"
+                            :data-unavailable="!!system && !entry.systems.includes(system)"
+                        >
+                            <span class="plugin-thumb"><Icon :icon="entry.kind === 'instrument' ? 'mdi:piano' : 'mdi:tune-vertical-variant'" class="w-6 h-6" /></span>
+                            <span class="plugin-text">
+                                <span class="plugin-name">
+                                    {{ entry.name }}
+                                    <Icon icon="mdi:open-in-new" class="w-3 h-3 inline-block align-baseline opacity-60" />
+                                </span>
+                                <span class="plugin-meta">{{ entry.vendor }} · {{ entry.category }}</span>
+                                <span class="plugin-desc">{{ entry.description }}</span>
+                                <span class="plugin-chips">
+                                    <span v-for="format in entry.formats" :key="format" class="plugin-chip">{{ format }}</span>
+                                    <span class="plugin-chip plugin-chip--systems">{{ entry.systems.join(' · ') }}</span>
+                                    <span v-if="system && !entry.systems.includes(system)" class="plugin-badge">Not for {{ system }}</span>
+                                    <span v-if="entry.note" class="plugin-chip plugin-chip--note">{{ entry.note }}</span>
+                                </span>
+                            </span>
+                        </a>
+                    </div>
+                </section>
+            </div>
         </div>
     </Dialog>
 </template>

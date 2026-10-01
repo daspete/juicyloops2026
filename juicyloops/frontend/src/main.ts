@@ -1,5 +1,6 @@
 import '@/assets/css/main.css';
 import { createJuicyApp } from '@/createApp';
+import type { TrackEvent } from './analytics/outboundLinks';
 
 const container = document.getElementById('app')!;
 /* Prerendered pages carry their markup already; in dev, and for the studio shell, the container is empty. */
@@ -31,7 +32,7 @@ router.beforeEach((to, from) => {
 
 /* Analytics after the page is interactive: it never competes with the first paint or hydration. */
 const installAnalytics = async () => {
-    const { createPlausible } = await import('v-plausible/vue');
+    const [{ createPlausible }, { trackOutboundLinks }] = await Promise.all([import('v-plausible/vue'), import('./analytics/outboundLinks')]);
     app.use(
         createPlausible({
             init: {
@@ -41,10 +42,15 @@ const installAnalytics = async () => {
             },
             settings: {
                 enableAutoPageviews: true,
-                enableAutoOutboundTracking: true,
+                // Its own outbound tracking redirects every outside link in the same tab, `target="_blank"` or not.
+                enableAutoOutboundTracking: false,
             },
         }),
     );
+    const plausible = app.config.globalProperties.$plausible as { trackEvent: TrackEvent } | undefined;
+    if (plausible) {
+        trackOutboundLinks((name, options) => plausible.trackEvent(name, options));
+    }
 };
 
 /* Wait for the route so hydration sees the same tree the prerenderer produced. */

@@ -11,7 +11,13 @@ measurements and what is left. Wire protocol: [`PROTOCOL.md`](PROTOCOL.md).
 
 ## Using it
 
-1. Start `juicyloops-bridge` (a terminal window shows what it does; leave it open while you work).
+1. Start the bridge and leave it running while you work:
+   - **Windows**: `juicyloops-bridge.exe` (it opens a console window).
+   - **macOS**: **Juicy Loops Bridge.app** (move it to Applications first). Started from Finder it has no terminal,
+     so the first start opens the status page in your browser instead.
+   - **Linux**: `./install.sh` adds **Juicy Loops Bridge** to the app menu (it opens in a terminal); or run
+     `./juicyloops-bridge`. `./install.sh --uninstall` removes it again.
+
    It prints a **pairing token** and the address of a status page (`http://127.0.0.1:47817/`) that shows it too.
 2. In the studio, open **Add plugin** (a synth track's *Plugin* model, or *Add effect → plugin*). The section
    **Desktop plugins (VST bridge)** asks for the token once; the browser remembers it.
@@ -27,8 +33,38 @@ opened in a child process.
 | macOS | `/Library/Audio/Plug-Ins/CLAP`, `~/Library/Audio/Plug-Ins/CLAP` | `/Library/Audio/Plug-Ins/VST3`, `~/Library/Audio/Plug-Ins/VST3` |
 | Linux | `~/.clap`, `/usr/lib/clap`, `/usr/local/lib/clap` | `~/.vst3`, `/usr/lib/vst3`, `/usr/local/lib/vst3` |
 
-`CLAP_PATH` is honoured; more folders go in `extraPluginPaths` or `--plugin-path`. VST2 is not supported (its SDK
-was withdrawn by Steinberg in 2018 and may not be distributed; new hosts cannot license it).
+`CLAP_PATH` is honoured; more folders go in `extraPluginPaths` or `--plugin-path`. VST2 is not supported directly
+(its SDK was withdrawn by Steinberg in 2018 and may not be distributed; new hosts cannot license it), but VST2
+plugins can play through a wrapper, below.
+
+### VST2 plugins, through a wrapper
+
+A *wrapper* is a VST3 plugin that hosts other plugins inside itself, VST2 included. The bridge loads the wrapper like
+any VST3 plugin, and the wrapper loads your VST2 plugins. You install and license the wrapper yourself; Juicy Loops
+neither ships nor contains it.
+
+| Wrapper | Price | Notes |
+|---|---|---|
+| [Element](https://kushview.net/element/) by Kushview | free, open source | A full patcher: several plugins, routing and MIDI in one. Hosts VST2 on Windows and macOS (its Linux builds have no VST2). |
+| [PatchWork](https://www.bluecataudio.com/Products/Product_PatchWork/) by Blue Cat Audio | paid, free demo | Plugin chains in series or parallel; has an instrument version. |
+| [Metaplugin](https://ddmf.eu/metaplugin-chainer-vst-au-rtas-aax-wrapper/) by DDMF | paid, free demo | Plugin chains with a routing matrix. |
+
+1. Install the wrapper's **VST3** version (into the VST3 folder above) and keep your VST2 plugins where they are.
+2. Start the bridge, or press ↻ in the studio's *Desktop plugins* to scan again. The wrapper appears in the list.
+3. Pick it like any plugin: as an **instrument** on a synth track (choose the wrapper's instrument/synth version if
+   it has one, so it receives notes), or as an **effect** with *Add effect → plugin*.
+4. Press **Open** in its device card. The wrapper's window opens on your desktop; let it scan your VST2 folder once
+   (its settings), then load your VST2 plugin inside it and open the plugin's own window from there.
+
+Everything the wrapper holds, the VST2 plugins and their settings included, is saved with the session, follows undo
+and copy/paste, and plays in exports, because to Juicy Loops it is one VST3 plugin with one state.
+
+- **One wrapper per plugin** keeps things simple: a VST2 synth in one wrapper on its synth track, each VST2 effect in
+  its own wrapper in the rack, so every device card stands for one sound.
+- **32-bit VST2 plugins** do not load into a 64-bit wrapper. They need a 32-to-64-bit bridge first (on Windows,
+  e.g. jBridge), or a 64-bit version of the plugin.
+- **MIDI**: the wrapper passes the notes from Juicy Loops on to the plugin inside; check its MIDI routing if an
+  instrument stays silent.
 
 ### Timing
 
@@ -87,11 +123,16 @@ Everything builds in Docker; the host needs only `bash` and `docker`.
 
 | What | Command | Output |
 |---|---|---|
-| Linux (x86_64, glibc ≥ 2.36) | `bash scripts/build.sh` | `dist/linux/juicyloops-bridge` |
-| Windows (x86_64, cross-compiled with MinGW) | `bash scripts/build-windows.sh` | `dist/windows/juicyloops-bridge.exe` |
-| macOS (universal) | `bash scripts/build-macos.sh` **on a Mac** (Apple's SDK cannot go in a Docker image) | `dist/macos/juicyloops-bridge` |
+| Linux (x86_64, glibc ≥ 2.36) | `bash scripts/build.sh` | `dist/linux/`: the program, `install.sh`, a desktop entry and icons |
+| Windows (x86_64, cross-compiled with MinGW) | `bash scripts/build-windows.sh` | `dist/windows/juicyloops-bridge.exe`, icon and version info inside |
+| macOS (universal) | `bash scripts/build-macos.sh` **on a Mac** (Apple's SDK cannot go in a Docker image) | `dist/macos/Juicy Loops Bridge.app` and a zip of it |
+| App icons (only after changing `assets/icon*.svg`) | `bash scripts/icons.sh` | `assets/`: PNGs, `icon.ico`, `icon.icns`, `icon-64.rgba` |
 | Lints, formatting, type-check of all three OSes | `bash scripts/check.sh` | |
 | Tests | `bash scripts/test.sh [--fixtures]` | |
+
+The app icon is the Juicy Loops logo mark on a dark tile: `assets/icon.svg` (fills the square, for Windows and Linux)
+and `assets/icon-macos.svg` (the macOS icon grid). The Windows icon is compiled into the `.exe` by `build.rs`
+(`assets/windows.rc`); plugin windows show it too on Windows and X11.
 
 The GitHub Actions workflow [`.github/workflows/vst-bridge.yml`](../../.github/workflows/vst-bridge.yml) builds all
 three (macOS on a `macos-14` runner) on every push to `main` that touches the bridge, and on demand from the Actions

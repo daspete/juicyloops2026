@@ -11,10 +11,16 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalSize, Size};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
+use winit::window::{Icon, Window, WindowId};
 
 use crate::engine::{Engine, MainMessage, Windows};
 use crate::error::BridgeError;
+
+/// The Juicy Loops icon of plugin windows: 64x64 RGBA rendered by `scripts/icons.sh`, so no image decoder is needed.
+/// Windows and X11 show it; macOS shows the app bundle's icon instead, and Wayland has no per-window icons.
+fn app_icon() -> Option<Icon> {
+    Icon::from_rgba(include_bytes!("../assets/icon-64.rgba").to_vec(), 64, 64).ok()
+}
 
 /// Makes the event loop, or `None` when there is no display to talk to.
 pub fn event_loop() -> Option<EventLoop<()>> {
@@ -51,7 +57,8 @@ impl Windows for WinitWindows<'_> {
 
     fn open(&mut self, instance: u32, title: &str, width: u32, height: u32, resizable: bool) -> Result<RawWindowHandle, BridgeError> {
         self.close(instance);
-        let attributes = Window::default_attributes().with_title(title).with_inner_size(editor_size(width, height)).with_resizable(resizable);
+        let attributes =
+            Window::default_attributes().with_title(title).with_inner_size(editor_size(width, height)).with_resizable(resizable).with_window_icon(app_icon());
         let window = self.event_loop.create_window(attributes).map_err(|error| BridgeError::internal(format!("Could not make a window: {error}")))?;
         let handle = window.window_handle().map_err(|error| BridgeError::internal(format!("The window has no handle: {error}")))?.as_raw();
         self.ids.insert(window.id(), instance);

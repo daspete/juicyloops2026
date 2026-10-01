@@ -35,10 +35,11 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - run: cargo test --locked --lib
       - run: bash scripts/build-macos.sh
+      # The app bundle zipped on the Mac itself (ditto): artifacts would drop its executable bit.
       - uses: actions/upload-artifact@v4
         with:
           name: juicyloops-bridge-macos
-          path: juicyloops/vst-bridge/dist/macos/
+          path: juicyloops/vst-bridge/dist/macos/juicyloops-bridge-macos.zip
 
   # Publishes the builds as a GitHub Release (https://github.com/daspete/juicyloops2026/releases), tagged with the
   # bridge's version from Cargo.toml (bridge-v0.1.0). A later build of the same version replaces that release's files;
@@ -68,11 +69,15 @@ jobs:
           version=$(sed -n 's/^version = "\(.*\)"/\1/p' juicyloops/vst-bridge/Cargo.toml | head -1)
           echo "version=$version" >> "$GITHUB_OUTPUT"
           mkdir -p release
-          # Artifacts lose the executable bit; put it back before packing.
-          chmod +x artifacts/juicyloops-bridge-linux-windows/linux/juicyloops-bridge artifacts/juicyloops-bridge-macos/juicyloops-bridge
-          tar -czf "release/juicyloops-bridge-$version-linux-x86_64.tar.gz" -C artifacts/juicyloops-bridge-linux-windows/linux juicyloops-bridge
+          # Linux: one folder (program, install.sh, desktop entry, icons). Artifacts lose the executable bit; put it back.
+          linux="juicyloops-bridge-$version-linux-x86_64"
+          cp -r artifacts/juicyloops-bridge-linux-windows/linux "$linux"
+          chmod +x "$linux/juicyloops-bridge" "$linux/install.sh"
+          tar -czf "release/$linux.tar.gz" "$linux"
+          # Windows: the program; its icon and version info are inside the .exe.
           (cd artifacts/juicyloops-bridge-linux-windows/windows && zip -9 "$GITHUB_WORKSPACE/release/juicyloops-bridge-$version-windows-x86_64.zip" juicyloops-bridge.exe)
-          (cd artifacts/juicyloops-bridge-macos && zip -9 "$GITHUB_WORKSPACE/release/juicyloops-bridge-$version-macos-universal.zip" juicyloops-bridge)
+          # macOS: Juicy Loops Bridge.app, already zipped on the Mac.
+          cp artifacts/juicyloops-bridge-macos/juicyloops-bridge-macos.zip "release/juicyloops-bridge-$version-macos-universal.zip"
           (cd release && sha256sum * > SHA256SUMS.txt)
           ls -l release
       - name: Publish
@@ -83,7 +88,12 @@ jobs:
           cat > notes.md <<NOTES
           The Juicy Loops VST bridge $version: plays your CLAP and VST3 plugins in the studio (Plugin browser → Desktop plugins).
 
-          **Download** the file for your system, unpack it and start \`juicyloops-bridge\`. Open http://127.0.0.1:47817 for the pairing token, then paste it into the studio once.
+          **Download** the file for your system and unpack it:
+          - **Windows**: start \`juicyloops-bridge.exe\`. Its window shows the pairing token.
+          - **macOS**: move **Juicy Loops Bridge** to Applications and open it. The first start shows the pairing token in your browser.
+          - **Linux**: run \`./install.sh\` to add **Juicy Loops Bridge** to your app menu (or start \`./juicyloops-bridge\` directly). The terminal shows the pairing token.
+
+          Paste the token into the studio once (Plugin browser → Desktop). The status page http://127.0.0.1:47817 shows it any time.
 
           | System | File |
           |---|---|
