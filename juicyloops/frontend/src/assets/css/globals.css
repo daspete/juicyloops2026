@@ -5103,3 +5103,44 @@
     color: #e03c3c;
     background: rgba(224, 60, 60, 0.14);
 }
+
+/* ---------- export dialog: real-time export ---------- */
+
+.export-note {
+    margin: 0;
+    font-size: 0.74rem;
+    line-height: 1.4;
+    color: var(--jl-muted);
+
+    &[data-warn='true'] {
+        color: #e5a13c;
+    }
+}
+
+/* The outlook line while recording: the text, then a bar filling up with the seconds recorded. */
+.export-outlook:has(.export-progress) {
+    flex-wrap: wrap;
+}
+
+.export-progress-text {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.export-progress {
+    flex: 1 0 100%;
+    height: 0.3rem;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--jl-brand) var(--export-progress, 0%), var(--jl-line) var(--export-progress, 0%));
+}
+
+.export-recording {
+    color: #e5484d;
+    animation: export-blink 1s steps(2, jump-none) infinite;
+}
+
+@keyframes export-blink {
+    50% {
+        opacity: 0.35;
+    }
+}

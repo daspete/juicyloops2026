@@ -3,7 +3,9 @@ import { Icon } from '@iconify/vue';
 import { Button, Dialog } from 'primevue';
 import { computed, ref, watch } from 'vue';
 import { usePlugins } from '@/composables/usePlugins';
-import { addMyPlugin, communityPlugins, myPlugins, normalizePluginUrl, removeMyPlugin, type PluginEntry } from '@/juicyloops/plugins/catalog';
+import { addMyPlugin, communityPlugins, CURATED_PLUGINS, myPlugins, normalizePluginUrl, removeMyPlugin, type PluginEntry } from '@/juicyloops/plugins/catalog';
+import type { PluginRef } from '@/juicyloops/plugins/pluginRef';
+import DesktopPlugins from './DesktopPlugins.vue';
 
 /**
  * Picks a Web Audio Module: the community list (instruments or effects, whichever was asked for), the user's own,
@@ -48,9 +50,18 @@ const matches = (entry: PluginEntry) => {
 
 const mine = computed(() => myPlugins.value.filter((entry) => entry.kind === kind.value && matches(entry)));
 const listed = computed(() => community.value.filter((entry) => entry.kind === kind.value && matches(entry)));
+const curated = computed(() => CURATED_PLUGINS.filter((entry) => entry.kind === kind.value && matches(entry)));
+
+const LIVE_ONLY_HINT = 'Plays live, but is silent in exports: it takes its notes or makes its sound outside the audio engine.';
 
 const pick = (entry: PluginEntry) => {
     browser.value?.pick({ url: entry.url, name: entry.name, vendor: entry.vendor, state: null });
+    closeBrowser();
+};
+
+/** A desktop plugin (Juicy Loops Bridge). */
+const pickDesktop = (plugin: PluginRef) => {
+    browser.value?.pick(plugin);
     closeBrowser();
 };
 
@@ -92,9 +103,11 @@ const onVisible = (visible: boolean) => {
         <div class="plugin-browser">
             <p class="plugin-note">
                 <Icon icon="mdi:shield-alert-outline" class="w-4 h-4 shrink-0" />
-                <span>Web Audio Modules are plugins that run in your browser. They load code from the site that hosts them, so only add ones you trust. Plugins that build their sound outside the audio engine can only be heard live, not in exports.</span>
+                <span>Web Audio Modules are plugins that run in your browser. They load code from the site that hosts them, so only add ones you trust. Plugins marked “Live only” play live but are silent in exports.</span>
             </p>
             <input v-model="query" class="input" type="search" placeholder="Search plugins" aria-label="Search plugins" />
+
+            <DesktopPlugins :kind="kind" :query="query" @pick="pickDesktop" />
 
             <section v-if="mine.length" class="plugin-group" aria-label="Your plugins">
                 <h4>Yours</h4>
@@ -108,6 +121,23 @@ const onVisible = (visible: boolean) => {
                     </button>
                     <button type="button" class="iconbtn" :aria-label="`Forget ${entry.name}`" v-tooltip.left="'Forget this plugin'" @click="removeMyPlugin(entry.url)">
                         <Icon icon="mdi:close" class="w-4 h-4" />
+                    </button>
+                </div>
+            </section>
+
+            <section v-if="curated.length" class="plugin-group" aria-label="More plugins">
+                <h4>More from the web</h4>
+                <div class="plugin-grid">
+                    <button v-for="entry in curated" :key="entry.url" type="button" class="plugin-pick" @click="pick(entry)">
+                        <span class="plugin-thumb"><Icon icon="mdi:puzzle-outline" class="w-6 h-6" /></span>
+                        <span class="plugin-text">
+                            <span class="plugin-name">
+                                {{ entry.name }}
+                                <span v-if="entry.liveOnly" class="plugin-badge" v-tooltip.top="LIVE_ONLY_HINT">Live only</span>
+                            </span>
+                            <span class="plugin-meta">{{ entry.vendor }} · {{ entry.category }}</span>
+                            <span class="plugin-desc">{{ entry.description }}</span>
+                        </span>
                     </button>
                 </div>
             </section>
@@ -127,7 +157,10 @@ const onVisible = (visible: boolean) => {
                             <Icon v-else icon="mdi:puzzle-outline" class="w-6 h-6" />
                         </span>
                         <span class="plugin-text">
-                            <span class="plugin-name">{{ entry.name }}</span>
+                            <span class="plugin-name">
+                                {{ entry.name }}
+                                <span v-if="entry.liveOnly" class="plugin-badge" v-tooltip.top="LIVE_ONLY_HINT">Live only</span>
+                            </span>
                             <span class="plugin-meta">{{ entry.vendor }} · {{ entry.category }}</span>
                             <span class="plugin-desc">{{ entry.description }}</span>
                         </span>

@@ -3,6 +3,7 @@ import type { WamNode, WebAudioModule } from '@webaudiomodules/api';
 // there is no AudioWorkletNode (prerendering, unit tests).
 import initializeWamHost from '@webaudiomodules/sdk/src/initializeWamHost.js';
 import type { BaseContext } from 'tone';
+import { isBridgeUrl } from '../bridge/protocol';
 
 /**
  * Hosting Web Audio Modules (WAM 2.0): plugins loaded from a URL, running in the page.
@@ -100,6 +101,11 @@ export interface LoadedPlugin {
 
 /** Creates a plugin instance on a Tone context, with a stored state when there is one. */
 export const createPlugin = async (context: BaseContext, url: string, state?: unknown): Promise<LoadedPlugin> => {
+    // Desktop plugins (`vstbridge:` addresses) run in the Juicy Loops Bridge app and come back dressed as a WAM.
+    if (isBridgeUrl(url)) {
+        const { createBridgePlugin } = await import('../bridge/bridgePlugin');
+        return createBridgePlugin(context, url, state);
+    }
     const native = nativeContextOf(context);
     const [Wam, group] = await Promise.all([loadModule(url), hostGroup(native)]);
     const module = await Wam.createInstance(group, native, state ?? undefined);

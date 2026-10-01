@@ -205,6 +205,9 @@ export const renderSession = async (session: SessionState, options: RenderOption
                 await sequencer.whenReady();
                 sequencer.start();
                 context.transport.start(PRE_ROLL);
+                // Half a step after the last one nothing more is scheduled, so the tail is the ring-out of what played,
+                // not the start of the next pass of a looping container. Notes already started keep sounding.
+                context.transport.stop(PRE_ROLL + (plan.steps - 0.5) * secondsPerStep(options.bpm));
             },
             PRE_ROLL + duration + latency,
             2,

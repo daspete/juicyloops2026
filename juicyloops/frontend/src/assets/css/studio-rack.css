@@ -2352,3 +2352,200 @@
 .plugin-window-body > .plugin-error {
     padding: 0.75rem;
 }
+
+/* The window's body is dark whatever the theme (plugins draw for a dark host), so its own messages are light. */
+.plugin-window-body > .plugin-empty {
+    color: #c9c6d8;
+}
+
+.plugin-badge {
+    display: inline-block;
+    margin-left: 0.3rem;
+    padding: 0 0.35rem;
+    border-radius: 0.3rem;
+    background: color-mix(in oklab, var(--jl-accent, var(--jl-brand)) 16%, transparent);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    vertical-align: 0.1em;
+    color: var(--jl-muted);
+}
+
+/* ---- desktop plugins (Juicy Loops Bridge): browser section and the panel in a plugin window ---- */
+
+.bridge-section {
+    padding: 0.6rem 0.65rem 0.65rem;
+    border-radius: 0.6rem;
+    background: color-mix(in oklab, var(--jl-accent) 5%, var(--jl-raised));
+    box-shadow: inset 0 0 0 1px var(--jl-line);
+}
+
+.bridge-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 1.75rem;
+}
+
+.bridge-head h4 {
+    flex: 1 1 auto;
+}
+
+.bridge-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.05rem 0.45rem;
+    border-radius: 999px;
+    background: var(--jl-cell);
+    font-size: 0.66rem;
+    font-weight: 700;
+    color: var(--jl-muted);
+    white-space: nowrap;
+}
+
+.bridge-pill::before {
+    content: '';
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background: currentColor;
+    opacity: 0.6;
+}
+
+.bridge-pill[data-state='ready'] {
+    background: color-mix(in oklab, #2fa36b 16%, transparent);
+    color: #1f8a57;
+}
+
+.bridge-pill[data-state='unpaired'],
+.bridge-pill[data-state='offline'] {
+    background: color-mix(in oklab, #d9822b 16%, transparent);
+    color: #b5651d;
+}
+
+.bridge-pill[data-state='connecting']::before {
+    display: none;
+}
+
+.bridge-intro {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    font-size: 0.76rem;
+    line-height: 1.45;
+    color: var(--jl-muted);
+}
+
+.bridge-intro strong {
+    color: var(--jl-text);
+}
+
+.bridge-steps {
+    margin: 0;
+    padding-left: 1.2rem;
+    list-style: decimal;
+}
+
+.bridge-links {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+}
+
+.bridge-links a,
+.bridge-link-button {
+    font-weight: 700;
+    color: var(--jl-accent);
+    text-decoration: underline;
+    text-underline-offset: 0.15em;
+    cursor: pointer;
+}
+
+.bridge-pair {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.bridge-token {
+    font-family: ui-monospace, monospace;
+    letter-spacing: 0.04em;
+}
+
+.bridge-help {
+    font-size: 0.7rem;
+    line-height: 1.4;
+    color: var(--jl-muted);
+}
+
+.bridge-help code {
+    font-size: 0.68rem;
+}
+
+.bridge-advanced {
+    font-size: 0.7rem;
+    color: var(--jl-muted);
+}
+
+.bridge-advanced summary {
+    cursor: pointer;
+    width: max-content;
+}
+
+.bridge-port {
+    width: 7rem;
+    margin-top: 0.3rem;
+}
+
+.bridge-grid {
+    max-height: 16rem;
+}
+
+.bridge-thumb {
+    font-size: 0.62rem;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: var(--jl-accent);
+}
+
+/* The panel a plugin window shows while the plugin's own window is on the desktop (the window body is dark). */
+.bridge-gui {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-width: 22rem;
+    padding: 0.9rem 1rem 1rem;
+    color: #c9c6d8;
+    font-size: 0.78rem;
+    line-height: 1.45;
+}
+
+.bridge-gui-title strong {
+    color: #fff;
+}
+
+.bridge-gui-text {
+    color: #a29fb3;
+}
+
+.bridge-gui-button {
+    align-self: flex-start;
+    padding: 0.35rem 0.7rem;
+    border-radius: 0.45rem;
+    background: rgb(255 255 255 / 0.1);
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.18);
+    color: #fff;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.bridge-gui-button:hover {
+    background: rgb(255 255 255 / 0.16);
+}
+
+.bridge-gui-error {
+    color: #ff8f8f;
+}

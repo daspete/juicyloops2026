@@ -1,0 +1,40 @@
+# Builds the Juicy Loops Bridge for Linux, Windows and macOS. Copy to .github/workflows/vst-bridge.yml to use it.
+# Signing is left out on purpose (secrets); see README "Building".
+name: vst-bridge
+
+on:
+  push:
+    paths: ['juicyloops/vst-bridge/**']
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: juicyloops/vst-bridge
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check.sh
+      - run: bash scripts/test.sh --fixtures
+      - run: bash scripts/build.sh
+      - run: bash scripts/build-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: juicyloops-bridge-linux-windows
+          path: juicyloops/vst-bridge/dist/
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.98.1
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - run: cargo test --locked --lib
+      - run: bash scripts/build-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: juicyloops-bridge-macos
+          path: juicyloops/vst-bridge/dist/macos/

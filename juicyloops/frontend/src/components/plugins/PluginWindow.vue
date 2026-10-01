@@ -22,6 +22,8 @@ const REFRESH_MS = 3000;
 const host = ref<HTMLElement | null>(null);
 const position = ref({ x: 120 + props.index * 28, y: 90 + props.index * 28 });
 const status = computed(() => pluginStatus(props.entry.key));
+/** Set when the plugin has no window of its own, or could not show it. */
+const guiMissing = ref(false);
 
 let gui: { module: WebAudioModule<WamNode>; element: Element } | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
@@ -39,8 +41,17 @@ const mountGui = async () => {
         }
         host.value.replaceChildren(element);
         gui = { module, element };
+        guiMissing.value = false;
+        // Some plugins without an interface hand back an empty element rather than failing.
+        requestAnimationFrame(() => {
+            const { width, height } = element.getBoundingClientRect();
+            if (gui?.element === element && (width < 8 || height < 8)) {
+                guiMissing.value = true;
+            }
+        });
     } catch (error) {
         console.warn('The plugin could not show its window.', error);
+        guiMissing.value = true;
     }
 };
 
@@ -115,6 +126,7 @@ const endDrag = () => {
         <div class="plugin-window-body">
             <p v-if="status?.state === 'loading'" class="plugin-empty"><Icon icon="mdi:loading" class="w-4 h-4 animate-spin" /> Loading the plugin…</p>
             <p v-else-if="status?.state === 'error'" class="plugin-error">{{ status.message }}</p>
+            <p v-else-if="guiMissing" class="plugin-empty">This plugin has no window of its own. It plays with its default sound.</p>
             <div ref="host" class="plugin-window-gui"></div>
         </div>
     </section>

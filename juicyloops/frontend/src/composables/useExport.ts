@@ -1,7 +1,21 @@
-import { computed, ref } from 'vue';
+import { getContext } from 'tone';
+import { computed, nextTick, ref } from 'vue';
 import { engine } from '@/juicyloops/engine';
 import { DEFAULT_MP3_BITRATE, encodeAudio, type ExportFormat } from '@/juicyloops/encode';
-import { planRender, renderDuration, RenderError, renderSession, type RenderScope } from '@/juicyloops/render';
+import { isLiveRenderSupported, liveOnlyPlugins, LiveRecorder, mixChangesFor, RecordingCancelled, type MixChange } from '@/juicyloops/liveRender';
+import {
+    compressorLatency,
+    dynamicsInPath,
+    planRender,
+    renderDuration,
+    RenderError,
+    renderSession,
+    secondsPerStep,
+    type RenderedAudio,
+    type RenderPlan,
+    type RenderScope,
+} from '@/juicyloops/render';
+import type { SessionState } from '@/juicyloops/sequencer';
 import { downloadBlob, safeFileName } from './download';
 import { useJuicyLoops } from './useJuicyLoops';
 import { useSession } from './useSession';
@@ -9,9 +23,14 @@ import { useSession } from './useSession';
 /**
  * Bouncing the song, a container or one track to a WAV or MP3 file.
  *
- * The render happens offline (faster than real time) from a snapshot of the session, so nothing has to play
- * out loud, and the live engine keeps going as it was. Module level state: there is one export at a time.
+ * Two ways to render. Offline (fast) renders from a snapshot of the session, faster than real time, so nothing has to
+ * play out loud and the live engine keeps going as it was. Real time plays the scope once on the live engine and
+ * records the master (`liveRender.ts`): it takes as long as the audio and is heard meanwhile, but it catches plugins
+ * that are silent offline. Module level state: there is one export at a time.
  */
+
+/** `offline` renders faster than real time; `live` records the live engine while it plays. */
+export type ExportMethod = 'offline' | 'live';
 
 export interface ExportSettings {
     scope: RenderScope;
@@ -20,6 +39,8 @@ export interface ExportSettings {
     tail: number;
     /** MP3 only. */
     bitrate: number;
+    /** Offline when left out. */
+    method?: ExportMethod;
 }
 
 export const DEFAULT_TAIL = 2;
@@ -36,10 +57,14 @@ export interface ExportRequest {
     scope?: RenderScope;
 }
 
-const { bpm, stop, containers } = useJuicyLoops();
+const { bpm, stop, play, containers, currentContainer, selectContainer, mode, setMode, songCue, songLoop, onBeforeStop } = useJuicyLoops();
 const session = useSession();
 
 const isExporting = ref(false);
+/** While a real-time export records: seconds heard so far and in all. Null otherwise. */
+const progress = ref<{ elapsed: number; total: number } | null>(null);
+/** Stops the running real-time export; null when none runs. */
+let cancelLive: (() => void) | null = null;
 /** Set while the export dialog is open, with what it was opened for. */
 const request = ref<ExportRequest | null>(null);
 const isDialogOpen = computed(() => request.value !== null);
@@ -52,11 +77,14 @@ const closeDialog = (): void => {
     request.value = null;
 };
 
-/** How long the file would be, or the reason the render cannot happen. */
-const preview = (scope: RenderScope, tail: number): { seconds: number } | { error: string } => {
+/**
+ * How long the file would be and which plugins in the scope only sound in a real-time export, or the reason the
+ * render cannot happen.
+ */
+const preview = (scope: RenderScope, tail: number): { seconds: number; liveOnly: string[] } | { error: string } => {
     try {
         const plan = planRender(engine.capture(), scope);
-        return { seconds: renderDuration(plan, { bpm: bpm.value, tail }) };
+        return { seconds: renderDuration(plan, { bpm: bpm.value, tail }), liveOnly: liveOnlyPlugins(plan.state) };
     } catch (error) {
         return { error: error instanceof RenderError ? error.message : 'This cannot be rendered.' };
     }
@@ -80,14 +108,117 @@ const fileNameFor = (scope: RenderScope, format: ExportFormat): string => {
 };
 
 const describe = (error: unknown): string => {
-    if (error instanceof RenderError) {
+    if (error instanceof RenderError || error instanceof RecordingCancelled) {
         return error.message;
     }
     console.error('Export failed', error);
     return 'The audio could not be rendered.';
 };
 
-/** Renders and downloads. Playback stops first: the render borrows Tone's global context for a moment. */
+/** Sets mute and solo switches through the reactive containers and tracks, so the mixer strips and the solo logic follow. */
+const applyMix = (changes: readonly MixChange[]): void => {
+    for (const change of changes) {
+        const container = containers.value.find((candidate) => candidate.id === change.containerId);
+        if (!container) {
+            continue;
+        }
+        if (!change.trackId) {
+            if (change.isSolo !== undefined) {
+                container.bus.setSolo(change.isSolo);
+            }
+            continue;
+        }
+        const track = container.tracks.find((candidate) => candidate.id === change.trackId);
+        if (track && change.isSolo !== undefined) {
+            track.isSolo = change.isSolo;
+        }
+        if (track && change.isMuted !== undefined) {
+            track.isMuted = change.isMuted;
+        }
+    }
+};
+
+/**
+ * Seconds between arming the recorder and the first step, on top of the transport's look-ahead: time for the command
+ * to reach the audio thread and for the first step to be scheduled.
+ */
+const LIVE_LEAD = 0.15;
+
+/** Seconds past the planned end after which a recording that never finished counts as failed. */
+const LIVE_GRACE = 3;
+
+/**
+ * Plays the plan once on the live engine and records the master, to the frame: the recorder is armed for the very
+ * frame the transport starts on (plus the look-ahead of the compressors in the path, as the offline render cuts it).
+ * The transport stops half a step after the last step, so the tail rings out without the loop coming round again.
+ *
+ * Mode, current container, song cue, song loop region and mute/solo are borrowed and put back as they were,
+ * whether the recording finishes, is cancelled (Cancel, or the stop button) or fails.
+ */
+const recordLive = async (state: SessionState, plan: RenderPlan, scope: RenderScope, seconds: number): Promise<RenderedAudio> => {
+    const context = getContext();
+    if (!isLiveRenderSupported(context)) {
+        throw new RenderError('Real-time export needs a secure (https) page. Use the fast export instead.');
+    }
+    await engine.initialize();
+    const latency = (await compressorLatency(context.sampleRate)) * dynamicsInPath(plan.state);
+    const recorder = await LiveRecorder.create(context, engine.master.meterSource);
+
+    const saved = { mode: mode.value, containerId: currentContainer.value.id, songCue: songCue.value, songLoop: songLoop.value ? { ...songLoop.value } : null };
+    const mix = mixChangesFor(state, scope);
+    let removeStopHook = (): void => {};
+    let timer: ReturnType<typeof setInterval> | undefined;
+    try {
+        applyMix(mix.apply);
+        setMode(plan.mode);
+        songLoop.value = null;
+        songCue.value = 0;
+        if (plan.mode === 'loop') {
+            selectContainer(plan.state.currentContainerId);
+        }
+        // The mode, loop region and solo reach the engine through watchers.
+        await nextTick();
+
+        const startTime = context.currentTime + context.lookAhead + LIVE_LEAD;
+        const recording = recorder.record({ startTime: startTime + latency, seconds });
+        cancelLive = () => recorder.cancel();
+        removeStopHook = onBeforeStop(() => recorder.cancel());
+        progress.value = { elapsed: 0, total: seconds };
+        timer = setInterval(() => {
+            const elapsed = context.currentTime - startTime;
+            progress.value = { elapsed: Math.min(seconds, Math.max(0, elapsed)), total: seconds };
+            if (elapsed > seconds + latency + LIVE_GRACE) {
+                recorder.cancel(new RenderError('The recording did not finish. Try again.'));
+            }
+        }, 100);
+
+        play(startTime);
+        engine.transport.stop(startTime + (plan.steps - 0.5) * secondsPerStep(bpm.value));
+        return await recording;
+    } finally {
+        clearInterval(timer);
+        progress.value = null;
+        cancelLive = null;
+        removeStopHook();
+        recorder.dispose();
+        applyMix(mix.undo);
+        setMode(saved.mode);
+        if (containers.value.some((container) => container.id === saved.containerId)) {
+            selectContainer(saved.containerId);
+        }
+        songLoop.value = saved.songLoop;
+        songCue.value = saved.songCue;
+        // Last, so the playhead comes to rest where the restored mode and cue put it.
+        stop();
+    }
+};
+
+/** Stops a running real-time export; it resolves as cancelled and everything is put back. */
+const cancelExport = (): void => {
+    cancelLive?.();
+};
+
+/** Renders and downloads. Playback stops first: the offline render borrows Tone's global context for a moment. */
 const exportAudio = async (settings: ExportSettings): Promise<ExportResult> => {
     if (isExporting.value) {
         return { ok: false, error: 'An export is already running.' };
@@ -97,11 +228,15 @@ const exportAudio = async (settings: ExportSettings): Promise<ExportResult> => {
         stop();
         await engine.refreshPluginStates();
         const state = engine.capture();
-        const seconds = renderDuration(planRender(state, settings.scope), { bpm: bpm.value, tail: settings.tail });
+        const plan = planRender(state, settings.scope);
+        const seconds = renderDuration(plan, { bpm: bpm.value, tail: settings.tail });
         if (seconds > MAX_RENDER_SECONDS) {
             throw new RenderError(`That would be ${Math.round(seconds / 60)} minutes of audio; the browser cannot hold more than ${MAX_RENDER_SECONDS / 60}.`);
         }
-        const audio = await renderSession(state, { bpm: bpm.value, scope: settings.scope, tail: settings.tail });
+        const audio =
+            settings.method === 'live'
+                ? await recordLive(state, plan, settings.scope, seconds)
+                : await renderSession(state, { bpm: bpm.value, scope: settings.scope, tail: settings.tail });
         const blob = await encodeAudio(audio, settings.format, settings.bitrate || DEFAULT_MP3_BITRATE);
         const fileName = fileNameFor(settings.scope, settings.format);
         downloadBlob(blob, fileName);
@@ -113,4 +248,4 @@ const exportAudio = async (settings: ExportSettings): Promise<ExportResult> => {
     }
 };
 
-export const useExport = () => ({ isExporting, isDialogOpen, request, openDialog, closeDialog, preview, exportAudio });
+export const useExport = () => ({ isExporting, progress, isDialogOpen, request, openDialog, closeDialog, preview, exportAudio, cancelExport });

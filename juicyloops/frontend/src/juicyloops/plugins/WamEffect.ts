@@ -23,6 +23,8 @@ export class WamEffect extends ToneAudioNode {
 
     private plugin: { module: WebAudioModule<WamNode>; node: WamNode } | null = null;
     private keepAlive: { stop(): void } | null = null;
+    /** A muted path from input to output that stays when the plugin is in (see `load`). */
+    private reach: Gain | null = null;
     private readonly owner: string;
     private isDisposed = false;
 
@@ -63,6 +65,7 @@ export class WamEffect extends ToneAudioNode {
                 /* already gone */
             }
         }
+        this.reach?.dispose();
         this.input.dispose();
         this.output.dispose();
         return this;
@@ -87,6 +90,13 @@ export class WamEffect extends ToneAudioNode {
             this.keepAlive = keepActive(this.context, this.output.input);
             nativeNodeOf(this.input).connect(loaded.node);
             loaded.node.connect(nativeNodeOf(this.output));
+            // In an offline context standardized-audio-context connects the native nodes only when rendering starts,
+            // and only those it reaches from the destination. Without any path of its own from the input onwards, the
+            // input is never reached, nothing upstream is connected to it, and the plugin hears silence in exports.
+            // A muted path keeps it reachable.
+            this.reach = new Gain({ context: this.context, gain: 0 });
+            this.input.connect(this.reach);
+            this.reach.connect(this.output);
             this.input.disconnect(this.output);
             this.plugin = { module: loaded.module, node: loaded.node };
             this.status({ state: 'ready', name: loaded.name, vendor: loaded.vendor });

@@ -76,6 +76,28 @@ effects (reverb, chorus, ping-pong) now reach the master in stereo. Real stereo 
 folded down (uncorrelated sides, e.g. a reverb tail, up to +3 dB), which is the sound of the stereo itself. Render
 speed unchanged.
 
+## Curated plugins (2026-10-01)
+
+Besides the community list, the browser offers plugins hosted elsewhere (`CURATED_PLUGINS` in
+`plugins/catalog.ts`), each tested in the studio live and in an offline render:
+
+| plugin | host | live | export |
+|---|---|---|---|
+| Pro-54, TX81Z, Electric Piano, Faust FM | cesaref.github.io/wam (Cmajor) | yes | silent: notes reach them through the main thread |
+| OB-Xd, TinySynth (GM, no window) | mainline.i3s.unice.fr/wam2/packages | yes | yes |
+| Guitar LSTM | Cmajor | yes | yes |
+| Convolution Reverb, Filter EQ, Tremolo | Cmajor | yes | yes since 2026-10-01 (were silent: `WamEffect` left its input unreachable for standardized-audio-context's offline rendering; see `notes/vst-bridge.md`). The "Live only" badge is gone. |
+
+Plugins that are silent in exports carry a "Live only" badge (also Synth-101 in the community list). Quadrafuzz
+from the WAM team's host was left out: it duplicates the community one and is nearly silent in exports. A real-time
+export mode (recording the master while the song plays) would make every live-only plugin exportable.
+
+## Desktop plugins (2026-10-01)
+
+Native VST3 and CLAP plugins play through the Juicy Loops Bridge desktop app, as `PluginRef`s with a `vstbridge:`
+address that `createPlugin` hands to `bridge/bridgePlugin.ts`; everything else treats them as WAMs. See
+`notes/vst-bridge.md`.
+
 ## Known limits
 
 - **Composite plugins are live-only.** Some WAMs (Synth-101, for one) build their sound from ordinary Web Audio nodes on

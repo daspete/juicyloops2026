@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Effects, slotsFromLegacy, type EffectsSnapshot } from '../effects/effects';
-import { fromCommunity, normalizePluginUrl } from '../plugins/catalog';
+import { CURATED_PLUGINS, fromCommunity, normalizePluginUrl } from '../plugins/catalog';
 
 /* jsdom has no Web Audio: a plugin slot's node is a stand-in that reports a state and counts how often it was made. */
 const made: string[] = [];
@@ -88,11 +88,25 @@ describe('plugin catalogue', () => {
             category: 'Synthesizer',
             thumbnail: 'https://www.webaudiomodules.com/community/plugins/burns-audio/synth101/shot.png',
             source: 'community',
+            liveOnly: true,
         });
         expect(fromCommunity({ name: 'Grey Hole', category: ['Effect', 'Reverb'], path: 'wimmics/greyhole/index.js' })?.kind).toBe('effect');
         expect(fromCommunity({ name: 'Piano Roll', category: ['MIDI', 'Sequencer'], path: 'x/index.js' })).toBeNull();
         expect(fromCommunity({ name: 'Video', category: ['Video', 'Generator'], path: 'x/index.js' })).toBeNull();
         expect(fromCommunity({ identifier: 'com.sequencerParty.audioInput', name: 'Audio Input', category: ['Effect', 'Utility'], path: 'x/index.js' })).toBeNull();
+    });
+
+    it('lists the curated plugins once each, as https modules, instruments and effects', () => {
+        const urls = CURATED_PLUGINS.map((entry) => entry.url);
+        expect(new Set(urls).size).toBe(urls.length);
+        expect(urls.every((url) => url.startsWith('https://') && url.endsWith('/index.js'))).toBe(true);
+        expect(CURATED_PLUGINS.every((entry) => entry.source === 'curated' && entry.name && entry.description)).toBe(true);
+        expect(new Set(CURATED_PLUGINS.map((entry) => entry.kind))).toEqual(new Set(['instrument', 'effect']));
+    });
+
+    it('marks community plugins known to be silent in exports', () => {
+        expect(fromCommunity({ name: 'Synth-101', category: ['Instrument', 'Synthesizer'], path: 'burns-audio/synth101/index.js' })?.liveOnly).toBe(true);
+        expect(fromCommunity({ name: 'Modal', category: ['Instrument', 'Synthesizer'], path: 'burns-audio/modal/index.js' })?.liveOnly).toBeUndefined();
     });
 
     it('takes a typed address to the plugin module', () => {

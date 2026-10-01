@@ -2,7 +2,7 @@
 import { Button, Dialog } from 'primevue';
 import { computed, ref, watch } from 'vue';
 import { Icon } from '@iconify/vue';
-import { useExport, DEFAULT_TAIL, REPEAT_OPTIONS, type ExportSettings } from '@/composables/useExport';
+import { useExport, DEFAULT_TAIL, REPEAT_OPTIONS, type ExportMethod, type ExportSettings } from '@/composables/useExport';
 import { useJuicyLoops } from '@/composables/useJuicyLoops';
 import { useWorkspace } from '@/composables/useWorkspace';
 import { DEFAULT_MP3_BITRATE, EXPORT_FORMATS, MP3_BITRATES, type ExportFormat } from '@/juicyloops/encode';
@@ -11,12 +11,13 @@ import { TRACK_META } from './tracks/trackMeta';
 
 /**
  * Bounce the song, one container or one track to a file. Opened from the file bar (Ctrl+E) or a track head;
- * the latter preselects that track.
+ * the latter preselects that track. Fast renders offline; Real time plays the scope once and records it, the only
+ * way to catch plugins that are silent offline, so it is preselected whenever the scope has one.
  */
 
 const emit = defineEmits<{ done: [result: { ok: true; fileName: string; seconds: number } | { ok: false; error: string }] }>();
 
-const { isDialogOpen, request, closeDialog, isExporting, preview, exportAudio } = useExport();
+const { isDialogOpen, request, closeDialog, isExporting, progress, preview, exportAudio, cancelExport } = useExport();
 const { containers, currentContainer, song } = useJuicyLoops();
 const { isPro } = useWorkspace();
 
@@ -29,6 +30,12 @@ const repeats = ref(1);
 const tail = ref(DEFAULT_TAIL);
 const format = ref<ExportFormat>('wav');
 const bitrate = ref(DEFAULT_MP3_BITRATE);
+const method = ref<ExportMethod>('offline');
+
+const METHODS: readonly { key: ExportMethod; label: string; icon: string }[] = [
+    { key: 'offline', label: 'Fast (offline)', icon: 'mdi:lightning-bolt-outline' },
+    { key: 'live', label: 'Real time', icon: 'mdi:record-circle-outline' },
+];
 
 const TAILS: readonly number[] = [0, 0.5, 1, 2, 4, 8];
 
@@ -54,6 +61,7 @@ watch(request, (value) => {
     containerId.value = preset && preset.kind !== 'song' ? preset.containerId : currentContainer.value.id;
     trackId.value = preset?.kind === 'track' ? preset.trackId : (tracks.value[0]?.id ?? null);
     repeats.value = preset && preset.kind !== 'song' ? preset.repeats : 1;
+    method.value = liveOnly.value.length ? 'live' : 'offline';
 });
 
 /* A track choice that no longer fits its container falls back to the first one. */
@@ -76,6 +84,27 @@ const scope = computed<RenderScope | null>(() => {
 const outlook = computed(() => (scope.value ? preview(scope.value, tail.value) : { error: 'Add a track first.' }));
 const canExport = computed(() => !isExporting.value && scope.value !== null && 'seconds' in outlook.value);
 
+/** Plugins in the scope that a fast export would leave silent. */
+const liveOnly = computed(() => ('liveOnly' in outlook.value ? outlook.value.liveOnly : []));
+
+/* A scope that gains such a plugin (another track or container picked) switches to real time; it never switches back by itself. */
+watch(
+    () => liveOnly.value.length > 0,
+    (needsLive) => {
+        if (needsLive && !isExporting.value) {
+            method.value = 'live';
+        }
+    },
+);
+
+const methodNote = computed(() => {
+    if (method.value === 'live') {
+        return 'Plays the export once, out loud, and records it: takes as long as the audio, but every plugin is heard.';
+    }
+    const names = liveOnly.value;
+    return names.length ? `${names.join(', ')} ${names.length > 1 ? 'are' : 'is'} silent in a fast export; choose Real time.` : 'Renders in the background, faster than playing it.';
+});
+
 const seconds = (value: number) => {
     const minutes = Math.floor(value / 60);
     const rest = value - minutes * 60;
@@ -86,7 +115,7 @@ const submit = async () => {
     if (!scope.value || !canExport.value) {
         return;
     }
-    const settings: ExportSettings = { scope: scope.value, format: format.value, tail: tail.value, bitrate: bitrate.value };
+    const settings: ExportSettings = { scope: scope.value, format: format.value, tail: tail.value, bitrate: bitrate.value, method: method.value };
     const result = await exportAudio(settings);
     emit('done', result);
     if (result.ok) {
@@ -159,6 +188,26 @@ const onVisible = (visible: boolean) => {
             </fieldset>
 
             <fieldset class="export-group" :disabled="isExporting">
+                <legend class="export-label">How</legend>
+                <div class="export-kinds" role="radiogroup">
+                    <button
+                        v-for="option in METHODS"
+                        :key="option.key"
+                        type="button"
+                        class="export-kind"
+                        role="radio"
+                        :aria-checked="method === option.key"
+                        :data-active="method === option.key"
+                        @click="method = option.key"
+                    >
+                        <Icon :icon="option.icon" class="w-4 h-4" />
+                        <span>{{ option.label }}</span>
+                    </button>
+                </div>
+                <p class="export-note" :data-warn="method === 'offline' && liveOnly.length > 0">{{ methodNote }}</p>
+            </fieldset>
+
+            <fieldset class="export-group" :disabled="isExporting">
                 <legend class="export-label">File</legend>
                 <div class="export-kinds" role="radiogroup">
                     <button
@@ -192,14 +241,26 @@ const onVisible = (visible: boolean) => {
             </fieldset>
 
             <p class="export-outlook" :data-error="'error' in outlook" aria-live="polite">
-                <template v-if="isExporting"><Icon icon="mdi:loading" class="w-4 h-4 animate-spin" /> Rendering… this is faster than playing it.</template>
+                <template v-if="progress">
+                    <Icon icon="mdi:record-circle" class="w-4 h-4 export-recording" />
+                    <span class="export-progress-text">Recording {{ seconds(progress.elapsed) }} of {{ seconds(progress.total) }}, you hear it as it plays.</span>
+                    <span class="export-progress" :style="{ '--export-progress': `${(progress.elapsed / Math.max(progress.total, 0.001)) * 100}%` }" />
+                </template>
+                <template v-else-if="isExporting"><Icon icon="mdi:loading" class="w-4 h-4 animate-spin" /> {{ method === 'live' ? 'Preparing…' : 'Rendering… this is faster than playing it.' }}</template>
                 <template v-else-if="'seconds' in outlook"><Icon icon="mdi:clock-outline" class="w-4 h-4" /> About {{ seconds(outlook.seconds) }} of stereo audio.</template>
                 <template v-else><Icon icon="mdi:alert-circle-outline" class="w-4 h-4" /> {{ outlook.error }}</template>
             </p>
 
             <div class="export-actions">
-                <Button type="button" label="Cancel" text size="small" :disabled="isExporting" @click="closeDialog" />
-                <Button type="submit" :label="isExporting ? 'Rendering…' : `Export ${format.toUpperCase()}`" size="small" :disabled="!canExport" :loading="isExporting" />
+                <Button v-if="progress" type="button" label="Cancel" text size="small" @click="cancelExport" />
+                <Button v-else type="button" label="Cancel" text size="small" :disabled="isExporting" @click="closeDialog" />
+                <Button
+                    type="submit"
+                    :label="isExporting ? (progress ? 'Recording…' : method === 'live' ? 'Preparing…' : 'Rendering…') : `Export ${format.toUpperCase()}`"
+                    size="small"
+                    :disabled="!canExport"
+                    :loading="isExporting"
+                />
             </div>
         </form>
     </Dialog>
