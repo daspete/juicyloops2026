@@ -39,3 +39,65 @@ jobs:
         with:
           name: juicyloops-bridge-macos
           path: juicyloops/vst-bridge/dist/macos/
+
+  # Publishes the builds as a GitHub Release (https://github.com/daspete/juicyloops2026/releases), tagged with the
+  # bridge's version from Cargo.toml (bridge-v0.1.0). A later build of the same version replaces that release's files;
+  # bump the version in Cargo.toml for a new release.
+  release:
+    needs: [linux, macos]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: vst-bridge-release
+      cancel-in-progress: false
+    defaults:
+      run:
+        working-directory: .
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' juicyloops/vst-bridge/Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          mkdir -p release
+          # Artifacts lose the executable bit; put it back before packing.
+          chmod +x artifacts/juicyloops-bridge-linux-windows/linux/juicyloops-bridge artifacts/juicyloops-bridge-macos/juicyloops-bridge
+          tar -czf "release/juicyloops-bridge-$version-linux-x86_64.tar.gz" -C artifacts/juicyloops-bridge-linux-windows/linux juicyloops-bridge
+          (cd artifacts/juicyloops-bridge-linux-windows/windows && zip -9 "$GITHUB_WORKSPACE/release/juicyloops-bridge-$version-windows-x86_64.zip" juicyloops-bridge.exe)
+          (cd artifacts/juicyloops-bridge-macos && zip -9 "$GITHUB_WORKSPACE/release/juicyloops-bridge-$version-macos-universal.zip" juicyloops-bridge)
+          (cd release && sha256sum * > SHA256SUMS.txt)
+          ls -l release
+      - name: Publish
+        run: |
+          set -euo pipefail
+          version="${{ steps.package.outputs.version }}"
+          tag="bridge-v$version"
+          cat > notes.md <<NOTES
+          The Juicy Loops VST bridge $version: plays your CLAP and VST3 plugins in the studio (Plugin browser → Desktop plugins).
+
+          **Download** the file for your system, unpack it and start \`juicyloops-bridge\`. Open http://127.0.0.1:47817 for the pairing token, then paste it into the studio once.
+
+          | System | File |
+          |---|---|
+          | Windows 10/11 (x64) | \`juicyloops-bridge-$version-windows-x86_64.zip\` |
+          | macOS 11+ (Apple Silicon and Intel) | \`juicyloops-bridge-$version-macos-universal.zip\` |
+          | Linux (x86_64, glibc 2.36+) | \`juicyloops-bridge-$version-linux-x86_64.tar.gz\` |
+
+          These builds are not code-signed yet. On Windows, SmartScreen asks first: *More info → Run anyway*. On macOS, Gatekeeper blocks the first start: right-click the file → *Open*, or run \`xattr -d com.apple.quarantine juicyloops-bridge\`.
+
+          Built from ${GITHUB_SHA::7}. Checksums are in \`SHA256SUMS.txt\`.
+          NOTES
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh release upload "$tag" release/* --clobber
+            gh release edit "$tag" --notes-file notes.md --latest
+          else
+            gh release create "$tag" release/* --title "VST bridge $version" --notes-file notes.md --target "$GITHUB_SHA" --latest
+          fi

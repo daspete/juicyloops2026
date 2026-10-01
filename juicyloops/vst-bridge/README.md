@@ -95,7 +95,10 @@ Everything builds in Docker; the host needs only `bash` and `docker`.
 
 The GitHub Actions workflow [`.github/workflows/vst-bridge.yml`](../../.github/workflows/vst-bridge.yml) builds all
 three (macOS on a `macos-14` runner) on every push to `main` that touches the bridge, and on demand from the Actions
-tab; the binaries are attached to the run as artifacts. Releases should be
+tab. When both builds pass, it publishes them on the
+[Releases page](https://github.com/daspete/juicyloops2026/releases) as `bridge-v<version>` (the version in
+`Cargo.toml`): a zip for Windows and macOS, a tar.gz for Linux, and `SHA256SUMS.txt`. Another build of the same
+version replaces that release's files; bump the version for a new release. Releases should be
 code-signed (Windows: `signtool`; macOS: Developer ID + notarization, the script prints the command), otherwise
 SmartScreen and Gatekeeper warn on first start.
 

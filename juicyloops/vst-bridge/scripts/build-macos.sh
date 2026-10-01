@@ -8,6 +8,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "Run this on macOS. Here, scripts/check.sh at least type-checks the macOS build." >&2
   exit 1
 fi
+# The oldest macOS the binary runs on, for both architectures (the release notes promise macOS 11+).
+export MACOSX_DEPLOYMENT_TARGET=11.0
 cargo build --release --locked --target aarch64-apple-darwin
 cargo build --release --locked --target x86_64-apple-darwin
 mkdir -p dist/macos
